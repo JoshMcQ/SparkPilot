@@ -1,0 +1,80 @@
+Metadata-Version: 2.4
+Name: sparkpilot
+Version: 0.1.0
+Summary: SparkPilot AWS-first BYOC managed Spark control plane
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.116.0
+Requires-Dist: uvicorn>=0.35.0
+Requires-Dist: sqlalchemy>=2.0.38
+Requires-Dist: pydantic>=2.11.0
+Requires-Dist: pydantic-settings>=2.9.0
+Requires-Dist: typer>=0.16.0
+Requires-Dist: httpx>=0.28.0
+Requires-Dist: boto3>=1.38.0
+Requires-Dist: python-dateutil>=2.9.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.3.0; extra == "dev"
+Requires-Dist: pytest-cov>=6.0.0; extra == "dev"
+Requires-Dist: ruff>=0.11.0; extra == "dev"
+
+# SparkPilot
+
+SparkPilot is an AWS-first BYOC managed Spark control plane for Kubernetes-native teams.
+
+This repository contains:
+
+- `src/sparkpilot`: FastAPI control-plane API, workers, and shared services
+- `ui`: Next.js thin operator UI
+- `infra/terraform/control-plane`: Terraform baseline for SparkPilot control plane
+- `infra/cloudformation`: Customer bootstrap templates
+- `tests`: API and workflow tests
+
+## Quick Start
+
+1. Create a Python environment and install dependencies:
+
+```powershell
+python -m venv .venv
+. .venv/Scripts/Activate.ps1
+pip install -e ".[dev]"
+```
+
+2. Run database-backed API locally:
+
+```powershell
+$env:SPARKPILOT_DATABASE_URL="sqlite:///./sparkpilot.db"
+uvicorn sparkpilot.api:app --reload
+```
+
+3. Run workers (separate shells):
+
+```powershell
+python -m sparkpilot.workers provisioner --once
+python -m sparkpilot.workers scheduler --once
+python -m sparkpilot.workers reconciler --once
+```
+
+4. Run CLI against local API:
+
+```powershell
+sparkpilot --help
+```
+
+5. Run tests:
+
+```powershell
+pytest
+```
+
+## Current Scope
+
+Implemented MVP control-plane behaviors include:
+
+- Idempotent mutating APIs (`Idempotency-Key`)
+- Environment provisioning operations and state machine
+- Spark job template + run submission with per-run overrides
+- Queue-style worker loops (provisioner, scheduler, reconciler)
+- Deterministic log pointers and run log proxy
+- Audit events and quota checks
+- Starter AWS infra templates (Terraform + CloudFormation)

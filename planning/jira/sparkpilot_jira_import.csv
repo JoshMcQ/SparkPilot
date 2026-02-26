@@ -1,0 +1,22 @@
+External ID,Issue Type,Summary,Description,Priority,Labels,Epic Name,Parent External ID,Story Points
+E-100,Epic,Engine Reliability and BYOC-Lite,"Deliver live AWS reliability and BYOC-Lite onboarding path for first paid design partners.",High,"product,delivery","Engine Reliability and BYOC-Lite",,13
+E-110,Epic,Security Review Readiness,"Ship least-privilege access model and security artifacts required to pass design partner security review.",High,"security,compliance","Security Review Readiness",,8
+E-120,Epic,Design Partner GTM Sprint,"Execute 30-day GTM plan and close first paying design partner.",Highest,"gtm,design-partner","Design Partner GTM Sprint",,13
+S-101,Story,Add provisioning_mode to environment contract,"Add provisioning mode (`full|byoc_lite`) to model/schema/API contract and validate required fields for each mode.",High,"product,api",,E-100,5
+T-102,Task,Implement BYOC-Lite create environment path,"Support customer-provided EKS cluster ARN and namespace. Skip full infra provisioning and converge to runtime validation path.",High,"product,byoc-lite",,S-101,3
+T-103,Task,Implement BYOC-Lite IAM template,"Add BYOC-Lite CloudFormation template with scoped actions across emr-containers, logs, and iam:PassRole.",High,"security,byoc-lite",,E-110,3
+T-104,Task,Add integration test for BYOC-Lite state machine,"Add automated test that validates BYOC-Lite operation transitions to ready with required fields and audit events.",Medium,"test,product",,E-100,2
+T-105,Task,Run first real AWS environment provisioning test,"Execute non-dry-run path with valid credentials and capture operation IDs, logs, and readiness timings.",Highest,"product,aws,poc",,E-100,2
+T-106,Task,Run representative Spark workload in real AWS account,"Submit real Spark job, confirm succeeded state, verify output in customer S3 location, collect logs and duration.",Highest,"product,aws,poc",,E-100,3
+T-107,Task,Capture reliability baseline on 5+ runs,"Run 5+ jobs over 2-week window and report first-attempt success rate and failure diagnostics.",High,"reliability,poc",,E-100,2
+S-111,Story,Publish security one-pager,"Create 2-page security document with architecture, IAM inventory, data handling, encryption, and incident process.",Highest,"security,docs",,E-110,3
+T-112,Task,Create annotated IAM permission inventory,"Document each IAM action with usage, resource scope, and tag conditions.",High,"security,docs",,E-110,2
+T-113,Task,Publish incident response one-pager,"Define P1/P2 response SLA, comms path, and escalation contact.",Medium,"security,ops",,E-110,1
+T-114,Task,Security review dry run with advisor,"Review CFN templates and security docs with advisor and log all blockers/remediations.",High,"security,review",,E-110,2
+S-121,Story,Build ICP pipeline of 50 accounts,"Create account list with Series B-D AWS fintech/healthtech companies and target Heads/Directors of Data Engineering.",Highest,"gtm,outbound",,E-120,3
+T-122,Task,Launch outbound sequence (10/day),"Send initial outreach message to 10 targets per day and track responses in CRM/Jira.",High,"gtm,outbound",,E-120,2
+T-123,Task,Book 8 qualified discovery calls by day 30,"Schedule and complete calls with ICP-qualified contacts; attach notes and qualification score.",Highest,"gtm,discovery",,E-120,3
+T-124,Task,Prepare real AWS live demo environment,"Prepare repeatable live demo: provisioning, job run, logs, diagnostics, and results artifact.",Highest,"gtm,demo,aws",,E-120,2
+T-125,Task,Issue 2 design partner proposals,"Send design partner one-pager with price (`$5k/mo` target), terms, and POC scope.",High,"gtm,proposal,design-partner",,E-120,2
+T-126,Task,Track weekly GTM KPIs,"Update qualified conversations, demo->POC conversion, and days-to-POC-start every Friday.",Highest,"gtm,kpi",,E-120,1
+T-127,Task,Define objection handling script and train usage,"Use standardized responses for Databricks, IAM breadth, startup risk, build-vs-buy, and SOC2 objections.",Medium,"gtm,enablement",,E-120,1

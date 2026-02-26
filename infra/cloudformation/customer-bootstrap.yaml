@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "SparkPilot customer bootstrap role for BYOC environment provisioning"
+
+Parameters:
+  SparkPilotControlPlaneAccountId:
+    Type: String
+    Description: "SparkPilot control plane AWS account ID"
+  ExternalId:
+    Type: String
+    Description: "External ID provided by SparkPilot"
+  RoleName:
+    Type: String
+    Default: SparkPilotControlPlaneRole
+    Description: "Role name to create for SparkPilot"
+
+Resources:
+  SparkPilotControlPlaneRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${SparkPilotControlPlaneAccountId}:root"
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref ExternalId
+      Policies:
+        - PolicyName: SparkPilotProvisioningPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: VpcEksProvisioning
+                Effect: Allow
+                Action:
+                  - ec2:CreateVpc
+                  - ec2:DeleteVpc
+                  - ec2:CreateSubnet
+                  - ec2:DeleteSubnet
+                  - ec2:CreateRouteTable
+                  - ec2:DeleteRouteTable
+                  - ec2:CreateRoute
+                  - ec2:DeleteRoute
+                  - ec2:CreateInternetGateway
+                  - ec2:AttachInternetGateway
+                  - ec2:DetachInternetGateway
+                  - ec2:DeleteInternetGateway
+                  - ec2:CreateNatGateway
+                  - ec2:DeleteNatGateway
+                  - ec2:AllocateAddress
+                  - ec2:ReleaseAddress
+                  - ec2:CreateSecurityGroup
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:CreateVpcEndpoint
+                  - ec2:DeleteVpcEndpoints
+                  - ec2:Describe*
+                  - eks:CreateCluster
+                  - eks:DeleteCluster
+                  - eks:DescribeCluster
+                  - eks:CreateNodegroup
+                  - eks:DeleteNodegroup
+                  - eks:DescribeNodegroup
+                  - eks:List*
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:CreatePolicy
+                  - iam:DeletePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:PassRole
+                  - iam:GetRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - logs:CreateLogGroup
+                  - logs:PutRetentionPolicy
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:FilterLogEvents
+                  - emr-containers:CreateVirtualCluster
+                  - emr-containers:DeleteVirtualCluster
+                  - emr-containers:DescribeVirtualCluster
+                  - emr-containers:ListVirtualClusters
+                  - emr-containers:StartJobRun
+                  - emr-containers:CancelJobRun
+                  - emr-containers:DescribeJobRun
+                  - emr-containers:ListJobRuns
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                  - kms:DescribeKey
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+
+Outputs:
+  SparkPilotRoleArn:
+    Description: "Role ARN to register in SparkPilot tenant environment config"
+    Value: !GetAtt SparkPilotControlPlaneRole.Arn
+  ExternalId:
+    Description: "External ID used in trust relationship"
+    Value: !Ref ExternalId

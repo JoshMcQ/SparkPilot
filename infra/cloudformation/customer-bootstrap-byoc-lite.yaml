@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "SparkPilot BYOC-Lite bootstrap role (existing EKS cluster + namespace)"
+
+Parameters:
+  SparkPilotControlPlaneAccountId:
+    Type: String
+    Description: "SparkPilot control plane AWS account ID"
+  ExternalId:
+    Type: String
+    Description: "External ID provided by SparkPilot"
+  RoleName:
+    Type: String
+    Default: SparkPilotByocLiteRole
+    Description: "Cross-account role name for SparkPilot BYOC-Lite"
+
+Resources:
+  SparkPilotByocLiteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${SparkPilotControlPlaneAccountId}:root"
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref ExternalId
+      Policies:
+        - PolicyName: SparkPilotByocLitePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EmrOnEksCreateVirtualCluster
+                Effect: Allow
+                Action:
+                  - emr-containers:CreateVirtualCluster
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    "aws:RequestTag/sparkpilot:managed": "true"
+
+              - Sid: EmrOnEksManagedResources
+                Effect: Allow
+                Action:
+                  - emr-containers:DeleteVirtualCluster
+                  - emr-containers:DescribeVirtualCluster
+                  - emr-containers:ListVirtualClusters
+                  - emr-containers:StartJobRun
+                  - emr-containers:CancelJobRun
+                  - emr-containers:DescribeJobRun
+                  - emr-containers:ListJobRuns
+                Resource:
+                  - !Sub "arn:aws:emr-containers:*:${AWS::AccountId}:/virtualclusters/*"
+                Condition:
+                  StringEquals:
+                    "aws:ResourceTag/sparkpilot:managed": "true"
+
+              - Sid: LogAccess
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:PutRetentionPolicy
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:FilterLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:log-group:/sparkpilot/*"
+
+              - Sid: PassExecutionRole
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SparkPilotEmrExecution*"
+                Condition:
+                  StringEquals:
+                    "iam:PassedToService": "emr-containers.amazonaws.com"
+
+Outputs:
+  SparkPilotRoleArn:
+    Description: "Role ARN to register in SparkPilot environment config"
+    Value: !GetAtt SparkPilotByocLiteRole.Arn
+  ExternalId:
+    Description: "External ID used in trust relationship"
+    Value: !Ref ExternalId

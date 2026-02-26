@@ -1,0 +1,90 @@
+name: sparkpilot-ci-cd
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run tests
+        run: pytest -q
+
+  build-images:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -f docker/api.Dockerfile -t sparkpilot-api:${{ github.sha }} .
+      - name: Build Worker image
+        run: docker build -f docker/worker.Dockerfile -t sparkpilot-worker:${{ github.sha }} .
+
+  security-scan:
+    needs: build-images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Trivy FS scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+  deploy-dev:
+    if: github.ref == 'refs/heads/main'
+    needs: security-scan
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Terraform apply (dev)
+        run: |
+          cd infra/terraform/control-plane
+          terraform init
+          terraform apply -auto-approve \
+            -var="environment=dev" \
+            -var="vpc_id=${{ secrets.DEV_VPC_ID }}" \
+            -var='private_subnet_ids=${{ secrets.DEV_PRIVATE_SUBNET_IDS_JSON }}' \
+            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}"
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/main'
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Manual gate is handled by protected environment rules
+        run: echo "Deploy staging approved."
+
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Manual gate is handled by protected environment rules
+        run: echo "Deploy prod approved."
+
