@@ -17,7 +17,7 @@ dependencies = [
   "typer>=0.16.0",
   "httpx>=0.28.0",
   "boto3>=1.38.0",
-  "python-dateutil>=2.9.0",
+  "PyJWT[crypto]>=2.10.0",
 ]
 
 [project.optional-dependencies]

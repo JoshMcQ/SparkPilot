@@ -7,6 +7,8 @@ import uuid
 import httpx
 import typer
 
+from sparkpilot.oidc import OIDCValidationError, fetch_client_credentials_token
+
 app = typer.Typer(help="SparkPilot CLI")
 
 
@@ -22,18 +24,89 @@ def _idem(value: str | None) -> str:
     return value or uuid.uuid4().hex
 
 
+_TOKEN_CACHE: dict[str, tuple[str, float]] = {}
+
+
+def _env(*names: str) -> str:
+    import os
+
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return ""
+
+
+def _oidc_access_token() -> str:
+    issuer = _env("OIDC_ISSUER", "SPARKPILOT_OIDC_ISSUER")
+    audience = _env("OIDC_AUDIENCE", "SPARKPILOT_OIDC_AUDIENCE")
+    client_id = _env("OIDC_CLIENT_ID", "SPARKPILOT_OIDC_CLIENT_ID")
+    client_secret = _env("OIDC_CLIENT_SECRET", "SPARKPILOT_OIDC_CLIENT_SECRET")
+    token_endpoint = _env("OIDC_TOKEN_ENDPOINT", "SPARKPILOT_OIDC_TOKEN_ENDPOINT")
+    scope = _env("OIDC_SCOPE", "SPARKPILOT_OIDC_SCOPE")
+
+    missing = []
+    if not issuer:
+        missing.append("OIDC_ISSUER")
+    if not audience:
+        missing.append("OIDC_AUDIENCE")
+    if not client_id:
+        missing.append("OIDC_CLIENT_ID")
+    if not client_secret:
+        missing.append("OIDC_CLIENT_SECRET")
+    if missing:
+        raise typer.BadParameter(
+            "Missing required OIDC CLI env vars: " + ", ".join(missing)
+        )
+
+    cache_key = "|".join([issuer, audience, client_id, token_endpoint, scope])
+    cached = _TOKEN_CACHE.get(cache_key)
+    if cached:
+        token_value, expires_at = cached
+        if expires_at > datetime.now(UTC).timestamp() + 30:
+            return token_value
+
+    try:
+        token = fetch_client_credentials_token(
+            issuer=issuer,
+            audience=audience,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_endpoint=token_endpoint or None,
+            scope=scope or None,
+        )
+    except OIDCValidationError as exc:
+        raise typer.BadParameter(f"OIDC token acquisition failed: {exc}") from exc
+    except httpx.HTTPError as exc:
+        raise typer.BadParameter(f"OIDC token endpoint request failed: {exc}") from exc
+    _TOKEN_CACHE[cache_key] = (token.access_token, token.expires_at_epoch_seconds)
+    return token.access_token
+
+
+def _headers(
+    idempotency_key: str | None = None,
+    *,
+    include_idempotency: bool = False,
+) -> dict[str, str]:
+    headers = {
+        "Authorization": f"Bearer {_oidc_access_token()}",
+    }
+    if include_idempotency:
+        headers["Idempotency-Key"] = _idem(idempotency_key)
+    return headers
+
+
 @app.command("tenant-create")
 def tenant_create(
     name: str = typer.Option(..., "--name"),
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
-    actor: str = typer.Option("cli-user", "--actor"),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ) -> None:
     with _client(base_url) as c:
         r = c.post(
             "/v1/tenants",
             json={"name": name},
-            headers={"Idempotency-Key": _idem(idempotency_key), "X-Actor": actor},
+            headers=_headers(idempotency_key, include_idempotency=True),
         )
         r.raise_for_status()
         _print_json(r.json())
@@ -52,7 +125,6 @@ def env_create(
     max_vcpu: int = typer.Option(256, "--max-vcpu"),
     max_run_seconds: int = typer.Option(7200, "--max-run-seconds"),
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
-    actor: str = typer.Option("cli-user", "--actor"),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ) -> None:
     payload = {
@@ -73,7 +145,7 @@ def env_create(
         r = c.post(
             "/v1/environments",
             json=payload,
-            headers={"Idempotency-Key": _idem(idempotency_key), "X-Actor": actor},
+            headers=_headers(idempotency_key, include_idempotency=True),
         )
         r.raise_for_status()
         _print_json(r.json())
@@ -86,7 +158,7 @@ def env_list(
 ) -> None:
     params = {"tenant_id": tenant_id} if tenant_id else None
     with _client(base_url) as c:
-        r = c.get("/v1/environments", params=params)
+        r = c.get("/v1/environments", params=params, headers=_headers())
         r.raise_for_status()
         _print_json(r.json())
 
@@ -97,7 +169,20 @@ def env_get(
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
 ) -> None:
     with _client(base_url) as c:
-        r = c.get(f"/v1/environments/{environment_id}")
+        r = c.get(f"/v1/environments/{environment_id}", headers=_headers())
+        r.raise_for_status()
+        _print_json(r.json())
+
+
+@app.command("env-preflight")
+def env_preflight(
+    environment_id: str = typer.Option(..., "--environment-id"),
+    run_id: str | None = typer.Option(None, "--run-id"),
+    base_url: str = typer.Option("http://localhost:8000", "--base-url"),
+) -> None:
+    params = {"run_id": run_id} if run_id else None
+    with _client(base_url) as c:
+        r = c.get(f"/v1/environments/{environment_id}/preflight", params=params, headers=_headers())
         r.raise_for_status()
         _print_json(r.json())
 
@@ -108,7 +193,7 @@ def op_get(
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
 ) -> None:
     with _client(base_url) as c:
-        r = c.get(f"/v1/provisioning-operations/{operation_id}")
+        r = c.get(f"/v1/provisioning-operations/{operation_id}", headers=_headers())
         r.raise_for_status()
         _print_json(r.json())
 
@@ -125,7 +210,6 @@ def job_create(
     retry_max_attempts: int = typer.Option(1, "--retry-max-attempts"),
     timeout_seconds: int = typer.Option(7200, "--timeout-seconds"),
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
-    actor: str = typer.Option("cli-user", "--actor"),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ) -> None:
     conf_dict: dict[str, str] = {}
@@ -149,7 +233,7 @@ def job_create(
         r = c.post(
             "/v1/jobs",
             json=payload,
-            headers={"Idempotency-Key": _idem(idempotency_key), "X-Actor": actor},
+            headers=_headers(idempotency_key, include_idempotency=True),
         )
         r.raise_for_status()
         _print_json(r.json())
@@ -167,7 +251,6 @@ def run_submit(
     executor_instances: int = typer.Option(2, "--executor-instances"),
     timeout_seconds: int | None = typer.Option(None, "--timeout-seconds"),
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
-    actor: str = typer.Option("cli-user", "--actor"),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ) -> None:
     conf_dict: dict[str, str] = {}
@@ -192,7 +275,7 @@ def run_submit(
         r = c.post(
             f"/v1/jobs/{job_id}/runs",
             json=payload,
-            headers={"Idempotency-Key": _idem(idempotency_key), "X-Actor": actor},
+            headers=_headers(idempotency_key, include_idempotency=True),
         )
         r.raise_for_status()
         _print_json(r.json())
@@ -210,7 +293,7 @@ def run_list(
     if state:
         params["state"] = state
     with _client(base_url) as c:
-        r = c.get("/v1/runs", params=params)
+        r = c.get("/v1/runs", params=params, headers=_headers())
         r.raise_for_status()
         _print_json(r.json())
 
@@ -221,7 +304,7 @@ def run_get(
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
 ) -> None:
     with _client(base_url) as c:
-        r = c.get(f"/v1/runs/{run_id}")
+        r = c.get(f"/v1/runs/{run_id}", headers=_headers())
         r.raise_for_status()
         _print_json(r.json())
 
@@ -230,13 +313,12 @@ def run_get(
 def run_cancel(
     run_id: str = typer.Option(..., "--run-id"),
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
-    actor: str = typer.Option("cli-user", "--actor"),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ) -> None:
     with _client(base_url) as c:
         r = c.post(
             f"/v1/runs/{run_id}/cancel",
-            headers={"Idempotency-Key": _idem(idempotency_key), "X-Actor": actor},
+            headers=_headers(idempotency_key, include_idempotency=True),
         )
         r.raise_for_status()
         _print_json(r.json())
@@ -249,7 +331,7 @@ def run_logs(
     base_url: str = typer.Option("http://localhost:8000", "--base-url"),
 ) -> None:
     with _client(base_url) as c:
-        r = c.get(f"/v1/runs/{run_id}/logs", params={"limit": limit})
+        r = c.get(f"/v1/runs/{run_id}/logs", params={"limit": limit}, headers=_headers())
         r.raise_for_status()
         _print_json(r.json())
 
@@ -277,7 +359,7 @@ def usage_get(
     if parsed_to:
         params["to_ts"] = parsed_to
     with _client(base_url) as c:
-        r = c.get("/v1/usage", params=params)
+        r = c.get("/v1/usage", params=params, headers=_headers())
         r.raise_for_status()
         _print_json(r.json())
 

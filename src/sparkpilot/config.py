@@ -1,5 +1,14 @@
 from functools import lru_cache
+import re
+from typing import Literal
+from urllib.parse import urlparse
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+EMR_EXECUTION_ROLE_PLACEHOLDER_ARN = "arn:aws:iam::111111111111:role/SparkPilotEmrExecutionRole"
+IAM_ROLE_ARN_PATTERN = re.compile(r"^arn:aws:iam::\d{12}:role/.+")
+MIN_BOOTSTRAP_SECRET_LENGTH = 16
 
 
 class Settings(BaseSettings):
@@ -9,18 +18,112 @@ class Settings(BaseSettings):
     environment: str = "dev"
     database_url: str = "sqlite:///./sparkpilot.db"
     dry_run_mode: bool = True
+    auth_mode: Literal["oidc"] = Field(
+        default="oidc",
+        validation_alias=AliasChoices("SPARKPILOT_AUTH_MODE", "AUTH_MODE"),
+    )
+    oidc_issuer: str = Field(
+        default="",
+        validation_alias=AliasChoices("SPARKPILOT_OIDC_ISSUER", "OIDC_ISSUER"),
+    )
+    oidc_audience: str = Field(
+        default="",
+        validation_alias=AliasChoices("SPARKPILOT_OIDC_AUDIENCE", "OIDC_AUDIENCE"),
+    )
+    oidc_jwks_uri: str = Field(
+        default="",
+        validation_alias=AliasChoices("SPARKPILOT_OIDC_JWKS_URI", "OIDC_JWKS_URI"),
+    )
+    bootstrap_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET"),
+    )
     aws_region: str = "us-east-1"
     log_group_prefix: str = "/sparkpilot/runs"
     emr_release_label: str = "emr-7.10.0-latest"
-    emr_execution_role_arn: str = "arn:aws:iam::111111111111:role/SparkPilotEmrExecutionRole"
+    emr_execution_role_arn: str = ""
     queue_batch_size: int = 20
     poll_interval_seconds: int = 15
+    accepted_stale_minutes: int = 15
+    submitted_stale_minutes: int = 30
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cur_athena_database: str = ""
+    cur_athena_table: str = ""
+    cur_athena_workgroup: str = "primary"
+    cur_athena_output_location: str = ""
+    cur_run_id_column: str = "resource_tags_user_sparkpilot_run_id"
+    cur_cost_column: str = "line_item_unblended_cost"
+    cur_poll_seconds: int = 2
+    cur_query_timeout_seconds: int = 120
 
     @property
     def cors_origin_list(self) -> list[str]:
         origins = [item.strip() for item in self.cors_origins.split(",")]
         return [item for item in origins if item]
+
+
+def is_valid_iam_role_arn(value: str) -> bool:
+    return bool(IAM_ROLE_ARN_PATTERN.match(value.strip()))
+
+
+def validate_runtime_settings(settings: Settings) -> None:
+    if settings.accepted_stale_minutes <= 0:
+        raise ValueError("SPARKPILOT_ACCEPTED_STALE_MINUTES must be greater than 0.")
+    if settings.submitted_stale_minutes <= 0:
+        raise ValueError("SPARKPILOT_SUBMITTED_STALE_MINUTES must be greater than 0.")
+    if settings.auth_mode != "oidc":
+        raise ValueError("AUTH_MODE must be 'oidc'. No legacy auth modes are supported.")
+    issuer = settings.oidc_issuer.strip()
+    if not issuer:
+        raise ValueError("OIDC_ISSUER is required.")
+    parsed_issuer = urlparse(issuer)
+    if parsed_issuer.scheme not in {"http", "https"} or not parsed_issuer.netloc:
+        raise ValueError("OIDC_ISSUER must be a valid http(s) URL.")
+    if not settings.oidc_audience.strip():
+        raise ValueError("OIDC_AUDIENCE is required.")
+    jwks_uri = settings.oidc_jwks_uri.strip()
+    if not jwks_uri:
+        raise ValueError("OIDC_JWKS_URI is required.")
+    parsed_jwks = urlparse(jwks_uri)
+    if parsed_jwks.scheme == "file":
+        if not parsed_jwks.path:
+            raise ValueError("OIDC_JWKS_URI file:// URL must include a file path.")
+    elif parsed_jwks.scheme not in {"http", "https"} or not parsed_jwks.netloc:
+        raise ValueError("OIDC_JWKS_URI must be a valid http(s) or file:// URL.")
+    bootstrap_secret = settings.bootstrap_secret.strip()
+    if len(bootstrap_secret) < MIN_BOOTSTRAP_SECRET_LENGTH:
+        raise ValueError(
+            f"BOOTSTRAP_SECRET must be set and at least {MIN_BOOTSTRAP_SECRET_LENGTH} characters."
+        )
+    if not settings.cors_origin_list:
+        raise ValueError("SPARKPILOT_CORS_ORIGINS must contain at least one origin.")
+    for origin in settings.cors_origin_list:
+        if "*" in origin:
+            raise ValueError(
+                "SPARKPILOT_CORS_ORIGINS cannot contain wildcard origins when credentialed CORS is enabled."
+            )
+        parsed = urlparse(origin)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError(
+                "SPARKPILOT_CORS_ORIGINS must contain valid http(s) origins in scheme://host[:port] format."
+            )
+    if settings.dry_run_mode:
+        return
+    role_arn = settings.emr_execution_role_arn.strip()
+    if not role_arn:
+        raise ValueError(
+            "SPARKPILOT_EMR_EXECUTION_ROLE_ARN is required when SPARKPILOT_DRY_RUN_MODE=false."
+        )
+    if role_arn == EMR_EXECUTION_ROLE_PLACEHOLDER_ARN:
+        raise ValueError(
+            "SPARKPILOT_EMR_EXECUTION_ROLE_ARN is using the placeholder execution role ARN. "
+            "Set a real role ARN before starting SparkPilot in live mode."
+        )
+    if not is_valid_iam_role_arn(role_arn):
+        raise ValueError(
+            "SPARKPILOT_EMR_EXECUTION_ROLE_ARN must be a valid IAM role ARN "
+            "(arn:aws:iam::<12-digit-account-id>:role/<role-name>)."
+        )
 
 
 @lru_cache

@@ -35,6 +35,11 @@ Deploy `infra/cloudformation/customer-bootstrap.yaml` in customer account with:
 
 Register resulting `SparkPilotRoleArn` in SparkPilot via `POST /v1/environments`.
 
+For full-BYOC architecture and implementation sequencing, see:
+
+- `docs/design/full-byoc-design.md`
+- `docs/design/full-byoc-implementation-backlog.md`
+
 ### BYOC-Lite Mode (recommended for fast security review)
 
 In BYOC-Lite, customer provides existing EKS cluster ARN + namespace.
@@ -61,7 +66,12 @@ From `ui`:
 
 ```bash
 npm install
-NEXT_PUBLIC_SPARKPILOT_API=https://api.sparkpilot.example npm run build
+SPARKPILOT_API=https://api.sparkpilot.example \
+OIDC_ISSUER=https://auth.example \
+OIDC_AUDIENCE=sparkpilot-api \
+OIDC_CLIENT_ID=<ui-server-client-id> \
+OIDC_CLIENT_SECRET=<ui-server-client-secret> \
+npm run build
 npm run start
 ```
 
