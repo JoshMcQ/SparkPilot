@@ -1,0 +1,588 @@
+"""BYOC-Lite specific preflight checks.
+
+Extracted from preflight.py to keep that module focused on the core builder,
+TTL cache, and summary helpers.
+"""
+
+import re
+from typing import Callable
+
+from sparkpilot.aws_clients import EmrEksClient
+from sparkpilot.models import Environment
+
+# ---------------------------------------------------------------------------
+# BYOC-Lite constants
+# ---------------------------------------------------------------------------
+
+BYOC_LITE_CUSTOMER_ROLE_REQUIRED_ACTIONS = [
+    "emr-containers:ListVirtualClusters",
+    "emr-containers:CreateVirtualCluster",
+    "emr-containers:UpdateRoleTrustPolicy",
+    "emr-containers:StartJobRun",
+    "emr-containers:DescribeJobRun",
+    "emr-containers:CancelJobRun",
+    "eks:DescribeCluster",
+    "iam:GetOpenIDConnectProvider",
+    "iam:GetRole",
+    "iam:SimulatePrincipalPolicy",
+    "iam:UpdateAssumeRolePolicy",
+    "iam:PassRole",
+    "logs:DescribeLogGroups",
+    "logs:DescribeLogStreams",
+    "logs:FilterLogEvents",
+    "logs:GetLogEvents",
+]
+
+RESERVED_BYOC_LITE_NAMESPACES = {"default", "kube-system", "kube-public", "kube-node-lease"}
+
+BYOC_LITE_EXECUTION_ROLE_REQUIRED_ACTIONS = [
+    "s3:GetObject",
+    "s3:PutObject",
+    "logs:CreateLogGroup",
+    "logs:CreateLogStream",
+    "logs:PutLogEvents",
+    "sts:AssumeRoleWithWebIdentity",
+]
+
+SPOT_SELECTOR_CONF_KEYS = {
+    "spark.kubernetes.executor.node.selector.eks.amazonaws.com/capacityType",
+    "spark.kubernetes.executor.node.selector.karpenter.sh/capacity-type",
+}
+SPOT_TOLERATION_HINTS = ("spot", "capacity-type", "capacitytype")
+
+K8S_NAMESPACE_PATTERN = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
+EKS_CLUSTER_ARN_PATTERN = re.compile(
+    r"^arn:aws[a-zA-Z-]*:eks:[a-z0-9-]+:\d{12}:cluster/[A-Za-z0-9][A-Za-z0-9-_]{0,99}$"
+)
+
+
+# ---------------------------------------------------------------------------
+# ARN / cluster helpers
+# ---------------------------------------------------------------------------
+
+def _arn_account_id(arn: str | None) -> str | None:
+    if not arn:
+        return None
+    parts = arn.split(":")
+    if len(parts) < 6:
+        return None
+    return parts[4]
+
+
+def _eks_cluster_region(eks_cluster_arn: str | None) -> str | None:
+    if not eks_cluster_arn:
+        return None
+    parts = eks_cluster_arn.split(":")
+    if len(parts) < 6:
+        return None
+    return parts[3]
+
+
+# ---------------------------------------------------------------------------
+# Spark conf Spot helpers
+# ---------------------------------------------------------------------------
+
+def _spark_conf_has_spot_selector(spark_conf: dict[str, str] | None) -> bool:
+    if not spark_conf:
+        return False
+    for key, value in spark_conf.items():
+        value_text = str(value).strip().lower()
+        if key in SPOT_SELECTOR_CONF_KEYS and value_text == "spot":
+            return True
+        if key.startswith("spark.kubernetes.executor.node.selector.") and value_text == "spot":
+            return True
+    return False
+
+
+def _spark_conf_has_spot_toleration(spark_conf: dict[str, str] | None) -> bool:
+    if not spark_conf:
+        return False
+    for key, value in spark_conf.items():
+        key_text = str(key).lower()
+        value_text = str(value).lower()
+        if key_text.startswith("spark.kubernetes.executor.toleration."):
+            if any(token in value_text for token in SPOT_TOLERATION_HINTS):
+                return True
+        if key_text == "spark.kubernetes.executor.tolerations":
+            if any(token in value_text for token in SPOT_TOLERATION_HINTS):
+                return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# BYOC-Lite AWS prechecks
+# ---------------------------------------------------------------------------
+
+def _run_byoc_lite_aws_prechecks(
+    *,
+    environment: Environment,
+    spark_conf: dict[str, str] | None,
+    aws_precheck_eligible: bool,
+    add_check: Callable[..., None],
+) -> None:
+    if not aws_precheck_eligible:
+        _add_byoc_lite_skipped_aws_prechecks(add_check=add_check)
+        return
+
+    emr = EmrEksClient()
+    _add_byoc_lite_oidc_association_check(emr=emr, environment=environment, add_check=add_check)
+    _add_byoc_lite_execution_role_trust_check(emr=emr, environment=environment, add_check=add_check)
+    _add_byoc_lite_dispatch_permission_checks(emr=emr, environment=environment, add_check=add_check)
+    _add_byoc_lite_spot_capacity_checks(emr=emr, environment=environment, add_check=add_check)
+    _add_byoc_lite_spot_executor_placement_check(spark_conf=spark_conf, add_check=add_check)
+
+
+def _add_byoc_lite_oidc_association_check(
+    *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
+) -> None:
+    try:
+        oidc_result = emr.check_oidc_provider_association(environment)
+        if bool(oidc_result.get("associated")):
+            add_check(
+                code="byoc_lite.oidc_association",
+                status_value="pass",
+                message="OIDC provider is associated for target EKS cluster.",
+                details={
+                    "oidc_provider_arn": str(oidc_result.get("oidc_provider_arn") or ""),
+                    "cluster_name": str(oidc_result.get("cluster_name") or ""),
+                },
+            )
+            return
+        add_check(
+            code="byoc_lite.oidc_association",
+            status_value="fail",
+            message="OIDC provider is not associated for target EKS cluster.",
+            remediation=(
+                "Run `eksctl utils associate-iam-oidc-provider --cluster <name> "
+                "--region <region> --approve` in the customer account."
+            ),
+            details={
+                "oidc_provider_arn": str(oidc_result.get("oidc_provider_arn") or ""),
+                "cluster_name": str(oidc_result.get("cluster_name") or ""),
+            },
+        )
+    except ValueError as exc:
+        add_check(
+            code="byoc_lite.oidc_association",
+            status_value="fail",
+            message=str(exc),
+            remediation=(
+                "Grant customer_role_arn permissions to describe EKS cluster and read OIDC provider, "
+                "then retry preflight."
+            ),
+        )
+
+
+def _add_byoc_lite_execution_role_trust_check(
+    *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
+) -> None:
+    try:
+        trust_result = emr.check_execution_role_trust_policy(environment)
+        add_check(
+            code="byoc_lite.execution_role_trust",
+            status_value="pass",
+            message="Execution role trust policy includes required EMR web-identity statement.",
+            details={
+                "role_name": str(trust_result.get("role_name") or ""),
+                "provider_arn": str(trust_result.get("provider_arn") or ""),
+            },
+        )
+    except ValueError as exc:
+        add_check(
+            code="byoc_lite.execution_role_trust",
+            status_value="fail",
+            message=str(exc),
+            remediation="Fix execution role trust policy for EMR on EKS service accounts and retry preflight.",
+        )
+
+
+def _add_byoc_lite_dispatch_permission_checks(
+    *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
+) -> None:
+    try:
+        permissions = emr.check_customer_role_dispatch_permissions(environment)
+        dispatch_allowed = bool(permissions.get("dispatch_actions_allowed"))
+        pass_role_allowed = bool(permissions.get("pass_role_allowed"))
+        denied_actions = str(permissions.get("denied_dispatch_actions") or "")
+        add_check(
+            code="byoc_lite.customer_role_dispatch",
+            status_value="pass" if dispatch_allowed else "fail",
+            message=(
+                "Customer role allows required EMR dispatch actions."
+                if dispatch_allowed
+                else "Customer role is missing required EMR dispatch actions."
+            ),
+            remediation=(
+                "Allow emr-containers:StartJobRun, emr-containers:DescribeJobRun, and "
+                "emr-containers:CancelJobRun on customer_role_arn."
+            )
+            if not dispatch_allowed
+            else None,
+            details={"denied_actions": denied_actions},
+        )
+        add_check(
+            code="byoc_lite.iam_pass_role",
+            status_value="pass" if pass_role_allowed else "fail",
+            message=(
+                "Customer role allows iam:PassRole for execution role."
+                if pass_role_allowed
+                else "Customer role does not allow iam:PassRole for execution role."
+            ),
+            remediation=(
+                "Allow iam:PassRole on SPARKPILOT_EMR_EXECUTION_ROLE_ARN for customer_role_arn."
+            )
+            if not pass_role_allowed
+            else None,
+            details={"execution_role_arn": str(permissions.get("execution_role_arn") or "")},
+        )
+    except ValueError as exc:
+        add_check(
+            code="byoc_lite.customer_role_dispatch",
+            status_value="fail",
+            message=str(exc),
+            remediation="Grant customer_role_arn IAM simulation permissions or validate dispatch permissions manually.",
+            details={"required_actions": ", ".join(BYOC_LITE_CUSTOMER_ROLE_REQUIRED_ACTIONS)},
+        )
+        add_check(
+            code="byoc_lite.iam_pass_role",
+            status_value="fail",
+            message="Unable to validate iam:PassRole due to dispatch permission check failure.",
+            remediation=(
+                "Grant customer_role_arn iam:SimulatePrincipalPolicy and rerun preflight, or "
+                "manually confirm iam:PassRole on SPARKPILOT_EMR_EXECUTION_ROLE_ARN."
+            ),
+        )
+
+
+def _add_byoc_lite_spot_capacity_checks(
+    *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
+) -> None:
+    try:
+        nodegroups = emr.describe_nodegroups(environment)
+        spot_nodegroups = [
+            item
+            for item in nodegroups
+            if str(item.get("capacity_type", "")).upper() == "SPOT"
+        ]
+        if spot_nodegroups:
+            add_check(
+                code="byoc_lite.spot_capacity",
+                status_value="pass",
+                message="EKS cluster has Spot-capable managed node groups.",
+                details={
+                    "spot_nodegroups": len(spot_nodegroups),
+                    "total_nodegroups": len(nodegroups),
+                },
+            )
+        elif nodegroups:
+            add_check(
+                code="byoc_lite.spot_capacity",
+                status_value="warning",
+                message="No Spot-capable managed node groups were found; workloads may run on on-demand capacity only.",
+                remediation=(
+                    "Configure at least one Spot-capable node group or Karpenter NodePool "
+                    "for executor workloads."
+                ),
+                details={"total_nodegroups": len(nodegroups)},
+            )
+        else:
+            add_check(
+                code="byoc_lite.spot_capacity",
+                status_value="warning",
+                message="No managed node groups were discovered for Spot validation.",
+                remediation=(
+                    "If this cluster is Karpenter-only, validate Spot-capable NodePools manually "
+                    "or add managed node groups for explicit Spot validation."
+                ),
+            )
+
+        spot_instance_types = sorted(
+            {
+                str(instance_type)
+                for nodegroup in spot_nodegroups
+                for instance_type in (nodegroup.get("instance_types") or [])
+            }
+        )
+        if len(spot_instance_types) >= 3:
+            add_check(
+                code="byoc_lite.spot_diversification",
+                status_value="pass",
+                message="Spot instance diversification check passed (>= 3 instance types).",
+                details={"spot_instance_types": ", ".join(spot_instance_types)},
+            )
+        elif spot_nodegroups:
+            add_check(
+                code="byoc_lite.spot_diversification",
+                status_value="warning",
+                message="Spot diversification is below recommended threshold (fewer than 3 instance types).",
+                remediation=(
+                    "Configure at least 3 instance types across Spot capacity pools to reduce "
+                    "interruption and capacity risk."
+                ),
+                details={"spot_instance_types": ", ".join(spot_instance_types)},
+            )
+        else:
+            add_check(
+                code="byoc_lite.spot_diversification",
+                status_value="warning",
+                message="Spot diversification check skipped because no Spot-capable managed node groups were found.",
+                remediation=(
+                    "Add Spot-capable node groups or Karpenter Spot NodePools with diversified "
+                    "instance type requirements."
+                ),
+            )
+    except ValueError as exc:
+        add_check(
+            code="byoc_lite.spot_capacity",
+            status_value="warning",
+            message=str(exc),
+            remediation=(
+                "Grant EKS nodegroup read permissions or validate Spot capacity manually with "
+                "`aws eks list-nodegroups` and `aws eks describe-nodegroup`."
+            ),
+        )
+        add_check(
+            code="byoc_lite.spot_diversification",
+            status_value="warning",
+            message="Spot diversification check skipped because Spot node group metadata could not be loaded.",
+        )
+
+
+def _add_byoc_lite_spot_executor_placement_check(
+    *, spark_conf: dict[str, str] | None, add_check: Callable[..., None]
+) -> None:
+    has_spot_selector = _spark_conf_has_spot_selector(spark_conf)
+    has_spot_toleration = _spark_conf_has_spot_toleration(spark_conf)
+    if has_spot_selector and has_spot_toleration:
+        add_check(
+            code="byoc_lite.spot_executor_placement",
+            status_value="pass",
+            message="Executor Spark configuration includes Spot node selectors and toleration hints.",
+        )
+        return
+    if has_spot_selector:
+        add_check(
+            code="byoc_lite.spot_executor_placement",
+            status_value="warning",
+            message="Executor Spark configuration has Spot node selectors but no Spot toleration hints.",
+            remediation=(
+                "Add executor Spot tolerations (for example `spark.kubernetes.executor.tolerations`) "
+                "to improve placement on tainted Spot pools."
+            ),
+        )
+        return
+    add_check(
+        code="byoc_lite.spot_executor_placement",
+        status_value="warning",
+        message="Executor Spark configuration does not include a Spot node selector.",
+        remediation=(
+            "Set executor node selector Spark config such as "
+            "`spark.kubernetes.executor.node.selector.eks.amazonaws.com/capacityType=SPOT` "
+            "or `spark.kubernetes.executor.node.selector.karpenter.sh/capacity-type=spot`."
+        ),
+    )
+
+
+def _add_byoc_lite_skipped_aws_prechecks(*, add_check: Callable[..., None]) -> None:
+    add_check(
+        code="byoc_lite.customer_role_dispatch",
+        status_value="warning",
+        message="Dispatch permission checks were skipped because base BYOC-Lite prerequisites are not ready.",
+        details={"required_actions": ", ".join(BYOC_LITE_CUSTOMER_ROLE_REQUIRED_ACTIONS)},
+    )
+    add_check(
+        code="byoc_lite.iam_pass_role",
+        status_value="warning",
+        message="iam:PassRole validation was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+    add_check(
+        code="byoc_lite.execution_role_trust",
+        status_value="warning",
+        message="Execution role trust validation was skipped because base BYOC-Lite prerequisites are not ready.",
+        details={"required_actions": ", ".join(BYOC_LITE_EXECUTION_ROLE_REQUIRED_ACTIONS)},
+    )
+    add_check(
+        code="byoc_lite.oidc_association",
+        status_value="warning",
+        message="OIDC association check was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+    add_check(
+        code="byoc_lite.spot_capacity",
+        status_value="warning",
+        message="Spot capacity check was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+    add_check(
+        code="byoc_lite.spot_diversification",
+        status_value="warning",
+        message="Spot diversification check was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+    add_check(
+        code="byoc_lite.spot_executor_placement",
+        status_value="warning",
+        message="Executor Spot placement check was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# BYOC-Lite configuration checks (entry point called by preflight builder)
+# ---------------------------------------------------------------------------
+
+def _add_byoc_lite_configuration_checks(
+    *,
+    environment: Environment,
+    spark_conf: dict[str, str] | None,
+    add_check: Callable[..., None],
+) -> None:
+    if environment.provisioning_mode != "byoc_lite":
+        return
+    cluster_arn_valid = _add_byoc_lite_cluster_arn_check(environment=environment, add_check=add_check)
+    namespace_valid = _add_byoc_lite_namespace_checks(environment=environment, add_check=add_check)
+    cluster_region_matches = _add_byoc_lite_cluster_region_check(environment=environment, add_check=add_check)
+    accounts_aligned = _add_byoc_lite_account_alignment_check(environment=environment, add_check=add_check)
+    aws_precheck_eligible = _is_byoc_lite_aws_precheck_eligible(
+        environment=environment,
+        cluster_arn_valid=cluster_arn_valid,
+        namespace_valid=namespace_valid,
+        cluster_region_matches=cluster_region_matches,
+        accounts_aligned=accounts_aligned,
+    )
+    _run_byoc_lite_aws_prechecks(
+        environment=environment,
+        spark_conf=spark_conf,
+        aws_precheck_eligible=aws_precheck_eligible,
+        add_check=add_check,
+    )
+
+
+def _add_byoc_lite_cluster_arn_check(*, environment: Environment, add_check: Callable[..., None]) -> bool:
+    cluster_arn_valid = bool(environment.eks_cluster_arn and EKS_CLUSTER_ARN_PATTERN.match(environment.eks_cluster_arn))
+    if cluster_arn_valid:
+        add_check(
+            code="byoc_lite.eks_cluster_arn",
+            status_value="pass",
+            message="eks_cluster_arn is configured.",
+        )
+    else:
+        add_check(
+            code="byoc_lite.eks_cluster_arn",
+            status_value="fail",
+            message="eks_cluster_arn is missing or malformed for BYOC-Lite.",
+            remediation="Set eks_cluster_arn to arn:aws:eks:<region>:<account-id>:cluster/<cluster-name>.",
+        )
+    return cluster_arn_valid
+
+
+def _add_byoc_lite_namespace_checks(*, environment: Environment, add_check: Callable[..., None]) -> bool:
+    if environment.eks_namespace:
+        add_check(
+            code="byoc_lite.eks_namespace",
+            status_value="pass",
+            message="eks_namespace is configured.",
+        )
+    else:
+        add_check(
+            code="byoc_lite.eks_namespace",
+            status_value="fail",
+            message="eks_namespace is missing for BYOC-Lite.",
+            remediation="Set eks_namespace when creating the environment.",
+        )
+
+    namespace_format_valid = bool(environment.eks_namespace and K8S_NAMESPACE_PATTERN.match(environment.eks_namespace))
+    if namespace_format_valid:
+        add_check(
+            code="byoc_lite.eks_namespace_format",
+            status_value="pass",
+            message="eks_namespace matches Kubernetes DNS label format.",
+        )
+    elif environment.eks_namespace:
+        add_check(
+            code="byoc_lite.eks_namespace_format",
+            status_value="fail",
+            message="eks_namespace must be lowercase alphanumeric with '-' separators.",
+            remediation=(
+                "Use a namespace like sparkpilot-team. Allowed regex: "
+                "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ (max 63 chars)."
+            ),
+            details={"eks_namespace": environment.eks_namespace},
+        )
+
+    namespace_reserved = environment.eks_namespace in RESERVED_BYOC_LITE_NAMESPACES
+    if namespace_reserved:
+        add_check(
+            code="byoc_lite.namespace_bootstrap",
+            status_value="fail",
+            message=f"eks_namespace '{environment.eks_namespace}' is reserved and not allowed for BYOC-Lite.",
+            remediation=(
+                "Create and use a dedicated namespace for SparkPilot workloads, for example "
+                "'sparkpilot-team'."
+            ),
+            details={"eks_namespace": environment.eks_namespace},
+        )
+    elif environment.eks_namespace:
+        add_check(
+            code="byoc_lite.namespace_bootstrap",
+            status_value="pass",
+            message="eks_namespace is suitable for BYOC-Lite bootstrap.",
+        )
+
+    return namespace_format_valid and not namespace_reserved
+
+
+def _add_byoc_lite_cluster_region_check(*, environment: Environment, add_check: Callable[..., None]) -> bool:
+    cluster_region = _eks_cluster_region(environment.eks_cluster_arn)
+    cluster_region_matches = bool(cluster_region and cluster_region == environment.region)
+    if cluster_region_matches:
+        add_check(
+            code="byoc_lite.eks_cluster_region",
+            status_value="pass",
+            message="eks_cluster_arn region matches environment region.",
+            details={"cluster_region": cluster_region, "environment_region": environment.region},
+        )
+    elif cluster_region:
+        add_check(
+            code="byoc_lite.eks_cluster_region",
+            status_value="fail",
+            message="eks_cluster_arn region does not match environment region.",
+            remediation="Use an EKS cluster ARN in the same region as the environment.",
+            details={"cluster_region": cluster_region, "environment_region": environment.region},
+        )
+    return cluster_region_matches
+
+
+def _add_byoc_lite_account_alignment_check(*, environment: Environment, add_check: Callable[..., None]) -> bool:
+    role_account = _arn_account_id(environment.customer_role_arn)
+    cluster_account = _arn_account_id(environment.eks_cluster_arn)
+    accounts_aligned = bool(role_account and cluster_account and role_account == cluster_account)
+    if accounts_aligned:
+        add_check(
+            code="byoc_lite.account_alignment",
+            status_value="pass",
+            message="customer_role_arn account matches eks_cluster_arn account.",
+        )
+    elif role_account and cluster_account:
+        add_check(
+            code="byoc_lite.account_alignment",
+            status_value="fail",
+            message="customer_role_arn account does not match eks_cluster_arn account.",
+            remediation="Use a customer role in the same AWS account as the target EKS cluster.",
+            details={"role_account_id": role_account, "cluster_account_id": cluster_account},
+        )
+    return accounts_aligned
+
+
+def _is_byoc_lite_aws_precheck_eligible(
+    *,
+    environment: Environment,
+    cluster_arn_valid: bool,
+    namespace_valid: bool,
+    cluster_region_matches: bool,
+    accounts_aligned: bool,
+) -> bool:
+    return (
+        environment.status == "ready"
+        and bool(environment.emr_virtual_cluster_id)
+        and cluster_arn_valid
+        and namespace_valid
+        and cluster_region_matches
+        and accounts_aligned
+    )

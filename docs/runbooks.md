@@ -43,3 +43,9 @@
 2. Review audit trail by actor/action window.
 3. Correlate AWS request IDs and CloudTrail event IDs.
 4. Freeze tenant provisioning if blast radius unclear.
+
+## Enterprise Scenario Matrix
+
+1. Use `docs/runbooks/enterprise-matrix-real-aws.md` for matrix execution.
+2. Start with strict `--max-estimated-cost-usd`.
+3. Attach `artifacts/enterprise-matrix-<timestamp>/summary.json` to issue evidence.

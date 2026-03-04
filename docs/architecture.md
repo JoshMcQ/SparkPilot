@@ -24,6 +24,11 @@ Provisioning modes:
 - `full`: SparkPilot provisions tenant runtime infrastructure.
 - `byoc_lite`: customer provides existing EKS cluster ARN + namespace; SparkPilot manages EMR virtual cluster and runs.
 
+Full BYOC design decision record:
+
+- `docs/design/full-byoc-design.md`
+- `docs/design/full-byoc-implementation-backlog.md`
+
 Known-good endpoint profile validated during provisioning:
 
 - `ec2`, `ecr.api`, `ecr.dkr`, `s3`, `logs`, `sts`, `eks`, `eks-auth`, `elasticloadbalancing`

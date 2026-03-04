@@ -25,6 +25,8 @@ RunState = Literal[
     "cancelled",
     "timed_out",
 ]
+PreflightCheckStatus = Literal["pass", "warning", "fail"]
+UserRole = Literal["admin", "operator", "user"]
 
 
 class TenantCreateRequest(BaseModel):
@@ -38,6 +40,45 @@ class TenantResponse(BaseModel):
     updated_at: datetime
 
 
+class TeamCreateRequest(BaseModel):
+    tenant_id: str
+    name: str = Field(min_length=1, max_length=255)
+
+
+class TeamResponse(BaseModel):
+    id: str
+    tenant_id: str
+    name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserIdentityCreateRequest(BaseModel):
+    actor: str = Field(min_length=1, max_length=255)
+    role: UserRole
+    tenant_id: str | None = None
+    team_id: str | None = None
+    active: bool = True
+
+
+class UserIdentityResponse(BaseModel):
+    id: str
+    actor: str
+    role: UserRole
+    tenant_id: str | None
+    team_id: str | None
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class TeamEnvironmentScopeResponse(BaseModel):
+    id: str
+    team_id: str
+    environment_id: str
+    created_at: datetime
+
+
 class EnvironmentQuotas(BaseModel):
     max_concurrent_runs: int = Field(default=10, ge=1, le=1000)
     max_vcpu: int = Field(default=256, ge=1, le=20000)
@@ -48,6 +89,7 @@ class EnvironmentCreateRequest(BaseModel):
     tenant_id: str
     provisioning_mode: Literal["full", "byoc_lite"] = "full"
     region: str = Field(default="us-east-1")
+    instance_architecture: Literal["x86_64", "arm64", "mixed"] = "mixed"
     customer_role_arn: str
     eks_cluster_arn: str | None = None
     eks_namespace: str | None = Field(default=None, max_length=255)
@@ -62,6 +104,7 @@ class EnvironmentResponse(BaseModel):
     region: str
     engine: str
     provisioning_mode: Literal["full", "byoc_lite"]
+    instance_architecture: Literal["x86_64", "arm64", "mixed"]
     status: EnvironmentState
     customer_role_arn: str
     eks_cluster_arn: str | None
@@ -115,6 +158,44 @@ class JobResponse(BaseModel):
     updated_at: datetime
 
 
+class ResourceSpec(BaseModel):
+    vcpu: int = Field(ge=1, le=64)
+    memory_gb: int = Field(ge=1, le=512)
+
+
+class GoldenPathCreate(BaseModel):
+    environment_id: str | None = None
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(min_length=1, max_length=2000)
+    spark_config: dict[str, str] = Field(default_factory=dict)
+    driver_resources: ResourceSpec
+    executor_resources: ResourceSpec
+    executor_count: int = Field(ge=0, le=1000)
+    instance_architecture: Literal["x86_64", "arm64", "mixed"] = "mixed"
+    capacity_type: Literal["spot", "on_demand", "mixed"] = "spot"
+    max_runtime_minutes: int = Field(default=120, ge=1, le=10080)
+    tags: dict[str, str] = Field(default_factory=dict)
+    recommended_instance_types: list[str] = Field(default_factory=list)
+
+
+class GoldenPathResponse(BaseModel):
+    id: str
+    environment_id: str | None
+    name: str
+    description: str
+    spark_config: dict[str, str]
+    driver_resources: ResourceSpec
+    executor_resources: ResourceSpec
+    executor_count: int
+    instance_architecture: Literal["x86_64", "arm64", "mixed"]
+    capacity_type: Literal["spot", "on_demand", "mixed"]
+    max_runtime_minutes: int
+    tags: dict[str, str]
+    recommended_instance_types: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
 class RequestedResources(BaseModel):
     driver_vcpu: int = Field(default=1, ge=1, le=64)
     driver_memory_gb: int = Field(default=4, ge=1, le=512)
@@ -129,6 +210,7 @@ class RequestedResources(BaseModel):
 class RunCreateRequest(BaseModel):
     args: list[str] | None = None
     spark_conf: dict[str, str] | None = None
+    golden_path: str | None = None
     requested_resources: RequestedResources = Field(default_factory=RequestedResources)
     timeout_seconds: int | None = Field(default=None, ge=60, le=172800)
 
@@ -149,6 +231,7 @@ class RunResponse(BaseModel):
     log_stream_prefix: str | None
     driver_log_uri: str | None
     spark_ui_uri: str | None
+    created_by_actor: str | None
     error_message: str | None
     started_at: datetime | None
     ended_at: datetime | None
@@ -161,6 +244,37 @@ class LogsResponse(BaseModel):
     log_group: str | None
     log_stream_prefix: str | None
     lines: list[str]
+
+
+class DiagnosticItem(BaseModel):
+    id: str
+    run_id: str
+    category: str
+    description: str
+    remediation: str
+    log_snippet: str | None
+    created_at: datetime
+
+
+class DiagnosticsResponse(BaseModel):
+    run_id: str
+    items: list[DiagnosticItem]
+
+
+class PreflightCheck(BaseModel):
+    code: str
+    status: PreflightCheckStatus
+    message: str
+    remediation: str | None = None
+    details: dict[str, str | int | bool] = Field(default_factory=dict)
+
+
+class PreflightResponse(BaseModel):
+    environment_id: str
+    run_id: str | None = None
+    ready: bool
+    generated_at: datetime
+    checks: list[PreflightCheck]
 
 
 class UsageItem(BaseModel):
@@ -176,3 +290,54 @@ class UsageResponse(BaseModel):
     from_ts: datetime
     to_ts: datetime
     items: list[UsageItem]
+
+
+class TeamBudgetCreateRequest(BaseModel):
+    team: str = Field(min_length=1, max_length=255)
+    monthly_budget_usd_micros: int = Field(ge=1)
+    warn_threshold_pct: int = Field(default=80, ge=1, le=100)
+    block_threshold_pct: int = Field(default=100, ge=1, le=100)
+
+
+class TeamBudgetResponse(BaseModel):
+    id: str
+    team: str
+    monthly_budget_usd_micros: int
+    warn_threshold_pct: int
+    block_threshold_pct: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CostShowbackItem(BaseModel):
+    run_id: str
+    environment_id: str
+    team: str
+    cost_center: str
+    estimated_cost_usd_micros: int
+    actual_cost_usd_micros: int | None
+    effective_cost_usd_micros: int
+    billing_period: str
+    cur_reconciled_at: datetime | None
+
+
+class CostShowbackResponse(BaseModel):
+    team: str
+    period: str
+    total_estimated_cost_usd_micros: int
+    total_actual_cost_usd_micros: int
+    total_effective_cost_usd_micros: int
+    items: list[CostShowbackItem]
+
+
+class EmrReleaseResponse(BaseModel):
+    id: str
+    release_label: str
+    lifecycle_status: Literal["current", "deprecated", "end_of_life"]
+    graviton_supported: bool
+    lake_formation_supported: bool
+    upgrade_target: str | None
+    source: str
+    last_synced_at: datetime
+    created_at: datetime
+    updated_at: datetime

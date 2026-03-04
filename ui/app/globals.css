@@ -59,6 +59,12 @@ a {
   border-radius: 8px;
 }
 
+.inline-link {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -134,10 +140,36 @@ td {
   border-color: #ffd08a;
 }
 
+.badge.byoc_lite {
+  color: #0c4b37;
+  background: #d8f6ea;
+  border-color: #afe8d0;
+}
+
+.badge.byoc {
+  color: #1651b4;
+  background: #dce9ff;
+  border-color: #adc8ff;
+}
+
 .stack {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
 .logs {
@@ -164,6 +196,91 @@ td {
   border-color: #6f7f99;
   background: #93a0b4;
   cursor: not-allowed;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.form-grid input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.86rem;
+}
+
+.form-grid select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.86rem;
+  background: var(--surface);
+}
+
+.form-grid textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.86rem;
+  min-height: 84px;
+  resize: vertical;
+}
+
+.checkbox-field {
+  align-items: center;
+  flex-direction: row !important;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.checkbox-field input {
+  width: 16px;
+  height: 16px;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.error-text {
+  color: var(--error);
+  margin: 6px 0;
+  font-size: 0.9rem;
+}
+
+.error-list {
+  margin: 8px 0 0 18px;
+  color: var(--error);
+  font-size: 0.9rem;
+}
+
+.success-text {
+  color: var(--brand);
+  margin-top: 8px;
+  font-size: 0.92rem;
+}
+
+.preflight-list {
+  margin: 8px 0 0 18px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 @media (max-width: 700px) {

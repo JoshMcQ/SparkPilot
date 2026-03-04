@@ -1,10 +1,13 @@
 .venv/
+.venv-*/
 __pycache__/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
 sparkpilot.db
 sparkpilot_*.db
 dist/
@@ -15,3 +18,5 @@ node_modules/
 .next/
 out/
 .env
+.claude/
+artifacts/

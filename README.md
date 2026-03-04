@@ -5,11 +5,12 @@ SparkPilot is an AWS-first BYOC managed Spark control plane for Kubernetes-nativ
 This repository contains:
 
 - `src/sparkpilot`: FastAPI control-plane API, workers, and shared services
+- `providers/airflow`: `apache-airflow-providers-sparkpilot` package (hook/operator/sensor/trigger)
 - `ui`: Next.js thin operator UI
 - `infra/terraform/control-plane`: Terraform baseline for SparkPilot control plane
 - `infra/cloudformation`: Customer bootstrap templates
 - `tests`: API and workflow tests
-- `planning/jira`: Jira-importable execution backlog
+- `scripts/smoke`: Cross-platform app-level smoke automation for BYOC-Lite
 
 ## Quick Start
 
@@ -52,6 +53,7 @@ pytest
 
 - Set up AWS credentials: `docs/setup/aws-auth-quickstart.md`
 - Run your first live job: `docs/setup/first-live-run.md`
+- Run enterprise scenario matrix with cost caps: `docs/runbooks/enterprise-matrix-real-aws.md`
 
 ## Current Scope
 
@@ -69,8 +71,7 @@ Implemented MVP control-plane behaviors include:
 ## Execution Tracking
 
 - Master tracker: `docs/execution-tracker.md`
-- Jira setup: `docs/jira-setup.md`
-- Jira import CSV: `planning/jira/sparkpilot_jira_import.csv`
+- GitHub issue backlog: `https://github.com/JoshMcQ/SparkPilot/issues`
 - POC criteria template: `docs/poc-success-criteria-template.md`
 - Security one-pager template: `docs/security-one-pager-template.md`
 - Weekly GTM scorecard: `docs/gtm-weekly-scorecard.md`

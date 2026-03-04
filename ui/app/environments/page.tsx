@@ -1,14 +1,17 @@
-import { fetchEnvironments } from "@/lib/api";
+import Link from "next/link";
+import { fetchEnvironmentsServer } from "@/lib/api-server";
+import EnvironmentCreateForm from "./environment-create-form";
 
 function badgeClass(status: string): string {
   return `badge ${status}`;
 }
 
 export default async function EnvironmentsPage() {
-  const environments = await fetchEnvironments().catch(() => []);
+  const environments = await fetchEnvironmentsServer().catch(() => []);
 
   return (
     <section className="stack">
+      <EnvironmentCreateForm />
       <div className="card">
         <h3>Tenant Environments</h3>
         <div className="subtle">
@@ -21,10 +24,14 @@ export default async function EnvironmentsPage() {
           <thead>
             <tr>
               <th>Environment</th>
+              <th>Detail</th>
               <th>Tenant</th>
               <th>Mode</th>
               <th>Region</th>
+              <th>Cluster ARN</th>
               <th>Namespace</th>
+              <th>Virtual Cluster</th>
+              <th>Customer Role</th>
               <th>Status</th>
               <th>Warm Pool</th>
               <th>Concurrency</th>
@@ -35,10 +42,20 @@ export default async function EnvironmentsPage() {
             {environments.map((env) => (
               <tr key={env.id}>
                 <td>{env.id}</td>
+                <td>
+                  <Link className="inline-link" href={`/environments/${env.id}`}>
+                    Open
+                  </Link>
+                </td>
                 <td>{env.tenant_id}</td>
-                <td>{env.provisioning_mode}</td>
+                <td>
+                  <span className={badgeClass(env.provisioning_mode)}>{env.provisioning_mode}</span>
+                </td>
                 <td>{env.region}</td>
+                <td>{env.eks_cluster_arn ?? "-"}</td>
                 <td>{env.eks_namespace ?? "-"}</td>
+                <td>{env.emr_virtual_cluster_id ?? "-"}</td>
+                <td>{env.customer_role_arn}</td>
                 <td>
                   <span className={badgeClass(env.status)}>{env.status}</span>
                 </td>
@@ -49,7 +66,7 @@ export default async function EnvironmentsPage() {
             ))}
             {environments.length === 0 ? (
               <tr>
-                <td colSpan={9} className="subtle">
+                <td colSpan={13} className="subtle">
                   No environments available.
                 </td>
               </tr>

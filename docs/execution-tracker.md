@@ -37,7 +37,11 @@ Defer until post-revenue:
 | BYOC-Lite environment mode (`full` vs `byoc_lite`) | Eng | Week 1 | Completed | code + tests |
 | BYOC-Lite API contract updates | Eng | Week 1 | Completed | schema + API |
 | BYOC-Lite provisioning path (`validating_runtime -> ready`) | Eng | Week 1 | Completed | `test_byoc_lite_environment_flow` |
+| Full BYOC design decision record (#1/#17) | Eng | Week 2 | In progress | `docs/design/full-byoc-design.md` |
 | Live AWS integration test script | Eng | Week 1 | Not started | script output |
+| BYOC-Lite transient retry + cancellation hardening (#13) | Eng | Week 2 | Completed | `docs/validation/byoc-lite-cancel-retry-behavior.md` |
+| Multi-tenant isolation invariants tests (#14) | Eng | Week 2 | Completed | `docs/validation/byoc-lite-multi-tenant-isolation.md` |
+| Full BYOC 1B Terraform orchestrator + checkpointing (#25) | Eng | Week 3 | Completed | `src/sparkpilot/terraform_orchestrator.py` |
 | Job failure diagnostics surfaced in UI | Eng | Week 2 | Not started | screenshot |
 | Reliability run: 5+ jobs / env / 2 weeks | Eng | Week 3-4 | Not started | run report |
 
@@ -68,7 +72,7 @@ Defer until post-revenue:
 2. Demo -> POC conversion: `>= 30%`.
 3. Days from POC yes -> first run in customer account: `<= 5 business days`.
 
-If any metric misses threshold by week-end, log a corrective action in Jira the same day.
+If any metric misses threshold by week-end, log a corrective action in GitHub Issues the same day.
 
 ## Day-14 Kill Check
 

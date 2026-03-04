@@ -4,14 +4,17 @@ from datetime import UTC, datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from sparkpilot.db import Base
 
@@ -38,6 +41,51 @@ class Tenant(Base):
     )
 
 
+class Team(Base):
+    __tablename__ = "teams"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_teams_tenant_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        onupdate=_utc_now,
+        nullable=False,
+    )
+
+
+class UserIdentity(Base):
+    __tablename__ = "user_identities"
+    __table_args__ = (CheckConstraint("role IN ('admin','operator','user')", name="ck_user_identities_role"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    actor: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=True)
+    team_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("teams.id"), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        onupdate=_utc_now,
+        nullable=False,
+    )
+
+
+class TeamEnvironmentScope(Base):
+    __tablename__ = "team_environment_scopes"
+    __table_args__ = (UniqueConstraint("team_id", "environment_id", name="uq_team_environment_scope"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    team_id: Mapped[str] = mapped_column(String(36), ForeignKey("teams.id"), nullable=False)
+    environment_id: Mapped[str] = mapped_column(String(36), ForeignKey("environments.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+
 class Environment(Base):
     __tablename__ = "environments"
 
@@ -48,6 +96,7 @@ class Environment(Base):
     engine: Mapped[str] = mapped_column(String(64), default="emr_on_eks", nullable=False)
     provisioning_mode: Mapped[str] = mapped_column(String(32), default="full", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="provisioning", nullable=False)
+    instance_architecture: Mapped[str] = mapped_column(String(16), default="mixed", nullable=False)
     customer_role_arn: Mapped[str] = mapped_column(String(1024), nullable=False)
     eks_cluster_arn: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     eks_namespace: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -67,9 +116,13 @@ class Environment(Base):
 
 class ProvisioningOperation(Base):
     __tablename__ = "provisioning_operations"
+    __table_args__ = (
+        Index("ix_provisioning_ops_environment_id", "environment_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
     environment_id: Mapped[str] = mapped_column(String(36), ForeignKey("environments.id"), nullable=False)
+    environment: Mapped["Environment"] = relationship(lazy="select")
     state: Mapped[str] = mapped_column(String(64), default="queued", nullable=False)
     step: Mapped[str] = mapped_column(String(64), default="queued", nullable=False)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -77,6 +130,8 @@ class ProvisioningOperation(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    worker_claim_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    worker_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -108,14 +163,54 @@ class Job(Base):
     )
 
 
+class GoldenPath(Base):
+    __tablename__ = "golden_paths"
+
+    __table_args__ = (
+        UniqueConstraint("environment_id", "name", name="uq_golden_paths_env_name"),
+        Index(
+            "uq_golden_paths_global_name",
+            "name",
+            unique=True,
+            sqlite_where=text("environment_id IS NULL"),
+            postgresql_where=text("environment_id IS NULL"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    environment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("environments.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    spark_conf_json: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, nullable=False)
+    requested_resources_json: Mapped[dict[str, int]] = mapped_column(JSON, default=dict, nullable=False)
+    instance_architecture: Mapped[str] = mapped_column(String(32), default="mixed", nullable=False)
+    capacity_type: Mapped[str] = mapped_column(String(32), default="spot", nullable=False)
+    max_runtime_minutes: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
+    tags_json: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, nullable=False)
+    recommended_instance_types_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        onupdate=_utc_now,
+        nullable=False,
+    )
+
+
 class Run(Base):
     __tablename__ = "runs"
 
-    __table_args__ = (UniqueConstraint("job_id", "idempotency_key", name="uq_runs_job_idempotency"),)
+    __table_args__ = (
+        UniqueConstraint("job_id", "idempotency_key", name="uq_runs_job_idempotency"),
+        Index("ix_runs_state", "state"),
+        Index("ix_runs_environment_id_state", "environment_id", "state"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
     job_id: Mapped[str] = mapped_column(String(36), ForeignKey("jobs.id"), nullable=False)
     environment_id: Mapped[str] = mapped_column(String(36), ForeignKey("environments.id"), nullable=False)
+    job: Mapped["Job"] = relationship(lazy="select")
+    environment: Mapped["Environment"] = relationship(lazy="select")
     state: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -129,6 +224,9 @@ class Run(Base):
     log_stream_prefix: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     driver_log_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     spark_ui_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    created_by_actor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    worker_claim_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    worker_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -141,8 +239,23 @@ class Run(Base):
     )
 
 
+class RunDiagnostic(Base):
+    __tablename__ = "run_diagnostics"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    remediation: Mapped[str] = mapped_column(Text, nullable=False)
+    log_snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+
 class UsageRecord(Base):
     __tablename__ = "usage_records"
+    __table_args__ = (
+        Index("ix_usage_records_tenant_recorded", "tenant_id", "recorded_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=False)
@@ -151,6 +264,71 @@ class UsageRecord(Base):
     memory_gb_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     estimated_cost_usd_micros: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+
+class CostAllocation(Base):
+    __tablename__ = "cost_allocations"
+    __table_args__ = (Index("ix_cost_allocations_team_period", "team", "billing_period"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False, unique=True)
+    environment_id: Mapped[str] = mapped_column(String(36), ForeignKey("environments.id"), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=False)
+    team: Mapped[str] = mapped_column(String(255), nullable=False)
+    cost_center: Mapped[str] = mapped_column(String(255), nullable=False)
+    billing_period: Mapped[str] = mapped_column(String(7), nullable=False)  # YYYY-MM
+    estimated_vcpu_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    estimated_memory_gb_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    estimated_cost_usd_micros: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    actual_cost_usd_micros: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cur_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    spot_cost_usd_micros: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ondemand_cost_usd_micros: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    spot_savings_usd_micros: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        onupdate=_utc_now,
+        nullable=False,
+    )
+
+
+class TeamBudget(Base):
+    __tablename__ = "team_budgets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    team: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    monthly_budget_usd_micros: Mapped[int] = mapped_column(Integer, nullable=False)
+    warn_threshold_pct: Mapped[int] = mapped_column(Integer, default=80, nullable=False)
+    block_threshold_pct: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        onupdate=_utc_now,
+        nullable=False,
+    )
+
+
+class EmrRelease(Base):
+    __tablename__ = "emr_releases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    release_label: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    lifecycle_status: Mapped[str] = mapped_column(String(32), default="current", nullable=False)
+    graviton_supported: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    lake_formation_supported: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    upgrade_target: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source: Mapped[str] = mapped_column(String(64), default="emr-containers", nullable=False)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        onupdate=_utc_now,
+        nullable=False,
+    )
 
 
 class AuditEvent(Base):

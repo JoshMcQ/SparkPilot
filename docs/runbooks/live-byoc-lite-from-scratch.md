@@ -148,6 +148,40 @@ $env:SPARKPILOT_EMR_EXECUTION_ROLE_ARN="arn:aws:iam::<account-id>:role/SparkPilo
 
 ## Phase 5 — Run It
 
+### 5.0 Automated App-Level Smoke (cross-platform)
+
+The repository includes a cross-platform smoke runner for the app-level flow
+(tenant -> environment -> job -> run -> logs). It assumes EKS/IAM bootstrap is
+already complete.
+
+PowerShell:
+
+```powershell
+scripts/smoke/live-byoc-lite.ps1 `
+  --customer-role-arn arn:aws:iam::<account-id>:role/SparkPilotByocLiteRoleAdmin `
+  --eks-cluster-arn arn:aws:eks:us-east-1:<account-id>:cluster/sparkpilot-live-1 `
+  --eks-namespace sparkpilot-team-234100 `
+  --artifact-uri s3://<bucket>/jobs/sparkpilot_demo_job.py `
+  --entrypoint sparkpilot_demo_job.py `
+  --arg s3://<bucket>/input/events.json `
+  --arg s3://<bucket>/output/run-automated/
+```
+
+Bash:
+
+```bash
+bash scripts/smoke/live-byoc-lite.sh \
+  --customer-role-arn arn:aws:iam::<account-id>:role/SparkPilotByocLiteRoleAdmin \
+  --eks-cluster-arn arn:aws:eks:us-east-1:<account-id>:cluster/sparkpilot-live-1 \
+  --eks-namespace sparkpilot-team-234100 \
+  --artifact-uri s3://<bucket>/jobs/sparkpilot_demo_job.py \
+  --entrypoint sparkpilot_demo_job.py \
+  --arg s3://<bucket>/input/events.json \
+  --arg s3://<bucket>/output/run-automated/
+```
+
+The script exits non-zero if preflight fails or the run does not finish in `succeeded`.
+
 ### 5.1 Start services (4 terminals)
 
 **Terminal A — API:**
@@ -289,3 +323,4 @@ eksctl delete cluster --name sparkpilot-live-1 --region us-east-1
 | S3 Bucket | `sparkpilot-live-787587782916-20260224203702` |
 | Successful Run ID | `989dba34-a5be-4a0f-8d1d-1707ae64bdf2` |
 | EMR Job Run ID | `0000000374i9j1pmcoo` |
+

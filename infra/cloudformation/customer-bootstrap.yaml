@@ -33,7 +33,21 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: VpcEksProvisioning
+              - Sid: InfrastructureReadOnly
+                Effect: Allow
+                Action:
+                  - ec2:Describe*
+                  - eks:DescribeCluster
+                  - eks:DescribeNodegroup
+                  - eks:List*
+                  - iam:GetRole
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - cloudformation:DescribeStacks
+                  - kms:DescribeKey
+                Resource: "*"
+
+              - Sid: TaggedVpcEksProvisioning
                 Effect: Allow
                 Action:
                   - ec2:CreateVpc
@@ -59,32 +73,28 @@ Resources:
                   - ec2:RevokeSecurityGroupEgress
                   - ec2:CreateVpcEndpoint
                   - ec2:DeleteVpcEndpoints
-                  - ec2:Describe*
                   - eks:CreateCluster
                   - eks:DeleteCluster
-                  - eks:DescribeCluster
                   - eks:CreateNodegroup
                   - eks:DeleteNodegroup
-                  - eks:DescribeNodegroup
-                  - eks:List*
-                  - iam:CreateRole
-                  - iam:DeleteRole
-                  - iam:CreatePolicy
-                  - iam:DeletePolicy
-                  - iam:AttachRolePolicy
-                  - iam:DetachRolePolicy
-                  - iam:PutRolePolicy
-                  - iam:DeleteRolePolicy
-                  - iam:PassRole
-                  - iam:GetRole
-                  - iam:TagRole
-                  - iam:UntagRole
-                  - logs:CreateLogGroup
-                  - logs:PutRetentionPolicy
-                  - logs:DescribeLogGroups
-                  - logs:DescribeLogStreams
-                  - logs:FilterLogEvents
+                Resource: "*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:RequestTag/sparkpilot:managed": "true"
+                    "aws:ResourceTag/sparkpilot:managed": "true"
+
+              - Sid: EmrOnEksCreateVirtualCluster
+                Effect: Allow
+                Action:
                   - emr-containers:CreateVirtualCluster
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    "aws:RequestTag/sparkpilot:managed": "true"
+
+              - Sid: EmrOnEksManagedResources
+                Effect: Allow
+                Action:
                   - emr-containers:DeleteVirtualCluster
                   - emr-containers:DescribeVirtualCluster
                   - emr-containers:ListVirtualClusters
@@ -92,12 +102,76 @@ Resources:
                   - emr-containers:CancelJobRun
                   - emr-containers:DescribeJobRun
                   - emr-containers:ListJobRuns
+                Resource:
+                  - !Sub "arn:aws:emr-containers:*:${AWS::AccountId}:/virtualclusters/*"
+                Condition:
+                  StringEquals:
+                    "aws:ResourceTag/sparkpilot:managed": "true"
+
+              - Sid: ManagedLogAccess
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:PutRetentionPolicy
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:FilterLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:log-group:/sparkpilot/*"
+
+              - Sid: IamCreateManagedArtifacts
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:CreatePolicy
+                Resource: "*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:RequestTag/sparkpilot:managed": "true"
+
+              - Sid: IamManageSparkPilotArtifacts
+                Effect: Allow
+                Action:
+                  - iam:DeleteRole
+                  - iam:DeletePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SparkPilot*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:policy/SparkPilot*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/sparkpilot:managed": "true"
+
+              - Sid: PassExecutionRole
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/SparkPilotEmrExecution*"
+                Condition:
+                  StringEquals:
+                    "iam:PassedToService": "emr-containers.amazonaws.com"
+
+              - Sid: SparkPilotManagedArtifactStorage
+                Effect: Allow
+                Action:
                   - s3:GetObject
                   - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::sparkpilot-*/*"
+
+              - Sid: SparkPilotManagedArtifactStorageList
+                Effect: Allow
+                Action:
                   - s3:ListBucket
-                  - kms:DescribeKey
-                  - cloudformation:DescribeStacks
-                Resource: "*"
+                Resource:
+                  - !Sub "arn:aws:s3:::sparkpilot-*"
 
 Outputs:
   SparkPilotRoleArn:

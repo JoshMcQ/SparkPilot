@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { fetchEnvironments, fetchRuns } from "@/lib/api";
+import { fetchEnvironmentsServer, fetchRunsServer } from "@/lib/api-server";
 
 export default async function HomePage() {
   let environments = 0;
   let runs = 0;
   let running = 0;
   try {
-    const [envData, runData] = await Promise.all([fetchEnvironments(), fetchRuns()]);
+    const [envData, runData] = await Promise.all([fetchEnvironmentsServer(), fetchRunsServer()]);
     environments = envData.length;
     runs = runData.length;
     running = runData.filter((r) => ["accepted", "running", "dispatching"].includes(r.state)).length;
@@ -49,4 +49,3 @@ export default async function HomePage() {
     </section>
   );
 }
-

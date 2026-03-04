@@ -1,0 +1,170 @@
+{
+  "matrix_name": "enterprise-coverage-v1",
+  "environment": {
+    "tenant_name_prefix": "Enterprise Matrix Tenant",
+    "region": "us-east-1",
+    "provisioning_mode": "byoc_lite",
+    "customer_role_arn": "arn:aws:iam::<account-id>:role/SparkPilotByocLiteRoleAdmin",
+    "eks_cluster_arn": "arn:aws:eks:us-east-1:<account-id>:cluster/sparkpilot-live-1",
+    "eks_namespace": "sparkpilot-enterprise-matrix",
+    "instance_architecture": "mixed",
+    "quotas": {
+      "max_concurrent_runs": 25,
+      "max_vcpu": 512,
+      "max_run_seconds": 7200
+    }
+  },
+  "job_defaults": {
+    "name_prefix": "matrix-job",
+    "artifact_uri": "local:///usr/lib/spark/examples/jars/spark-examples.jar",
+    "artifact_digest": "sha256:matrix-example",
+    "entrypoint": "org.apache.spark.examples.SparkPi",
+    "args": [
+      "1000"
+    ],
+    "spark_conf": {},
+    "timeout_seconds": 1800
+  },
+  "scenarios": [
+    {
+      "name": "spot-baseline",
+      "description": "Baseline Spot-capable submission path with small resources.",
+      "repeat": 1,
+      "submit_run": true,
+      "requested_resources": {
+        "driver_vcpu": 1,
+        "driver_memory_gb": 2,
+        "executor_vcpu": 1,
+        "executor_memory_gb": 2,
+        "executor_instances": 1
+      },
+      "expected_run_state": "succeeded"
+    },
+    {
+      "name": "graviton-golden-path",
+      "description": "Run with Graviton-focused golden path to validate ARM optimization behavior.",
+      "repeat": 1,
+      "submit_run": true,
+      "golden_path": "medium",
+      "expected_run_state": "succeeded"
+    },
+    {
+      "name": "policy-engine-blocked-spark-conf",
+      "description": "Policy guardrail should fail preflight for blocked Spark config keys.",
+      "repeat": 1,
+      "submit_run": false,
+      "spark_conf": {
+        "spark.kubernetes.authenticate.driver.serviceAccountName": "forbidden-service-account"
+      },
+      "expect_preflight_ready": false,
+      "expected_preflight_statuses": {
+        "run.spark_conf_policy": "fail"
+      }
+    },
+    {
+      "name": "budget-block-preflight",
+      "description": "Budget enforcement path should block before run dispatch.",
+      "repeat": 1,
+      "submit_run": false,
+      "team_budget": {
+        "monthly_budget_usd_micros": 1,
+        "warn_threshold_pct": 50,
+        "block_threshold_pct": 60
+      },
+      "expect_preflight_ready": false,
+      "expected_preflight_statuses": {
+        "team_budget": "fail"
+      }
+    },
+    {
+      "name": "cur-showback-path",
+      "description": "Submit a run and capture showback output for current billing period.",
+      "repeat": 1,
+      "submit_run": true,
+      "requested_resources": {
+        "driver_vcpu": 1,
+        "driver_memory_gb": 4,
+        "executor_vcpu": 2,
+        "executor_memory_gb": 4,
+        "executor_instances": 1
+      },
+      "expected_run_state": "succeeded"
+    },
+    {
+      "name": "load-burst-spot",
+      "description": "Moderate burst load for queueing/reconciliation stress without high spend.",
+      "repeat": 10,
+      "submit_run": true,
+      "requested_resources": {
+        "driver_vcpu": 1,
+        "driver_memory_gb": 2,
+        "executor_vcpu": 1,
+        "executor_memory_gb": 2,
+        "executor_instances": 1
+      },
+      "timeout_seconds": 900,
+      "expected_run_state": "succeeded"
+    },
+    {
+      "name": "rbac-scope-validation",
+      "description": "External RBAC matrix should be attached as evidence artifact.",
+      "repeat": 1,
+      "submit_run": false,
+      "required_external_evidence": [
+        "docs/validation/rbac-self-serve-access.md",
+        "tests/test_rbac.py output"
+      ]
+    },
+    {
+      "name": "airflow-provider-integration",
+      "description": "External Airflow provider integration evidence requirement.",
+      "repeat": 1,
+      "submit_run": false,
+      "required_external_evidence": [
+        "providers/airflow/tests/integration results",
+        "docs/integrations/airflow-provider.md"
+      ]
+    },
+    {
+      "name": "lake-formation-fgac-checkpoint",
+      "description": "Manual checkpoint for Lake Formation FGAC integration evidence.",
+      "repeat": 1,
+      "submit_run": false,
+      "required_external_evidence": [
+        "Issue evidence for Lake Formation policy setup and row/column controls"
+      ]
+    },
+    {
+      "name": "interactive-endpoints-karpenter-yunikorn-checkpoint",
+      "description": "Manual checkpoint for interactive endpoints and cluster scheduler integrations.",
+      "repeat": 1,
+      "submit_run": false,
+      "required_external_evidence": [
+        "EMR Studio endpoint evidence",
+        "Karpenter provisioning evidence",
+        "YuniKorn queue fairness evidence"
+      ]
+    },
+    {
+      "name": "dagster-spark-ui-diagnostics-checkpoint",
+      "description": "Manual checkpoint for Dagster integration and Spark UI/diagnostics UX.",
+      "repeat": 1,
+      "submit_run": false,
+      "required_external_evidence": [
+        "Dagster run proof",
+        "Spark UI proxy validation",
+        "Structured diagnostics remediation examples"
+      ]
+    },
+    {
+      "name": "objection-docs-review",
+      "description": "Manual checkpoint that sales objection docs are current and consistent.",
+      "repeat": 1,
+      "submit_run": false,
+      "required_external_evidence": [
+        "docs/sales/why-not-diy.md",
+        "docs/sales/why-not-emr-serverless.md"
+      ]
+    }
+  ]
+}
