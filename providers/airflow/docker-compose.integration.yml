@@ -1,0 +1,143 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sparkpilot
+      POSTGRES_PASSWORD: ${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}
+      POSTGRES_DB: sparkpilot
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sparkpilot -d sparkpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  sparkpilot-api:
+    build:
+      context: ../..
+      dockerfile: docker/api.Dockerfile
+    environment:
+      SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
+      SPARKPILOT_POLL_INTERVAL_SECONDS: "1"
+      SPARKPILOT_DRY_RUN_MODE: "true"
+      SPARKPILOT_AUTH_MODE: "oidc"
+      SPARKPILOT_OIDC_ISSUER: ${OIDC_ISSUER:-http://mock-oidc:8080}
+      SPARKPILOT_OIDC_AUDIENCE: ${OIDC_AUDIENCE:-sparkpilot-api}
+      SPARKPILOT_OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://mock-oidc:8080/.well-known/jwks.json}
+      SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-integration-bootstrap-secret}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  sparkpilot-provisioner:
+    build:
+      context: ../..
+      dockerfile: docker/worker.Dockerfile
+    command: ["python", "-m", "sparkpilot.workers", "provisioner"]
+    environment:
+      SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
+      SPARKPILOT_POLL_INTERVAL_SECONDS: "1"
+      SPARKPILOT_DRY_RUN_MODE: "true"
+      SPARKPILOT_AUTH_MODE: "oidc"
+      SPARKPILOT_OIDC_ISSUER: ${OIDC_ISSUER:-http://mock-oidc:8080}
+      SPARKPILOT_OIDC_AUDIENCE: ${OIDC_AUDIENCE:-sparkpilot-api}
+      SPARKPILOT_OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://mock-oidc:8080/.well-known/jwks.json}
+      SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-integration-bootstrap-secret}
+    depends_on:
+      sparkpilot-api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  sparkpilot-scheduler:
+    build:
+      context: ../..
+      dockerfile: docker/worker.Dockerfile
+    command: ["python", "-m", "sparkpilot.workers", "scheduler"]
+    environment:
+      SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
+      SPARKPILOT_POLL_INTERVAL_SECONDS: "1"
+      SPARKPILOT_DRY_RUN_MODE: "true"
+      SPARKPILOT_AUTH_MODE: "oidc"
+      SPARKPILOT_OIDC_ISSUER: ${OIDC_ISSUER:-http://mock-oidc:8080}
+      SPARKPILOT_OIDC_AUDIENCE: ${OIDC_AUDIENCE:-sparkpilot-api}
+      SPARKPILOT_OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://mock-oidc:8080/.well-known/jwks.json}
+      SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-integration-bootstrap-secret}
+    depends_on:
+      sparkpilot-api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  sparkpilot-reconciler:
+    build:
+      context: ../..
+      dockerfile: docker/worker.Dockerfile
+    command: ["python", "-m", "sparkpilot.workers", "reconciler"]
+    environment:
+      SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
+      SPARKPILOT_POLL_INTERVAL_SECONDS: "1"
+      SPARKPILOT_DRY_RUN_MODE: "true"
+      SPARKPILOT_AUTH_MODE: "oidc"
+      SPARKPILOT_OIDC_ISSUER: ${OIDC_ISSUER:-http://mock-oidc:8080}
+      SPARKPILOT_OIDC_AUDIENCE: ${OIDC_AUDIENCE:-sparkpilot-api}
+      SPARKPILOT_OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://mock-oidc:8080/.well-known/jwks.json}
+      SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-integration-bootstrap-secret}
+    depends_on:
+      sparkpilot-api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  airflow-integration:
+    image: apache/airflow:2.10.5-python3.12
+    user: "50000:0"
+    working_dir: /opt/sparkpilot
+    entrypoint: /bin/bash
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      PYTHONPATH: /opt/sparkpilot/providers/airflow/src
+      SPARKPILOT_BASE_URL: http://sparkpilot-api:8000
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://mock-oidc:8080}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-sparkpilot-api}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-airflow-client}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-airflow-secret}
+      OIDC_TOKEN_ENDPOINT: ${OIDC_TOKEN_ENDPOINT:-http://mock-oidc:8080/oauth/token}
+    volumes:
+      - ../..:/opt/sparkpilot
+    command:
+      - -ec
+      - |
+        set -euo pipefail
+        pip install --user /opt/sparkpilot/providers/airflow
+        python /opt/sparkpilot/providers/airflow/tests/integration/setup_sparkpilot_job.py > /tmp/sparkpilot_job.env
+        set -a
+        . /tmp/sparkpilot_job.env
+        set +a
+        mkdir -p /opt/airflow/dags
+        cp /opt/sparkpilot/providers/airflow/tests/integration/airflow_integration_dag.py /opt/airflow/dags/airflow_integration_dag.py
+        airflow db migrate
+        airflow connections add sparkpilot_default \
+          --conn-type sparkpilot \
+          --conn-host sparkpilot-api \
+          --conn-schema http \
+          --conn-port 8000 \
+          --conn-login "${OIDC_CLIENT_ID:-airflow-client}" \
+          --conn-password "${OIDC_CLIENT_SECRET:-airflow-secret}" \
+          --conn-extra '{"oidc_issuer":"'"${OIDC_ISSUER:-http://mock-oidc:8080}"'","oidc_audience":"'"${OIDC_AUDIENCE:-sparkpilot-api}"'","oidc_token_endpoint":"'"${OIDC_TOKEN_ENDPOINT:-http://mock-oidc:8080/oauth/token}"'"}' || true
+        airflow tasks test airflow_integration_dag submit_and_wait 2026-03-03
+    depends_on:
+      sparkpilot-api:
+        condition: service_healthy
+      sparkpilot-provisioner:
+        condition: service_started
+      sparkpilot-scheduler:
+        condition: service_started
+      sparkpilot-reconciler:
+        condition: service_started
