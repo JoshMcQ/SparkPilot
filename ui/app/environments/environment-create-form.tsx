@@ -1,12 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { createEnvironment } from "@/lib/api";
+import { shortId } from "@/lib/format";
 
 type CreateValues = {
   tenantId: string;
-  provisioningMode: "full" | "byoc_lite";
   region: string;
   customerRoleArn: string;
   eksClusterArn: string;
@@ -20,7 +20,6 @@ type CreateValues = {
 function defaultValues(): CreateValues {
   return {
     tenantId: "",
-    provisioningMode: "byoc_lite",
     region: "us-east-1",
     customerRoleArn: "",
     eksClusterArn: "",
@@ -38,13 +37,6 @@ export default function EnvironmentCreateForm() {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [result, setResult] = useState<string>("");
-
-  const modeHint = useMemo(() => {
-    if (values.provisioningMode === "byoc_lite") {
-      return "BYOC-Lite requires target EKS cluster ARN and namespace.";
-    }
-    return "Full mode provisions runtime resources and does not require EKS namespace inputs.";
-  }, [values.provisioningMode]);
 
   function validate(): string[] {
     const nextErrors: string[] = [];
@@ -66,13 +58,11 @@ export default function EnvironmentCreateForm() {
     if (Number.isNaN(maxRunSeconds) || maxRunSeconds < 60) {
       nextErrors.push("Max run seconds must be an integer >= 60.");
     }
-    if (values.provisioningMode === "byoc_lite") {
-      if (!values.eksClusterArn.trim()) {
-        nextErrors.push("EKS cluster ARN is required in BYOC-Lite mode.");
-      }
-      if (!values.eksNamespace.trim()) {
-        nextErrors.push("EKS namespace is required in BYOC-Lite mode.");
-      }
+    if (!values.eksClusterArn.trim()) {
+      nextErrors.push("EKS cluster ARN is required in BYOC-Lite mode.");
+    }
+    if (!values.eksNamespace.trim()) {
+      nextErrors.push("EKS namespace is required in BYOC-Lite mode.");
     }
     return nextErrors;
   }
@@ -90,11 +80,11 @@ export default function EnvironmentCreateForm() {
     try {
       const op = await createEnvironment({
         tenant_id: values.tenantId.trim(),
-        provisioning_mode: values.provisioningMode,
+        provisioning_mode: "byoc_lite",
         region: values.region.trim() || "us-east-1",
         customer_role_arn: values.customerRoleArn.trim(),
-        eks_cluster_arn: values.provisioningMode === "byoc_lite" ? values.eksClusterArn.trim() : undefined,
-        eks_namespace: values.provisioningMode === "byoc_lite" ? values.eksNamespace.trim() : undefined,
+        eks_cluster_arn: values.eksClusterArn.trim(),
+        eks_namespace: values.eksNamespace.trim(),
         warm_pool_enabled: values.warmPoolEnabled,
         quotas: {
           max_concurrent_runs: Number.parseInt(values.maxConcurrentRuns, 10),
@@ -102,7 +92,7 @@ export default function EnvironmentCreateForm() {
           max_run_seconds: Number.parseInt(values.maxRunSeconds, 10),
         },
       });
-      setResult(`Environment queued. operation_id=${op.id} environment_id=${op.environment_id}`);
+      setResult(`Environment queued. operation_id=${shortId(op.id)} environment_id=${shortId(op.environment_id)}`);
       router.refresh();
     } catch (err: unknown) {
       setErrors([err instanceof Error ? err.message : "Environment create failed"]);
@@ -114,23 +104,11 @@ export default function EnvironmentCreateForm() {
   return (
     <div className="card">
       <h3>Create Environment</h3>
-      <div className="subtle">{modeHint}</div>
+      <div className="subtle">BYOC-Lite mode only. Provide target EKS cluster ARN and namespace.</div>
       <div className="form-grid">
         <label>
           Tenant ID
           <input value={values.tenantId} onChange={(event) => setValues((current) => ({ ...current, tenantId: event.target.value }))} />
-        </label>
-        <label>
-          Mode
-          <select
-            value={values.provisioningMode}
-            onChange={(event) =>
-              setValues((current) => ({ ...current, provisioningMode: event.target.value as "full" | "byoc_lite" }))
-            }
-          >
-            <option value="full">full</option>
-            <option value="byoc_lite">byoc_lite</option>
-          </select>
         </label>
         <label>
           Region
@@ -178,24 +156,20 @@ export default function EnvironmentCreateForm() {
           />
           Warm Pool Enabled
         </label>
-        {values.provisioningMode === "byoc_lite" ? (
-          <>
-            <label>
-              EKS Cluster ARN
-              <input
-                value={values.eksClusterArn}
-                onChange={(event) => setValues((current) => ({ ...current, eksClusterArn: event.target.value }))}
-              />
-            </label>
-            <label>
-              EKS Namespace
-              <input
-                value={values.eksNamespace}
-                onChange={(event) => setValues((current) => ({ ...current, eksNamespace: event.target.value }))}
-              />
-            </label>
-          </>
-        ) : null}
+        <label>
+          EKS Cluster ARN
+          <input
+            value={values.eksClusterArn}
+            onChange={(event) => setValues((current) => ({ ...current, eksClusterArn: event.target.value }))}
+          />
+        </label>
+        <label>
+          EKS Namespace
+          <input
+            value={values.eksNamespace}
+            onChange={(event) => setValues((current) => ({ ...current, eksNamespace: event.target.value }))}
+          />
+        </label>
       </div>
 
       <div className="button-row">

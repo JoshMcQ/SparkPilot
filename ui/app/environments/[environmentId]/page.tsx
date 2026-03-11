@@ -1,14 +1,11 @@
+"use client";
+
 import Link from "next/link";
-import { type PreflightCheck } from "@/lib/api";
-import { fetchEnvironmentPreflightServer, fetchEnvironmentServer } from "@/lib/api-server";
-
-type EnvironmentDetailPageProps = {
-  params: Promise<{ environmentId: string }>;
-};
-
-function badgeClass(status: string): string {
-  return `badge ${status}`;
-}
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { type Environment, type PreflightCheck, type PreflightResponse, fetchEnvironment, fetchEnvironmentPreflight } from "@/lib/api";
+import { badgeClass } from "@/lib/badge";
+import { ShortId } from "@/components/short-id";
 
 function asText(value: string | null | undefined, empty: string): string {
   if (!value) {
@@ -33,10 +30,82 @@ function preflightCounts(checks: PreflightCheck[]): { pass: number; warning: num
   );
 }
 
-export default async function EnvironmentDetailPage({ params }: EnvironmentDetailPageProps) {
-  const { environmentId } = await params;
-  const environment = await fetchEnvironmentServer(environmentId);
-  const preflight = await fetchEnvironmentPreflightServer(environmentId).catch(() => null);
+export default function EnvironmentDetailPage() {
+  const params = useParams<{ environmentId: string }>();
+  const environmentId = params.environmentId;
+  const [environment, setEnvironment] = useState<Environment | null>(null);
+  const [preflight, setPreflight] = useState<PreflightResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const environmentRow = await fetchEnvironment(environmentId);
+        if (!cancelled) {
+          setEnvironment(environmentRow);
+        }
+        try {
+          const preflightRow = await fetchEnvironmentPreflight(environmentId);
+          if (!cancelled) {
+            setPreflight(preflightRow);
+          }
+        } catch {
+          if (!cancelled) {
+            setPreflight(null);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load environment details.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [environmentId]);
+
+  if (loading) {
+    return (
+      <section className="stack">
+        <div className="card">
+          <div className="subtle">Loading environment details...</div>
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="stack">
+        <div className="card error-card">
+          <strong>Failed to load environment</strong>
+          <div>{error}</div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!environment) {
+    return (
+      <section className="stack">
+        <div className="card error-card">
+          <strong>Environment unavailable</strong>
+          <div className="subtle">The selected environment could not be loaded.</div>
+        </div>
+      </section>
+    );
+  }
+
   const preflightCheck = preflight?.checks.find((check) => check.code === "config.execution_role");
   const executionRoleValue = preflightCheck?.details?.execution_role_arn;
   const executionRoleArn = typeof executionRoleValue === "string" ? executionRoleValue : "";
@@ -52,7 +121,7 @@ export default async function EnvironmentDetailPage({ params }: EnvironmentDetai
           </Link>
         </div>
         <div className="subtle">
-          ID: {environment.id} | tenant: {environment.tenant_id}
+          ID: <ShortId value={environment.id} /> | tenant: <ShortId value={environment.tenant_id} />
         </div>
       </div>
 

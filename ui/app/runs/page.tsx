@@ -1,47 +1,85 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createJob, fetchEnvironmentPreflight, fetchRunLogs, fetchRuns, Run, submitRun } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import {
+  type DiagnosticItem,
+  Environment,
+  Job,
+  Run,
+  cancelRun,
+  fetchEnvironments,
+  fetchJobs,
+  fetchRunDiagnostics,
+  fetchRunLogs,
+  fetchRuns,
+} from "@/lib/api";
+import { shortId, compactTime, friendlyError } from "@/lib/format";
+import { badgeClass } from "@/lib/badge";
+import { JobCreateCard } from "@/components/job-create-card";
+import { RunSubmitCard } from "@/components/run-submit-card";
+import { ShortId } from "@/components/short-id";
+import { PaginationControls, PaginationState, paginate } from "@/components/pagination";
 
-function badgeClass(status: string): string {
-  return `badge ${status}`;
+const AUTO_REFRESH_MS = 8_000;
+const CANCELLABLE_STATES = new Set(["accepted", "running", "dispatching", "queued"]);
+
+function canCancel(run: Run): boolean {
+  return CANCELLABLE_STATES.has(run.state) && !run.cancellation_requested;
 }
 
 export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([]);
+  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [logsHint, setLogsHint] = useState<string>("Select a run to view logs.");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const [cancelRunId, setCancelRunId] = useState<string | null>(null);
+  const [diagRunId, setDiagRunId] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
+  const [diagCategory, setDiagCategory] = useState<string>("all");
+  const [diagPg, setDiagPg] = useState<PaginationState>({ page: 0, pageSize: 10 });
   const [error, setError] = useState<string | null>(null);
-  const [environmentId, setEnvironmentId] = useState<string>("");
-  const [jobId, setJobId] = useState<string>("");
-  const [preflightReady, setPreflightReady] = useState<boolean | null>(null);
-  const [preflightSummary, setPreflightSummary] = useState<string[]>([]);
-  const [preflightError, setPreflightError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitBusy, setSubmitBusy] = useState<boolean>(false);
-  const [driverVcpu, setDriverVcpu] = useState<string>("1");
-  const [driverMemoryGb, setDriverMemoryGb] = useState<string>("2");
-  const [executorVcpu, setExecutorVcpu] = useState<string>("1");
-  const [executorMemoryGb, setExecutorMemoryGb] = useState<string>("2");
-  const [executorInstances, setExecutorInstances] = useState<string>("1");
-  const [timeoutSeconds, setTimeoutSeconds] = useState<string>("1800");
-  const [jobEnvironmentId, setJobEnvironmentId] = useState<string>("");
-  const [jobName, setJobName] = useState<string>("");
-  const [artifactUri, setArtifactUri] = useState<string>("");
-  const [artifactDigest, setArtifactDigest] = useState<string>("sha256:placeholder");
-  const [entrypoint, setEntrypoint] = useState<string>("");
-  const [jobArgsText, setJobArgsText] = useState<string>("");
-  const [jobConfText, setJobConfText] = useState<string>("");
-  const [retryMaxAttempts, setRetryMaxAttempts] = useState<string>("1");
-  const [jobTimeoutSeconds, setJobTimeoutSeconds] = useState<string>("1200");
-  const [jobCreateError, setJobCreateError] = useState<string | null>(null);
-  const [jobCreateSuccess, setJobCreateSuccess] = useState<string | null>(null);
-  const [jobCreateBusy, setJobCreateBusy] = useState<boolean>(false);
+  const [pg, setPg] = useState<PaginationState>({ page: 0, pageSize: 25 });
 
-  useEffect(() => {
-    reloadRuns();
-  }, []);
+  const envMap = useMemo(() => new Map(environments.map((e) => [e.id, e])), [environments]);
+  const jobMap = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs]);
+
+  function envDisplay(id: string): string {
+    const env = envMap.get(id);
+    if (!env) return shortId(id);
+    return `${env.region} / ${env.eks_namespace ?? env.provisioning_mode}`;
+  }
+
+  function jobDisplay(id: string): string {
+    const job = jobMap.get(id);
+    return job?.name ?? shortId(id);
+  }
+
+  async function refreshAll() {
+    setRefreshing(true);
+    try {
+      const [runsPayload, envPayload, jobPayload] = await Promise.all([
+        fetchRuns(),
+        fetchEnvironments(),
+        fetchJobs(),
+      ]);
+      setRuns(runsPayload);
+      setEnvironments(envPayload);
+      setJobs(jobPayload);
+      setError(null);
+    } catch (err: unknown) {
+      setError(friendlyError(err, "Failed to load run data"));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
 
   async function reloadRuns() {
     try {
@@ -49,7 +87,7 @@ export default function RunsPage() {
       setRuns(data);
       setError(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Run fetch failed");
+      setError(friendlyError(err, "Failed to reload runs"));
     }
   }
 
@@ -58,399 +96,301 @@ export default function RunsPage() {
     setError(null);
     setLogs([]);
     if (!run.log_group || !run.log_stream_prefix) {
-      setLogsHint("Logs unavailable for this run: no CloudWatch log pointers were recorded.");
+      setLogsHint("Logs unavailable - no CloudWatch log pointers were recorded for this run.");
       return;
     }
     try {
       const payload = await fetchRunLogs(run.id);
       setLogs(payload.lines);
-      setLogsHint(payload.lines.length > 0 ? "" : "No log lines available yet for this run.");
+      setLogsHint(payload.lines.length > 0 ? "" : "No log lines available yet. The run may still be starting.");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Log fetch failed");
+      setError(friendlyError(err, "Log fetch failed"));
       setLogs([]);
-      setLogsHint("Log fetch failed. Check API/CloudWatch permissions and retry.");
+      setLogsHint("Log fetch failed. Check API connectivity and CloudWatch permissions.");
     }
   }
 
-  async function checkPreflight() {
-    setPreflightError(null);
-    setSubmitError(null);
-    setPreflightReady(null);
-    setPreflightSummary([]);
-    if (!environmentId) {
-      setPreflightError("Environment ID is required before preflight.");
-      return;
-    }
+  async function requestCancel(run: Run) {
+    setCancelRunId(run.id);
+    setError(null);
     try {
-      const preflight = await fetchEnvironmentPreflight(environmentId);
-      setPreflightReady(preflight.ready);
-      setPreflightSummary(
-        preflight.checks.map((item) => `[${item.status}] ${item.code}: ${item.message}`)
-      );
-    } catch (err: unknown) {
-      setPreflightError(err instanceof Error ? err.message : "Preflight failed");
-    }
-  }
-
-  async function submitRunRequest() {
-    setSubmitError(null);
-    if (!jobId) {
-      setSubmitError("Job ID is required.");
-      return;
-    }
-    if (preflightReady !== true) {
-      setSubmitError("Run submission requires a successful preflight check.");
-      return;
-    }
-    const resources = {
-      driverVcpu: Number.parseInt(driverVcpu, 10),
-      driverMemoryGb: Number.parseInt(driverMemoryGb, 10),
-      executorVcpu: Number.parseInt(executorVcpu, 10),
-      executorMemoryGb: Number.parseInt(executorMemoryGb, 10),
-      executorInstances: Number.parseInt(executorInstances, 10),
-      timeoutSeconds: Number.parseInt(timeoutSeconds, 10),
-    };
-    if (
-      Object.values(resources).some((value) => Number.isNaN(value) || value <= 0)
-    ) {
-      setSubmitError("All resource fields and timeout must be positive integers.");
-      return;
-    }
-    setSubmitBusy(true);
-    try {
-      await submitRun(jobId, {
-        requested_resources: {
-          driver_vcpu: resources.driverVcpu,
-          driver_memory_gb: resources.driverMemoryGb,
-          executor_vcpu: resources.executorVcpu,
-          executor_memory_gb: resources.executorMemoryGb,
-          executor_instances: resources.executorInstances,
-        },
-        timeout_seconds: resources.timeoutSeconds,
-      });
+      const updated = await cancelRun(run.id);
+      setRuns((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      if (selectedRunId === updated.id) {
+        await loadLogs(updated);
+      }
       await reloadRuns();
     } catch (err: unknown) {
-      setSubmitError(err instanceof Error ? err.message : "Run submit failed");
+      setError(friendlyError(err, "Run cancellation failed"));
     } finally {
-      setSubmitBusy(false);
+      setCancelRunId(null);
     }
   }
 
-  function parseTextLines(text: string): string[] {
-    return text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-  }
-
-  function parseSparkConf(text: string): { conf: Record<string, string>; error: string | null } {
-    const conf: Record<string, string> = {};
-    const lines = parseTextLines(text);
-    for (const line of lines) {
-      const idx = line.indexOf("=");
-      if (idx <= 0 || idx === line.length - 1) {
-        return { conf: {}, error: `Invalid spark_conf entry "${line}". Use key=value per line.` };
-      }
-      const key = line.slice(0, idx).trim();
-      const value = line.slice(idx + 1).trim();
-      if (!key || !value) {
-        return { conf: {}, error: `Invalid spark_conf entry "${line}". Use key=value per line.` };
-      }
-      conf[key] = value;
-    }
-    return { conf, error: null };
-  }
-
-  async function createJobTemplate() {
-    setJobCreateError(null);
-    setJobCreateSuccess(null);
-    const envId = jobEnvironmentId.trim();
-    const name = jobName.trim();
-    const uri = artifactUri.trim();
-    const digest = artifactDigest.trim();
-    const main = entrypoint.trim();
-
-    if (!envId) {
-      setJobCreateError("Environment ID is required.");
-      return;
-    }
-    if (!name) {
-      setJobCreateError("Job name is required.");
-      return;
-    }
-    if (!uri) {
-      setJobCreateError("Artifact URI is required.");
-      return;
-    }
-    if (!digest) {
-      setJobCreateError("Artifact digest is required.");
-      return;
-    }
-    if (!main) {
-      setJobCreateError("Entrypoint is required.");
-      return;
-    }
-
-    const retry = Number.parseInt(retryMaxAttempts, 10);
-    const timeout = Number.parseInt(jobTimeoutSeconds, 10);
-    if (Number.isNaN(retry) || retry <= 0) {
-      setJobCreateError("Retry max attempts must be a positive integer.");
-      return;
-    }
-    if (Number.isNaN(timeout) || timeout < 60) {
-      setJobCreateError("Job timeout must be an integer >= 60 seconds.");
-      return;
-    }
-
-    const parsedConf = parseSparkConf(jobConfText);
-    if (parsedConf.error) {
-      setJobCreateError(parsedConf.error);
-      return;
-    }
-
-    setJobCreateBusy(true);
+  async function loadDiagnostics(run: Run) {
+    setDiagRunId(run.id);
+    setDiagnostics([]);
+    setDiagError(null);
+    setDiagCategory("all");
+    setDiagPg({ page: 0, pageSize: 10 });
+    setDiagLoading(true);
     try {
-      const created = await createJob({
-        environment_id: envId,
-        name,
-        artifact_uri: uri,
-        artifact_digest: digest,
-        entrypoint: main,
-        args: parseTextLines(jobArgsText),
-        spark_conf: parsedConf.conf,
-        retry_max_attempts: retry,
-        timeout_seconds: timeout,
-      });
-      setJobCreateSuccess(`Job created: ${created.id}`);
-      setJobId(created.id);
-      if (!environmentId) {
-        setEnvironmentId(created.environment_id);
-      }
+      const resp = await fetchRunDiagnostics(run.id);
+      setDiagnostics(resp.items);
     } catch (err: unknown) {
-      setJobCreateError(err instanceof Error ? err.message : "Job create failed");
+      setDiagError(friendlyError(err, "Diagnostics fetch failed"));
+      setDiagnostics([]);
     } finally {
-      setJobCreateBusy(false);
+      setDiagLoading(false);
     }
   }
+
+  // Initial load
+  useEffect(() => {
+    void refreshAll();
+  }, []);
+
+  // Auto-refresh: poll every 8 seconds, pause when tab is hidden
+  useEffect(() => {
+    setPolling(true);
+
+    const tick = () => {
+      if (document.visibilityState === "visible") {
+        void reloadRuns();
+      }
+    };
+
+    const interval = setInterval(tick, AUTO_REFRESH_MS);
+
+    const onVisibilityChange = () => {
+      setPolling(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      setPolling(false);
+    };
+  }, []);
 
   const selectedRun = selectedRunId ? runs.find((r) => r.id === selectedRunId) ?? null : null;
+  const diagRun = diagRunId ? runs.find((r) => r.id === diagRunId) ?? null : null;
+  const visibleRuns = paginate(runs, pg);
 
   return (
     <section className="stack">
       <div className="card">
         <h3>Run Operations</h3>
-        <div className="subtle">
-          Queue, dispatch, reconcile, and view deterministic run log streams.
-        </div>
+        <div className="subtle">Create jobs, submit runs through the preflight gate, and inspect CloudWatch log streams.</div>
       </div>
 
-      <div className="card">
-        <h3>Job Create</h3>
-        <div className="subtle">
-          Create reusable job templates for a target environment. Use one `arg` or `spark_conf` entry per line.
-        </div>
-        <div className="form-grid">
-          <label>
-            Environment ID
-            <input value={jobEnvironmentId} onChange={(event) => setJobEnvironmentId(event.target.value)} />
-          </label>
-          <label>
-            Job Name
-            <input value={jobName} onChange={(event) => setJobName(event.target.value)} />
-          </label>
-          <label>
-            Artifact URI
-            <input value={artifactUri} onChange={(event) => setArtifactUri(event.target.value)} />
-          </label>
-          <label>
-            Artifact Digest
-            <input value={artifactDigest} onChange={(event) => setArtifactDigest(event.target.value)} />
-          </label>
-          <label>
-            Entrypoint
-            <input value={entrypoint} onChange={(event) => setEntrypoint(event.target.value)} />
-          </label>
-          <label>
-            Retry Max Attempts
-            <input
-              type="number"
-              min={1}
-              value={retryMaxAttempts}
-              onChange={(event) => setRetryMaxAttempts(event.target.value)}
-            />
-          </label>
-          <label>
-            Timeout (seconds)
-            <input
-              type="number"
-              min={60}
-              value={jobTimeoutSeconds}
-              onChange={(event) => setJobTimeoutSeconds(event.target.value)}
-            />
-          </label>
-          <label>
-            Args (one per line)
-            <textarea value={jobArgsText} onChange={(event) => setJobArgsText(event.target.value)} />
-          </label>
-          <label>
-            Spark Conf (key=value per line)
-            <textarea value={jobConfText} onChange={(event) => setJobConfText(event.target.value)} />
-          </label>
-        </div>
-        <div className="button-row">
-          <button type="button" className="button" disabled={jobCreateBusy} onClick={createJobTemplate}>
-            {jobCreateBusy ? "Creating..." : "Create Job"}
-          </button>
-        </div>
-        {jobCreateError ? <div className="error-text">{jobCreateError}</div> : null}
-        {jobCreateSuccess ? <div className="success-text">{jobCreateSuccess}</div> : null}
-      </div>
+      <JobCreateCard
+        environments={environments}
+        onJobCreated={(job) => {
+          setJobs((prev) => [job, ...prev]);
+        }}
+      />
 
-      <div className="card">
-        <h3>Run Submit (preflight-gated)</h3>
-        <div className="form-grid">
-          <label>
-            Environment ID
-            <input value={environmentId} onChange={(event) => setEnvironmentId(event.target.value)} />
-          </label>
-          <label>
-            Job ID
-            <input value={jobId} onChange={(event) => setJobId(event.target.value)} />
-          </label>
-          <label>
-            Driver vCPU
-            <input
-              type="number"
-              min={1}
-              value={driverVcpu}
-              onChange={(event) => setDriverVcpu(event.target.value)}
-            />
-          </label>
-          <label>
-            Driver Memory (GB)
-            <input
-              type="number"
-              min={1}
-              value={driverMemoryGb}
-              onChange={(event) => setDriverMemoryGb(event.target.value)}
-            />
-          </label>
-          <label>
-            Executor vCPU
-            <input
-              type="number"
-              min={1}
-              value={executorVcpu}
-              onChange={(event) => setExecutorVcpu(event.target.value)}
-            />
-          </label>
-          <label>
-            Executor Memory (GB)
-            <input
-              type="number"
-              min={1}
-              value={executorMemoryGb}
-              onChange={(event) => setExecutorMemoryGb(event.target.value)}
-            />
-          </label>
-          <label>
-            Executor Instances
-            <input
-              type="number"
-              min={1}
-              value={executorInstances}
-              onChange={(event) => setExecutorInstances(event.target.value)}
-            />
-          </label>
-          <label>
-            Timeout (seconds)
-            <input
-              type="number"
-              min={1}
-              value={timeoutSeconds}
-              onChange={(event) => setTimeoutSeconds(event.target.value)}
-            />
-          </label>
+      <RunSubmitCard
+        environments={environments}
+        jobs={jobs}
+        onRunSubmitted={() => void reloadRuns()}
+      />
+
+      {error ? (
+        <div className="card error-card">
+          <strong>Error</strong>
+          <div>{error}</div>
         </div>
-        <div className="button-row">
-          <button type="button" className="button" onClick={checkPreflight}>
-            Check Preflight
-          </button>
-          <button type="button" className="button" disabled={submitBusy || preflightReady !== true} onClick={submitRunRequest}>
-            {submitBusy ? "Submitting..." : "Submit Run"}
-          </button>
-        </div>
-        {preflightError ? <div className="error-text">{preflightError}</div> : null}
-        {submitError ? <div className="error-text">{submitError}</div> : null}
-        {preflightReady !== null ? (
-          <div className="subtle">
-            Preflight status: <span className={badgeClass(preflightReady ? "ready" : "failed")}>{preflightReady ? "ready" : "failed"}</span>
-          </div>
+      ) : null}
+
+      <div className="card-header-row">
+        <h3>Recent Runs</h3>
+        {polling ? (
+          <span className="badge badge-live" title={`Auto-refreshing every ${AUTO_REFRESH_MS / 1000}s`}>
+            Live
+          </span>
         ) : null}
-        {preflightSummary.length > 0 ? (
-          <ul className="preflight-list">
-            {preflightSummary.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        ) : null}
+        <div className="subtle">
+          {refreshing ? "Syncing…" : `Auto-refresh every ${AUTO_REFRESH_MS / 1000}s`}
+        </div>
+        <button type="button" className="button" onClick={() => void reloadRuns()}>
+          Refresh
+        </button>
       </div>
 
-      {error ? <div className="card">{error}</div> : null}
-
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Run ID</th>
-              <th>Environment</th>
-              <th>Status</th>
-              <th>EMR Job Run</th>
-              <th>Started</th>
-              <th>Ended</th>
-              <th>Logs</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <tr key={run.id}>
-                <td>{run.id}</td>
-                <td>{run.environment_id}</td>
-                <td>
-                  <span className={badgeClass(run.state)}>{run.state}</span>
-                </td>
-                <td>{run.emr_job_run_id ?? "-"}</td>
-                <td>{run.started_at ?? "-"}</td>
-                <td>{run.ended_at ?? "-"}</td>
-                <td>
-                  <button type="button" className="button" onClick={() => loadLogs(run)}>
-                    View
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {runs.length === 0 ? (
+      {loading ? (
+        <div className="card">
+          <div className="subtle">Loading run history...</div>
+        </div>
+      ) : (
+        <>
+        <div className="table-wrap">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={7} className="subtle">
-                  No runs available.
-                </td>
+                <th>Run</th>
+                <th>Job</th>
+                <th>Environment</th>
+                <th>Status</th>
+                <th className="col-hide-mobile">EMR Job Run</th>
+                <th className="col-hide-mobile">Started</th>
+                <th className="col-hide-mobile">Ended</th>
+                <th>Logs</th>
+                <th>Actions</th>
               </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {visibleRuns.map((run) => (
+                <tr key={run.id} className={selectedRunId === run.id ? "row-selected" : ""}>
+                  <td><ShortId value={run.id} /></td>
+                  <td title={run.job_id}>{jobDisplay(run.job_id)}</td>
+                  <td title={run.environment_id}>{envDisplay(run.environment_id)}</td>
+                  <td>
+                    <span className={badgeClass(run.state)}>{run.state}</span>
+                  </td>
+                  <td className="col-hide-mobile"><ShortId value={run.emr_job_run_id} /></td>
+                  <td className="col-hide-mobile">{compactTime(run.started_at)}</td>
+                  <td className="col-hide-mobile">{compactTime(run.ended_at)}</td>
+                  <td>
+                    <button type="button" className="button button-sm" onClick={() => void loadLogs(run)}>
+                      Logs
+                    </button>
+                    <button type="button" className="button button-sm button-secondary" style={{ marginLeft: 4 }} onClick={() => void loadDiagnostics(run)}>
+                      Diag
+                    </button>
+                  </td>
+                  <td>
+                    {CANCELLABLE_STATES.has(run.state) ? (
+                      <button
+                        type="button"
+                        className="button button-sm button-secondary"
+                        disabled={!canCancel(run) || cancelRunId === run.id}
+                        onClick={() => void requestCancel(run)}
+                      >
+                        {cancelRunId === run.id ? "Cancelling…" : run.cancellation_requested ? "Requested" : "Cancel"}
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+              {runs.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="subtle">
+                    No runs yet. Create a job and submit a run above.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+        <PaginationControls total={runs.length} state={pg} onChange={setPg} />
+        </>
+      )}
 
       <div className="card">
-        <h3>Run Logs {selectedRunId ? `(${selectedRunId})` : ""}</h3>
+        <h3>
+          Run Logs
+          {selectedRun ? (
+            <span className="subtle" style={{ fontWeight: 400, marginLeft: 8 }}>
+              {jobDisplay(selectedRun.job_id)} · <ShortId value={selectedRun.id} />
+            </span>
+          ) : null}
+        </h3>
         {selectedRun ? (
           <div className="subtle">
-            log_group={selectedRun.log_group ?? "-"} | stream_prefix={selectedRun.log_stream_prefix ?? "-"}
-            {selectedRun.error_message ? ` | error=${selectedRun.error_message}` : ""}
+            Log group: {selectedRun.log_group ?? "n/a"} · Stream prefix: {selectedRun.log_stream_prefix ?? "n/a"}
+            {selectedRun.error_message ? (
+              <span className="error-text" style={{ marginLeft: 8 }}>Error: {selectedRun.error_message}</span>
+            ) : null}
           </div>
         ) : null}
-        <div className="logs">
-          {logs.length > 0 ? logs.join("\n") : logsHint}
-        </div>
+        <div className="logs">{logs.length > 0 ? logs.join("\n") : logsHint}</div>
+      </div>
+
+      <div className="card">
+        <h3>
+          Run Diagnostics
+          {diagRun ? (
+            <span className="subtle" style={{ fontWeight: 400, marginLeft: 8 }}>
+              {jobDisplay(diagRun.job_id)} · <ShortId value={diagRun.id} />
+            </span>
+          ) : null}
+        </h3>
+
+        {diagLoading ? (
+          <div className="loading-state"><span className="subtle">Loading diagnostics…</span></div>
+        ) : diagError ? (
+          <div className="error-state">
+            <span className="error-text">{diagError}</span>
+            {diagRun ? (
+              <button type="button" className="button button-sm" style={{ marginLeft: 8 }} onClick={() => void loadDiagnostics(diagRun)}>
+                Retry
+              </button>
+            ) : null}
+          </div>
+        ) : diagRunId && diagnostics.length === 0 ? (
+          <div className="empty-state"><span className="subtle">No diagnostic findings for this run.</span></div>
+        ) : !diagRunId ? (
+          <div className="empty-state"><span className="subtle">Select a run and click Diag to view diagnostic findings.</span></div>
+        ) : (
+          (() => {
+            const categories = Array.from(new Set(diagnostics.map((d) => d.category))).sort();
+            const filtered = diagCategory === "all" ? diagnostics : diagnostics.filter((d) => d.category === diagCategory);
+            const visible = paginate(filtered, diagPg);
+            return (
+              <>
+                <div className="filter-row" style={{ marginTop: 8 }}>
+                  <label className="filter-label">
+                    Category
+                    <select
+                      value={diagCategory}
+                      onChange={(e) => { setDiagCategory(e.target.value); setDiagPg((p) => ({ ...p, page: 0 })); }}
+                    >
+                      <option value="all">All ({diagnostics.length})</option>
+                      {categories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat} ({diagnostics.filter((d) => d.category === cat).length})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="table-wrap" style={{ marginTop: 8 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th className="col-hide-mobile">Remediation</th>
+                        <th className="col-hide-mobile">Log Snippet</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visible.map((d) => (
+                        <tr key={d.id}>
+                          <td><span className={badgeClass(d.category)}>{d.category}</span></td>
+                          <td>{d.description}</td>
+                          <td className="col-hide-mobile">{d.remediation ?? "—"}</td>
+                          <td className="col-hide-mobile">
+                            {d.log_snippet ? <code className="log-snippet">{d.log_snippet}</code> : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                      {filtered.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="subtle">No findings match this filter.</td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+                <PaginationControls total={filtered.length} state={diagPg} onChange={setDiagPg} />
+              </>
+            );
+          })()
+        )}
       </div>
     </section>
   );
