@@ -4,6 +4,7 @@ from typing import Any
 
 from airflow.providers.sparkpilot._compat import AirflowException, AirflowFailException, BaseOperator
 from airflow.providers.sparkpilot.common import (
+    TERMINAL_STATES,
     SparkPilotPermanentError,
     SparkPilotTransientError,
     build_run_metadata,
@@ -172,3 +173,100 @@ class SparkPilotSubmitRunOperator(BaseOperator):
         if is_transient:
             raise AirflowException(message)
         raise AirflowFailException(message)
+
+
+class SparkPilotCancelRunOperator(BaseOperator):
+    """Cancel a SparkPilot run.
+
+    If the run is already in a terminal state the operator succeeds silently.
+    When ``wait_for_completion`` is True (default) the operator polls until
+    the run reaches a terminal state after requesting cancellation.
+    """
+
+    template_fields = ("run_id", "sparkpilot_conn_id", "idempotency_key")
+
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        sparkpilot_conn_id: str = "sparkpilot_default",
+        base_url: str | None = None,
+        oidc_issuer: str | None = None,
+        oidc_audience: str | None = None,
+        oidc_client_id: str | None = None,
+        oidc_client_secret: str | None = None,
+        oidc_token_endpoint: str | None = None,
+        oidc_scope: str | None = None,
+        idempotency_key: str | None = None,
+        wait_for_completion: bool = True,
+        poll_interval_seconds: int = 10,
+        timeout_seconds: int = 600,
+        hook: SparkPilotHook | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.run_id = run_id
+        if not self.run_id.strip():
+            raise ValueError("run_id is required.")
+        self.sparkpilot_conn_id = sparkpilot_conn_id
+        self.base_url = base_url
+        self.oidc_issuer = oidc_issuer
+        self.oidc_audience = oidc_audience
+        self.oidc_client_id = oidc_client_id
+        self.oidc_client_secret = oidc_client_secret
+        self.oidc_token_endpoint = oidc_token_endpoint
+        self.oidc_scope = oidc_scope
+        self.idempotency_key = idempotency_key
+        self.wait_for_completion = wait_for_completion
+        if poll_interval_seconds <= 0:
+            raise ValueError("poll_interval_seconds must be greater than 0.")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than 0.")
+        self.poll_interval_seconds = poll_interval_seconds
+        self.timeout_seconds = timeout_seconds
+        self._hook = hook
+
+    def get_hook(self) -> SparkPilotHook:
+        if self._hook is not None:
+            return self._hook
+        return SparkPilotHook(
+            sparkpilot_conn_id=self.sparkpilot_conn_id,
+            base_url=self.base_url,
+            oidc_issuer=self.oidc_issuer,
+            oidc_audience=self.oidc_audience,
+            oidc_client_id=self.oidc_client_id,
+            oidc_client_secret=self.oidc_client_secret,
+            oidc_token_endpoint=self.oidc_token_endpoint,
+            oidc_scope=self.oidc_scope,
+        )
+
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG002
+        hook = self.get_hook()
+        try:
+            result = hook.cancel_run(
+                run_id=self.run_id,
+                idempotency_key=self.idempotency_key,
+            )
+        except SparkPilotTransientError as exc:
+            raise AirflowException(str(exc)) from exc
+        except SparkPilotPermanentError as exc:
+            raise AirflowFailException(str(exc)) from exc
+
+        state = str(result.get("state") or "").lower()
+        if state in TERMINAL_STATES:
+            return build_run_metadata(result)
+
+        if not self.wait_for_completion:
+            return build_run_metadata(result)
+
+        try:
+            terminal = hook.wait_for_terminal_state(
+                run_id=self.run_id,
+                poll_interval_seconds=self.poll_interval_seconds,
+                timeout_seconds=self.timeout_seconds,
+            )
+        except SparkPilotTransientError as exc:
+            raise AirflowException(str(exc)) from exc
+        except SparkPilotPermanentError as exc:
+            raise AirflowFailException(str(exc)) from exc
+        return build_run_metadata(terminal)

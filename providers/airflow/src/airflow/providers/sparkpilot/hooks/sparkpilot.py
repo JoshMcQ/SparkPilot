@@ -342,6 +342,24 @@ class SparkPilotHook(BaseHook):
     def get_run(self, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/runs/{run_id}")
 
+    def cancel_run(
+        self,
+        *,
+        run_id: str,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Request cancellation of a SparkPilot run.
+
+        Returns the updated run payload with ``cancellation_requested=True``
+        (or already in a terminal state).
+        """
+        key = idempotency_key or f"airflow-cancel-{uuid4()}"
+        return self._request(
+            "POST",
+            f"/v1/runs/{run_id}/cancel",
+            extra_headers={"Idempotency-Key": key},
+        )
+
     def wait_for_terminal_state(
         self,
         *,

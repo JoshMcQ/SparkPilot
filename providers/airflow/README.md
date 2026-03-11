@@ -4,6 +4,7 @@
 
 - `SparkPilotHook` for API interaction through Airflow connections
 - `SparkPilotSubmitRunOperator` for submitting SparkPilot runs
+- `SparkPilotCancelRunOperator` for cancelling in-progress runs
 - `SparkPilotRunSensor` for waiting on terminal run state
 - `SparkPilotRunTrigger` for deferrable waiting
 

@@ -18,6 +18,11 @@ Date: March 3, 2026
   - Uses `run_timeout_seconds` for SparkPilot run timeout and `timeout_seconds`/`wait_timeout_seconds` for Airflow wait timeout.
   - Supports synchronous polling and deferrable trigger pattern.
   - Returns XCom metadata: `id`, `status`, `cost_usd_micros`, `duration_seconds`, `log_url`.
+- `SparkPilotCancelRunOperator`
+  - Requests cancellation of an in-progress SparkPilot run.
+  - Succeeds silently if the run is already in a terminal state.
+  - Supports optional `wait_for_completion` polling until terminal state.
+  - Returns XCom metadata: `id`, `status`, `duration_seconds`, `log_url`.
 - `SparkPilotRunSensor`
   - Waits for terminal run states and pushes terminal metadata to XCom.
 - `SparkPilotRunTrigger`

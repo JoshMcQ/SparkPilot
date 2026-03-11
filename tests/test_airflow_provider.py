@@ -15,7 +15,7 @@ if str(PROVIDER_SRC) not in sys.path:
 from airflow.providers.sparkpilot._compat import AirflowException, AirflowFailException  # noqa: E402
 from airflow.providers.sparkpilot.common import SparkPilotPermanentError, SparkPilotTransientError  # noqa: E402
 from airflow.providers.sparkpilot.hooks.sparkpilot import SparkPilotHook  # noqa: E402
-from airflow.providers.sparkpilot.operators.sparkpilot import SparkPilotSubmitRunOperator  # noqa: E402
+from airflow.providers.sparkpilot.operators.sparkpilot import SparkPilotCancelRunOperator, SparkPilotSubmitRunOperator  # noqa: E402
 from airflow.providers.sparkpilot.sensors.sparkpilot import SparkPilotRunSensor  # noqa: E402
 from airflow.providers.sparkpilot.triggers.sparkpilot import SparkPilotRunTrigger  # noqa: E402
 
@@ -395,3 +395,184 @@ def test_trigger_async_run_yields_success_event(monkeypatch: pytest.MonkeyPatch)
     event = asyncio.run(_collect_event())
     assert event["status"] == "success"
     assert event["metadata"]["id"] == "run-async"
+
+
+# ---------- Hook cancel_run ----------
+
+
+def test_hook_cancel_run_sends_idempotency_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = _Conn(
+        extra_dejson={
+            "sparkpilot_url": "http://sparkpilot.local:8000",
+            "oidc_issuer": "https://issuer.local",
+            "oidc_audience": "sparkpilot-api",
+        },
+        login="airflow-client",
+        password="airflow-secret",
+    )
+    monkeypatch.setattr(SparkPilotHook, "get_connection", classmethod(lambda _cls, _conn_id: conn))
+    monkeypatch.setattr(SparkPilotHook, "_get_access_token", lambda _self, _resolved, force_refresh=False: "access-1")
+
+    captured: dict[str, object] = {}
+
+    def _fake_request(**kwargs):  # noqa: ANN001, ANN202
+        captured.update(kwargs)
+        request = httpx.Request("POST", "http://sparkpilot.local:8000/v1/runs/run-cancel/cancel")
+        return httpx.Response(200, json={"id": "run-cancel", "state": "cancelled"}, request=request)
+
+    monkeypatch.setattr("httpx.request", _fake_request)
+    hook = SparkPilotHook()
+    result = hook.cancel_run(run_id="run-cancel", idempotency_key="idem-cancel-1")
+
+    assert result["id"] == "run-cancel"
+    assert result["state"] == "cancelled"
+    assert captured["url"] == "http://sparkpilot.local:8000/v1/runs/run-cancel/cancel"
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Idempotency-Key"] == "idem-cancel-1"
+    assert headers["Authorization"] == "Bearer access-1"
+
+
+def test_hook_cancel_run_generates_idempotency_key_when_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = _Conn(
+        extra_dejson={
+            "sparkpilot_url": "http://sparkpilot.local:8000",
+            "oidc_issuer": "https://issuer.local",
+            "oidc_audience": "sparkpilot-api",
+        },
+        login="airflow-client",
+        password="airflow-secret",
+    )
+    monkeypatch.setattr(SparkPilotHook, "get_connection", classmethod(lambda _cls, _conn_id: conn))
+    monkeypatch.setattr(SparkPilotHook, "_get_access_token", lambda _self, _resolved, force_refresh=False: "access-1")
+
+    captured: dict[str, object] = {}
+
+    def _fake_request(**kwargs):  # noqa: ANN001, ANN202
+        captured.update(kwargs)
+        request = httpx.Request("POST", "http://sparkpilot.local:8000/v1/runs/run-cancel/cancel")
+        return httpx.Response(200, json={"id": "run-cancel", "state": "cancelled"}, request=request)
+
+    monkeypatch.setattr("httpx.request", _fake_request)
+    hook = SparkPilotHook()
+    hook.cancel_run(run_id="run-cancel")
+
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Idempotency-Key"].startswith("airflow-cancel-")
+
+
+# ---------- CancelRunOperator ----------
+
+
+def test_cancel_operator_requests_cancellation_and_waits() -> None:
+    class _FakeHook:
+        def __init__(self) -> None:
+            self.cancelled_run_id: str | None = None
+            self.cancelled_key: str | None = None
+
+        def cancel_run(self, *, run_id: str, idempotency_key: str | None = None) -> dict[str, object]:
+            self.cancelled_run_id = run_id
+            self.cancelled_key = idempotency_key
+            return {"id": run_id, "state": "running", "cancellation_requested": True}
+
+        def wait_for_terminal_state(self, *, run_id: str, poll_interval_seconds: int, timeout_seconds: int) -> dict[str, object]:
+            assert run_id == "run-cancel-1"
+            assert poll_interval_seconds == 5
+            assert timeout_seconds == 60
+            return {
+                "id": "run-cancel-1",
+                "state": "cancelled",
+                "started_at": "2026-03-03T10:00:00+00:00",
+                "ended_at": "2026-03-03T10:00:20+00:00",
+            }
+
+    fake_hook = _FakeHook()
+    op = SparkPilotCancelRunOperator(
+        task_id="cancel",
+        run_id="run-cancel-1",
+        idempotency_key="idem-cancel-op",
+        wait_for_completion=True,
+        poll_interval_seconds=5,
+        timeout_seconds=60,
+        hook=fake_hook,  # type: ignore[arg-type]
+    )
+    metadata = op.execute(context={})
+    assert fake_hook.cancelled_run_id == "run-cancel-1"
+    assert fake_hook.cancelled_key == "idem-cancel-op"
+    assert metadata["id"] == "run-cancel-1"
+    assert metadata["status"] == "cancelled"
+    assert metadata["duration_seconds"] == 20
+
+
+def test_cancel_operator_returns_immediately_when_already_terminal() -> None:
+    class _FakeHook:
+        def cancel_run(self, *, run_id: str, idempotency_key: str | None = None) -> dict[str, object]:
+            return {"id": run_id, "state": "succeeded", "started_at": "2026-03-03T10:00:00+00:00", "ended_at": "2026-03-03T10:00:10+00:00"}
+
+        def wait_for_terminal_state(self, **_kwargs: object) -> dict[str, object]:
+            raise AssertionError("Should not poll when already terminal")
+
+    op = SparkPilotCancelRunOperator(
+        task_id="cancel_already_done",
+        run_id="run-done",
+        wait_for_completion=True,
+        hook=_FakeHook(),  # type: ignore[arg-type]
+    )
+    metadata = op.execute(context={})
+    assert metadata["status"] == "succeeded"
+
+
+def test_cancel_operator_no_wait_mode() -> None:
+    class _FakeHook:
+        def cancel_run(self, *, run_id: str, idempotency_key: str | None = None) -> dict[str, object]:
+            return {"id": run_id, "state": "running", "cancellation_requested": True}
+
+        def wait_for_terminal_state(self, **_kwargs: object) -> dict[str, object]:
+            raise AssertionError("Should not poll when wait_for_completion=False")
+
+    op = SparkPilotCancelRunOperator(
+        task_id="cancel_nowait",
+        run_id="run-nowait",
+        wait_for_completion=False,
+        hook=_FakeHook(),  # type: ignore[arg-type]
+    )
+    metadata = op.execute(context={})
+    assert metadata["id"] == "run-nowait"
+    assert metadata["status"] == "running"
+
+
+def test_cancel_operator_raises_on_permanent_error() -> None:
+    class _FakeHook:
+        def cancel_run(self, *, run_id: str, idempotency_key: str | None = None) -> dict[str, object]:
+            raise SparkPilotPermanentError("forbidden: not allowed")
+
+    op = SparkPilotCancelRunOperator(
+        task_id="cancel_perm_err",
+        run_id="run-perm",
+        hook=_FakeHook(),  # type: ignore[arg-type]
+    )
+    with pytest.raises(AirflowFailException, match="forbidden"):
+        op.execute(context={})
+
+
+def test_cancel_operator_raises_on_transient_error() -> None:
+    class _FakeHook:
+        def cancel_run(self, *, run_id: str, idempotency_key: str | None = None) -> dict[str, object]:
+            raise SparkPilotTransientError("service unavailable")
+
+    op = SparkPilotCancelRunOperator(
+        task_id="cancel_trans_err",
+        run_id="run-trans",
+        hook=_FakeHook(),  # type: ignore[arg-type]
+    )
+    with pytest.raises(AirflowException, match="service unavailable"):
+        op.execute(context={})
+
+
+def test_cancel_operator_requires_non_empty_run_id() -> None:
+    with pytest.raises(ValueError, match="run_id is required"):
+        SparkPilotCancelRunOperator(
+            task_id="cancel_invalid",
+            run_id="  ",
+        )

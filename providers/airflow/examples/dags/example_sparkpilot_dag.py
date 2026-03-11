@@ -4,7 +4,10 @@ from datetime import datetime
 import os
 
 from airflow import DAG
-from airflow.providers.sparkpilot.operators.sparkpilot import SparkPilotSubmitRunOperator
+from airflow.providers.sparkpilot.operators.sparkpilot import (
+    SparkPilotCancelRunOperator,
+    SparkPilotSubmitRunOperator,
+)
 from airflow.providers.sparkpilot.sensors.sparkpilot import SparkPilotRunSensor
 
 
@@ -35,3 +38,25 @@ with DAG(
     )
 
     submit_and_wait >> wait_terminal
+
+
+# ---- Cancel-run example (separate DAG) ----
+
+CANCEL_RUN_ID = os.getenv("SPARKPILOT_CANCEL_RUN_ID", "{{ dag_run.conf['run_id'] }}")
+
+
+with DAG(
+    dag_id="example_sparkpilot_cancel_dag",
+    start_date=datetime(2026, 1, 1),
+    schedule=None,
+    catchup=False,
+    tags=["sparkpilot"],
+) as cancel_dag:
+    cancel_run = SparkPilotCancelRunOperator(
+        task_id="cancel_run",
+        sparkpilot_conn_id="sparkpilot_default",
+        run_id=CANCEL_RUN_ID,
+        wait_for_completion=True,
+        poll_interval_seconds=5,
+        timeout_seconds=120,
+    )
