@@ -1,0 +1,153 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sparkpilot
+      POSTGRES_PASSWORD: ${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}
+      POSTGRES_DB: sparkpilot
+    volumes:
+      - sparkpilot_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sparkpilot -d sparkpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  sparkpilot-oidc:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: ["python", "-m", "sparkpilot.mock_oidc"]
+    environment:
+      MOCK_OIDC_ISSUER: ${MOCK_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
+      MOCK_OIDC_AUDIENCE: ${MOCK_OIDC_AUDIENCE:-sparkpilot-api}
+      MOCK_OIDC_CLIENTS: ${MOCK_OIDC_CLIENTS:-sparkpilot-ui:sparkpilot-ui-secret,sparkpilot-cli:sparkpilot-cli-secret}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  sparkpilot-api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      SPARKPILOT_ENVIRONMENT: dev
+      SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
+      SPARKPILOT_DRY_RUN_MODE: "true"
+      SPARKPILOT_ENABLE_FULL_BYOC_MODE: "false"
+      SPARKPILOT_AUTH_MODE: oidc
+      SPARKPILOT_OIDC_ISSUER: ${SPARKPILOT_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
+      SPARKPILOT_OIDC_AUDIENCE: ${SPARKPILOT_OIDC_AUDIENCE:-sparkpilot-api}
+      SPARKPILOT_OIDC_JWKS_URI: ${SPARKPILOT_OIDC_JWKS_URI:-http://sparkpilot-oidc:8080/.well-known/jwks.json}
+      SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-sparkpilot-local-bootstrap-secret}
+      SPARKPILOT_CORS_ORIGINS: ${SPARKPILOT_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      SPARKPILOT_POLL_INTERVAL_SECONDS: ${SPARKPILOT_POLL_INTERVAL_SECONDS:-2}
+      SPARKPILOT_EMR_EXECUTION_ROLE_ARN: ${SPARKPILOT_EMR_EXECUTION_ROLE_ARN:-arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sparkpilot-oidc:
+        condition: service_healthy
+
+  sparkpilot-provisioner:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    command: ["python", "-m", "sparkpilot.workers", "provisioner"]
+    environment:
+      SPARKPILOT_ENVIRONMENT: dev
+      SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
+      SPARKPILOT_DRY_RUN_MODE: "true"
+      SPARKPILOT_ENABLE_FULL_BYOC_MODE: "false"
+      SPARKPILOT_AUTH_MODE: oidc
+      SPARKPILOT_OIDC_ISSUER: ${SPARKPILOT_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
+      SPARKPILOT_OIDC_AUDIENCE: ${SPARKPILOT_OIDC_AUDIENCE:-sparkpilot-api}
+      SPARKPILOT_OIDC_JWKS_URI: ${SPARKPILOT_OIDC_JWKS_URI:-http://sparkpilot-oidc:8080/.well-known/jwks.json}
+      SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-sparkpilot-local-bootstrap-secret}
+      SPARKPILOT_POLL_INTERVAL_SECONDS: ${SPARKPILOT_POLL_INTERVAL_SECONDS:-2}
+      SPARKPILOT_EMR_EXECUTION_ROLE_ARN: ${SPARKPILOT_EMR_EXECUTION_ROLE_ARN:-arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole}
+    depends_on:
+      sparkpilot-api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  sparkpilot-scheduler:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    command: ["python", "-m", "sparkpilot.workers", "scheduler"]
+    environment:
+      SPARKPILOT_ENVIRONMENT: dev
+      SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
+      SPARKPILOT_DRY_RUN_MODE: "true"
+      SPARKPILOT_ENABLE_FULL_BYOC_MODE: "false"
+      SPARKPILOT_AUTH_MODE: oidc
+      SPARKPILOT_OIDC_ISSUER: ${SPARKPILOT_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
+      SPARKPILOT_OIDC_AUDIENCE: ${SPARKPILOT_OIDC_AUDIENCE:-sparkpilot-api}
+      SPARKPILOT_OIDC_JWKS_URI: ${SPARKPILOT_OIDC_JWKS_URI:-http://sparkpilot-oidc:8080/.well-known/jwks.json}
+      SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-sparkpilot-local-bootstrap-secret}
+      SPARKPILOT_POLL_INTERVAL_SECONDS: ${SPARKPILOT_POLL_INTERVAL_SECONDS:-2}
+      SPARKPILOT_EMR_EXECUTION_ROLE_ARN: ${SPARKPILOT_EMR_EXECUTION_ROLE_ARN:-arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole}
+    depends_on:
+      sparkpilot-api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  sparkpilot-reconciler:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    command: ["python", "-m", "sparkpilot.workers", "reconciler"]
+    environment:
+      SPARKPILOT_ENVIRONMENT: dev
+      SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
+      SPARKPILOT_DRY_RUN_MODE: "true"
+      SPARKPILOT_ENABLE_FULL_BYOC_MODE: "false"
+      SPARKPILOT_AUTH_MODE: oidc
+      SPARKPILOT_OIDC_ISSUER: ${SPARKPILOT_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
+      SPARKPILOT_OIDC_AUDIENCE: ${SPARKPILOT_OIDC_AUDIENCE:-sparkpilot-api}
+      SPARKPILOT_OIDC_JWKS_URI: ${SPARKPILOT_OIDC_JWKS_URI:-http://sparkpilot-oidc:8080/.well-known/jwks.json}
+      SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-sparkpilot-local-bootstrap-secret}
+      SPARKPILOT_POLL_INTERVAL_SECONDS: ${SPARKPILOT_POLL_INTERVAL_SECONDS:-2}
+      SPARKPILOT_EMR_EXECUTION_ROLE_ARN: ${SPARKPILOT_EMR_EXECUTION_ROLE_ARN:-arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole}
+    depends_on:
+      sparkpilot-api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  sparkpilot-ui:
+    image: node:22-alpine
+    working_dir: /workspace/ui
+    command: ["sh", "-lc", "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"]
+    environment:
+      SPARKPILOT_API: http://sparkpilot-api:8000
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://sparkpilot-oidc:8080}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-sparkpilot-api}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-sparkpilot-ui}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-sparkpilot-ui-secret}
+      OIDC_TOKEN_ENDPOINT: ${OIDC_TOKEN_ENDPOINT:-http://sparkpilot-oidc:8080/oauth/token}
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - .:/workspace
+    ports:
+      - "3000:3000"
+    depends_on:
+      sparkpilot-api:
+        condition: service_healthy
+
+volumes:
+  sparkpilot_postgres_data:

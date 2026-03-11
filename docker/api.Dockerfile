@@ -8,6 +8,8 @@ ARG DB_DRIVER="psycopg[binary]>=3.2.0,<4.0.0"
 WORKDIR /app
 
 COPY pyproject.toml README.md /app/
+COPY alembic.ini /app/alembic.ini
+COPY alembic /app/alembic
 COPY src /app/src
 
 RUN pip install --no-cache-dir --upgrade pip && \

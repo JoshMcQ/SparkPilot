@@ -17,6 +17,11 @@ htmlcov/
 node_modules/
 .next/
 out/
+.terraform/
+*.tfstate
+*.tfstate.backup
 .env
 .claude/
 artifacts/
+output/
+tools/terraform/
