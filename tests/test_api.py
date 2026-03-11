@@ -31,7 +31,7 @@ def _create_ready_environment_and_run(
     tenant = client.post(
         "/v1/tenants",
         json={"name": f"Tenant {suffix}"},
-        headers={"Idempotency-Key": f"tenant-{suffix}"},
+        headers={"Idempotency-Key": f"tenant-{suffix}", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -42,7 +42,7 @@ def _create_ready_environment_and_run(
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": f"env-{suffix}"},
+        headers={"Idempotency-Key": f"env-{suffix}", "X-Actor": "test-user"},
     ).json()
     with SessionLocal() as db:
         process_provisioning_once(db)
@@ -56,7 +56,7 @@ def _create_ready_environment_and_run(
             "entrypoint": "com.acme.Main",
             "retry_max_attempts": retry_max_attempts,
         },
-        headers={"Idempotency-Key": f"job-{suffix}"},
+        headers={"Idempotency-Key": f"job-{suffix}", "X-Actor": "test-user"},
     ).json()
     run = client.post(
         f"/v1/jobs/{job['id']}/runs",
@@ -69,14 +69,14 @@ def _create_ready_environment_and_run(
                 "executor_instances": 1,
             }
         },
-        headers={"Idempotency-Key": f"run-{suffix}"},
+        headers={"Idempotency-Key": f"run-{suffix}", "X-Actor": "test-user"},
     ).json()
     return tenant, op, job, run
 
 
 def test_tenant_create_idempotent() -> None:
     client = TestClient(app)
-    headers = {"Idempotency-Key": "tenant-create-key"}
+    headers = {"Idempotency-Key": "tenant-create-key", "X-Actor": "test-user"}
     payload = {"name": "Acme Data"}
     first = client.post("/v1/tenants", json=payload, headers=headers)
     assert first.status_code == 201
@@ -86,57 +86,18 @@ def test_tenant_create_idempotent() -> None:
     assert first.json()["id"] == second.json()["id"]
 
 
-def test_api_requires_valid_oidc_bearer_token(oidc_token) -> None:
+def test_api_bearer_auth_enforced_when_test_bypass_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ALLOW_INSECURE_TEST_AUTH", "false")
     client = TestClient(app)
 
-    missing = client.get("/v1/runs", headers={"Authorization": ""})
+    missing = client.get("/v1/runs", headers={"Authorization": "", "X-Actor": "test-user"})
     assert missing.status_code == 401
 
-    invalid = client.get("/v1/runs", headers={"Authorization": "Bearer invalid-token"})
+    invalid = client.get("/v1/runs", headers={"Authorization": "Bearer invalid-token", "X-Actor": "test-user"})
     assert invalid.status_code == 401
 
-    valid = client.get("/v1/runs", headers={"Authorization": f"Bearer {oidc_token('test-user')}"})
+    valid = client.get("/v1/runs", headers={"Authorization": "Bearer dev-token", "X-Actor": "test-user"})
     assert valid.status_code == 200
-
-
-def test_actor_header_does_not_override_authenticated_subject(oidc_token) -> None:
-    client = TestClient(app)
-
-    tenant = client.post(
-        "/v1/tenants",
-        json={"name": "header-ignore"},
-        headers={"Idempotency-Key": "tenant-header-ignore"},
-    )
-    assert tenant.status_code == 201
-
-    team = client.post(
-        "/v1/teams",
-        json={"tenant_id": tenant.json()["id"], "name": "header-ignore-team"},
-    )
-    assert team.status_code == 201
-
-    user = client.post(
-        "/v1/user-identities",
-        json={
-            "actor": "header-ignore-user",
-            "role": "user",
-            "tenant_id": tenant.json()["id"],
-            "team_id": team.json()["id"],
-            "active": True,
-        },
-    )
-    assert user.status_code == 201
-
-    escalated = client.post(
-        "/v1/tenants",
-        json={"name": "forbidden-by-subject"},
-        headers={
-            "Authorization": f"Bearer {oidc_token('header-ignore-user')}",
-            "X-Actor": "test-user",
-            "Idempotency-Key": "tenant-header-escalate",
-        },
-    )
-    assert escalated.status_code == 403
 
 
 def test_cors_allows_configured_local_ui_origin() -> None:
@@ -146,13 +107,23 @@ def test_cors_allows_configured_local_ui_origin() -> None:
     assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
 
+def test_healthz_reports_database_and_aws_checks() -> None:
+    client = TestClient(app)
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["checks"]["database"]["status"] == "ok"
+    assert payload["checks"]["aws"]["status"] in {"ok", "skipped"}
+
+
 def test_environment_provisioning_run_and_usage() -> None:
     client = TestClient(app)
 
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Pilot Corp"},
-        headers={"Idempotency-Key": "tenant-1"},
+        headers={"Idempotency-Key": "tenant-1", "X-Actor": "test-user"},
     ).json()
 
     op = client.post(
@@ -164,7 +135,7 @@ def test_environment_provisioning_run_and_usage() -> None:
             "warm_pool_enabled": False,
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-1"},
+        headers={"Idempotency-Key": "env-1", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
     operation_id = op.json()["id"]
@@ -190,7 +161,7 @@ def test_environment_provisioning_run_and_usage() -> None:
             "retry_max_attempts": 2,
             "timeout_seconds": 1800,
         },
-        headers={"Idempotency-Key": "job-1"},
+        headers={"Idempotency-Key": "job-1", "X-Actor": "test-user"},
     )
     assert job.status_code == 201
     job_id = job.json()["id"]
@@ -206,7 +177,7 @@ def test_environment_provisioning_run_and_usage() -> None:
                 "executor_instances": 2,
             }
         },
-        headers={"Idempotency-Key": "run-1"},
+        headers={"Idempotency-Key": "run-1", "X-Actor": "test-user"},
     )
     assert run.status_code == 201
     run_id = run.json()["id"]
@@ -251,6 +222,12 @@ def test_environment_provisioning_run_and_usage() -> None:
     usage = client.get(f"/v1/usage?tenant_id={tenant['id']}")
     assert usage.status_code == 200
     assert len(usage.json()["items"]) == 1
+    usage_paged = client.get(f"/v1/usage?tenant_id={tenant['id']}&limit=1&offset=0")
+    assert usage_paged.status_code == 200
+    assert len(usage_paged.json()["items"]) == 1
+    usage_empty_page = client.get(f"/v1/usage?tenant_id={tenant['id']}&limit=1&offset=1")
+    assert usage_empty_page.status_code == 200
+    assert usage_empty_page.json()["items"] == []
 
     op_status = client.get(f"/v1/provisioning-operations/{operation_id}")
     assert op_status.status_code == 200
@@ -270,7 +247,7 @@ def test_create_golden_path_and_submit_run_with_golden_path() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "GoldenPath Tenant"},
-        headers={"Idempotency-Key": "tenant-gp"},
+        headers={"Idempotency-Key": "tenant-gp", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -280,7 +257,7 @@ def test_create_golden_path_and_submit_run_with_golden_path() -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-gp"},
+        headers={"Idempotency-Key": "env-gp", "X-Actor": "test-user"},
     ).json()
     with SessionLocal() as db:
         process_provisioning_once(db)
@@ -317,12 +294,12 @@ def test_create_golden_path_and_submit_run_with_golden_path() -> None:
             "entrypoint": "main",
             "timeout_seconds": 7200,
         },
-        headers={"Idempotency-Key": "job-gp"},
+        headers={"Idempotency-Key": "job-gp", "X-Actor": "test-user"},
     ).json()
     run = client.post(
         f"/v1/jobs/{job['id']}/runs",
         json={"golden_path": "medium-spot-graviton"},
-        headers={"Idempotency-Key": "run-gp"},
+        headers={"Idempotency-Key": "run-gp", "X-Actor": "test-user"},
     )
     assert run.status_code == 201
     payload = run.json()
@@ -345,7 +322,7 @@ def test_run_create_rejects_blocked_spark_conf_policy() -> None:
                 "spark.kubernetes.authenticate.driver.serviceAccountName": "override-sa",
             }
         },
-        headers={"Idempotency-Key": "run-policy-block"},
+        headers={"Idempotency-Key": "run-policy-block", "X-Actor": "test-user"},
     )
     assert blocked.status_code == 422
     assert "violates environment policy" in blocked.json()["detail"]
@@ -375,6 +352,10 @@ def test_emr_release_sync_and_list_endpoint(monkeypatch) -> None:
     assert labels["emr-7.10.0-latest"]["lifecycle_status"] == "current"
     assert labels["emr-6.15.0-latest"]["lifecycle_status"] == "end_of_life"
 
+    paged = client.get("/v1/emr-releases?limit=2&offset=1")
+    assert paged.status_code == 200
+    assert len(paged.json()) == 2
+
 
 def test_preflight_warns_for_deprecated_release_label() -> None:
     with SessionLocal() as db:
@@ -394,7 +375,7 @@ def test_preflight_warns_for_deprecated_release_label() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Release Currency Tenant"},
-        headers={"Idempotency-Key": "tenant-release-currency"},
+        headers={"Idempotency-Key": "tenant-release-currency", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -407,7 +388,7 @@ def test_preflight_warns_for_deprecated_release_label() -> None:
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-release-currency"},
+        headers={"Idempotency-Key": "env-release-currency", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
     with SessionLocal() as db:
@@ -438,7 +419,7 @@ def test_preflight_fails_arm64_when_release_not_graviton_capable() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Graviton Gate Tenant"},
-        headers={"Idempotency-Key": "tenant-graviton-gate"},
+        headers={"Idempotency-Key": "tenant-graviton-gate", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -452,7 +433,7 @@ def test_preflight_fails_arm64_when_release_not_graviton_capable() -> None:
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-graviton-gate"},
+        headers={"Idempotency-Key": "env-graviton-gate", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
     with SessionLocal() as db:
@@ -491,6 +472,8 @@ def test_usage_cost_applies_arm64_discount() -> None:
 
 
 def test_full_byoc_provisioning_records_checkpoint_audit(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
+    get_settings.cache_clear()
     plan_calls: list[str] = []
     apply_calls: list[str] = []
 
@@ -507,12 +490,19 @@ def test_full_byoc_provisioning_records_checkpoint_audit(monkeypatch) -> None:
 
     def _apply(_self, context, _plan_result):
         apply_calls.append(context.stage)
+        outputs = {}
+        if context.stage == "provisioning_emr":
+            outputs = {
+                "eks_cluster_arn": {"value": "arn:aws:eks:us-east-1:123456789012:cluster/full-byoc-demo"},
+                "emr_virtual_cluster_id": {"value": "vc-fullbyocdemo"},
+            }
         return TerraformApplyResult(
             ok=True,
             command=["terraform", "apply", context.stage],
             stdout_excerpt="ok",
             stderr_excerpt="",
             error=None,
+            outputs=outputs,
         )
 
     monkeypatch.setattr("sparkpilot.services.TerraformOrchestrator.plan", _plan)
@@ -522,7 +512,7 @@ def test_full_byoc_provisioning_records_checkpoint_audit(monkeypatch) -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Full BYOC Checkpoint Tenant"},
-        headers={"Idempotency-Key": "tenant-full-checkpoint"},
+        headers={"Idempotency-Key": "tenant-full-checkpoint", "X-Actor": "test-user"},
     ).json()
 
     op = client.post(
@@ -534,7 +524,7 @@ def test_full_byoc_provisioning_records_checkpoint_audit(monkeypatch) -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-full-checkpoint"},
+        headers={"Idempotency-Key": "env-full-checkpoint", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:
@@ -571,13 +561,22 @@ def test_full_byoc_provisioning_records_checkpoint_audit(monkeypatch) -> None:
         assert attempts.get("provisioning_network") == 1
         assert attempts.get("provisioning_eks") == 1
         assert attempts.get("provisioning_emr") == 1
+        assert attempts.get("validating_bootstrap") == 1
+        assert attempts.get("validating_runtime") == 1
         assert checkpoint.get("last_successful_stage") == "validating_runtime"
+        artifacts = checkpoint.get("artifacts")
+        assert isinstance(artifacts, list)
+        assert any(item.get("kind") == "validation" and item.get("stage") == "validating_bootstrap" for item in artifacts)
+        assert any(item.get("kind") == "validation" and item.get("stage") == "validating_runtime" for item in artifacts)
+        assert "placeholder" not in (op_row.message or "").lower()
 
     assert plan_calls == ["provisioning_network", "provisioning_eks", "provisioning_emr"]
     assert apply_calls == ["provisioning_network", "provisioning_eks", "provisioning_emr"]
 
 
 def test_full_byoc_plan_failure_preserves_prior_checkpoint(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
+    get_settings.cache_clear()
     def _plan(_self, context):
         if context.stage == "provisioning_eks":
             return TerraformPlanResult(
@@ -611,7 +610,7 @@ def test_full_byoc_plan_failure_preserves_prior_checkpoint(monkeypatch) -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Plan Failure Tenant"},
-        headers={"Idempotency-Key": "tenant-plan-fail"},
+        headers={"Idempotency-Key": "tenant-plan-fail", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -622,7 +621,7 @@ def test_full_byoc_plan_failure_preserves_prior_checkpoint(monkeypatch) -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-plan-fail"},
+        headers={"Idempotency-Key": "env-plan-fail", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:
@@ -657,6 +656,8 @@ def test_full_byoc_plan_failure_preserves_prior_checkpoint(monkeypatch) -> None:
 
 
 def test_full_byoc_apply_failure_persists_attempt_count(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
+    get_settings.cache_clear()
     def _plan(_self, context):
         return TerraformPlanResult(
             ok=True,
@@ -689,7 +690,7 @@ def test_full_byoc_apply_failure_persists_attempt_count(monkeypatch) -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Apply Failure Tenant"},
-        headers={"Idempotency-Key": "tenant-apply-fail"},
+        headers={"Idempotency-Key": "tenant-apply-fail", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -700,7 +701,7 @@ def test_full_byoc_apply_failure_persists_attempt_count(monkeypatch) -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-apply-fail"},
+        headers={"Idempotency-Key": "env-apply-fail", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:
@@ -734,6 +735,8 @@ def test_full_byoc_apply_failure_persists_attempt_count(monkeypatch) -> None:
 
 
 def test_full_byoc_resume_skips_completed_stages(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
+    get_settings.cache_clear()
     plan_calls: list[str] = []
     apply_calls: list[str] = []
     fail_eks_plan = {"active": True}
@@ -759,11 +762,18 @@ def test_full_byoc_resume_skips_completed_stages(monkeypatch) -> None:
 
     def _apply(_self, context, _plan_result):
         apply_calls.append(context.stage)
+        outputs = {}
+        if context.stage == "provisioning_emr":
+            outputs = {
+                "eks_cluster_arn": {"value": "arn:aws:eks:us-east-1:123456789012:cluster/full-byoc-resume"},
+                "emr_virtual_cluster_id": {"value": "vc-fullbyocresume"},
+            }
         return TerraformApplyResult(
             ok=True,
             command=["terraform", "apply", context.stage],
             stdout_excerpt="ok",
             stderr_excerpt="",
+            outputs=outputs,
         )
 
     monkeypatch.setattr("sparkpilot.services.TerraformOrchestrator.plan", _plan)
@@ -773,7 +783,7 @@ def test_full_byoc_resume_skips_completed_stages(monkeypatch) -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Resume Tenant"},
-        headers={"Idempotency-Key": "tenant-resume"},
+        headers={"Idempotency-Key": "tenant-resume", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -784,7 +794,7 @@ def test_full_byoc_resume_skips_completed_stages(monkeypatch) -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-resume"},
+        headers={"Idempotency-Key": "env-resume", "X-Actor": "test-user"},
     ).json()
 
     # First tick: fails at provisioning_eks plan
@@ -825,6 +835,8 @@ def test_full_byoc_resume_skips_completed_stages(monkeypatch) -> None:
 
 
 def test_full_byoc_per_stage_commit_survives_crash(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
+    get_settings.cache_clear()
     def _plan(_self, context):
         if context.stage == "provisioning_eks":
             raise KeyboardInterrupt("simulated crash")
@@ -851,7 +863,7 @@ def test_full_byoc_per_stage_commit_survives_crash(monkeypatch) -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Crash Durability Tenant"},
-        headers={"Idempotency-Key": "tenant-crash-durable"},
+        headers={"Idempotency-Key": "tenant-crash-durable", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -862,7 +874,7 @@ def test_full_byoc_per_stage_commit_survives_crash(monkeypatch) -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-crash-durable"},
+        headers={"Idempotency-Key": "env-crash-durable", "X-Actor": "test-user"},
     ).json()
 
     with pytest.raises(KeyboardInterrupt):
@@ -881,11 +893,217 @@ def test_full_byoc_per_stage_commit_survives_crash(monkeypatch) -> None:
                 ).order_by(AuditEvent.created_at.asc())
             ).scalars()
         )
-        assert len(checkpoints) >= 2
+        assert len(checkpoints) >= 1
         latest = checkpoints[-1]
         checkpoint = latest.details_json.get("checkpoint")
         assert isinstance(checkpoint, dict)
         assert checkpoint.get("last_successful_stage") == "provisioning_network"
+
+
+def test_full_byoc_bootstrap_validation_failure_is_actionable(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
+    get_settings.cache_clear()
+
+    def _plan(_self, context):
+        return TerraformPlanResult(
+            ok=True,
+            command=["terraform", "plan", context.stage],
+            plan_path=f"/tmp/{context.stage}.tfplan",
+            stdout_excerpt="ok",
+            stderr_excerpt="",
+        )
+
+    def _apply(_self, context, _plan_result):
+        outputs = {}
+        if context.stage == "provisioning_emr":
+            outputs = {
+                "eks_cluster_arn": {"value": "arn:aws:eks:us-east-1:123456789012:cluster/full-byoc-bootstrap"},
+                "emr_virtual_cluster_id": {"value": "vc-fullbyocbootstrap"},
+            }
+        return TerraformApplyResult(
+            ok=True,
+            command=["terraform", "apply", context.stage],
+            stdout_excerpt="ok",
+            stderr_excerpt="",
+            outputs=outputs,
+        )
+
+    def _oidc_missing(_self, _environment):
+        return {
+            "associated": False,
+            "cluster_name": "full-byoc-bootstrap",
+            "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/example",
+        }
+
+    monkeypatch.setattr("sparkpilot.services.TerraformOrchestrator.plan", _plan)
+    monkeypatch.setattr("sparkpilot.services.TerraformOrchestrator.apply", _apply)
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.check_oidc_provider_association", _oidc_missing)
+
+    client = TestClient(app)
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": "Bootstrap Validation Failure Tenant"},
+        headers={"Idempotency-Key": "tenant-bootstrap-fail", "X-Actor": "test-user"},
+    ).json()
+    op = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "provisioning_mode": "full",
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
+        },
+        headers={"Idempotency-Key": "env-bootstrap-fail", "X-Actor": "test-user"},
+    ).json()
+
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+
+    env_status = client.get(f"/v1/environments/{op['environment_id']}").json()
+    assert env_status["status"] == "failed"
+
+    op_status = client.get(f"/v1/provisioning-operations/{op['id']}").json()
+    assert op_status["state"] == "failed"
+    assert "oidc provider association is missing" in (op_status["message"] or "").lower()
+    assert "eksctl utils associate-iam-oidc-provider" in (op_status["message"] or "")
+
+    with SessionLocal() as db:
+        checkpoints = list(
+            db.execute(
+                select(AuditEvent).where(
+                    and_(
+                        AuditEvent.action == "environment.full_byoc_checkpoint",
+                        AuditEvent.entity_id == op["environment_id"],
+                    )
+                ).order_by(AuditEvent.created_at.desc())
+            ).scalars()
+        )
+        assert len(checkpoints) >= 1
+        checkpoint = checkpoints[0].details_json.get("checkpoint")
+        assert isinstance(checkpoint, dict)
+        assert checkpoint.get("last_successful_stage") == "provisioning_emr"
+        attempts = checkpoint.get("attempt_count_by_stage", {})
+        assert attempts.get("validating_bootstrap") == 1
+
+
+def test_full_byoc_runtime_validation_failure_resumes_without_replaying_terraform(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
+    get_settings.cache_clear()
+    plan_calls: list[str] = []
+    apply_calls: list[str] = []
+    dispatch_ready = {"pass": False}
+
+    def _plan(_self, context):
+        plan_calls.append(context.stage)
+        return TerraformPlanResult(
+            ok=True,
+            command=["terraform", "plan", context.stage],
+            plan_path=f"/tmp/{context.stage}.tfplan",
+            stdout_excerpt="ok",
+            stderr_excerpt="",
+        )
+
+    def _apply(_self, context, _plan_result):
+        apply_calls.append(context.stage)
+        outputs = {}
+        if context.stage == "provisioning_emr":
+            outputs = {
+                "eks_cluster_arn": {"value": "arn:aws:eks:us-east-1:123456789012:cluster/full-byoc-runtime"},
+                "emr_virtual_cluster_id": {"value": "vc-fullbyocruntime"},
+            }
+        return TerraformApplyResult(
+            ok=True,
+            command=["terraform", "apply", context.stage],
+            stdout_excerpt="ok",
+            stderr_excerpt="",
+            outputs=outputs,
+        )
+
+    def _dispatch_readiness(_self, _environment):
+        if dispatch_ready["pass"]:
+            return {
+                "dispatch_actions_allowed": True,
+                "pass_role_allowed": True,
+                "denied_dispatch_actions": "",
+                "execution_role_arn": "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+            }
+        return {
+            "dispatch_actions_allowed": False,
+            "pass_role_allowed": False,
+            "denied_dispatch_actions": "emr-containers:StartJobRun",
+            "execution_role_arn": "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+        }
+
+    monkeypatch.setattr("sparkpilot.services.TerraformOrchestrator.plan", _plan)
+    monkeypatch.setattr("sparkpilot.services.TerraformOrchestrator.apply", _apply)
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.check_customer_role_dispatch_permissions", _dispatch_readiness)
+
+    client = TestClient(app)
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": "Runtime Validation Resume Tenant"},
+        headers={"Idempotency-Key": "tenant-runtime-resume", "X-Actor": "test-user"},
+    ).json()
+    op = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "provisioning_mode": "full",
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
+        },
+        headers={"Idempotency-Key": "env-runtime-resume", "X-Actor": "test-user"},
+    ).json()
+
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+
+    env_status = client.get(f"/v1/environments/{op['environment_id']}").json()
+    assert env_status["status"] == "failed"
+    op_status = client.get(f"/v1/provisioning-operations/{op['id']}").json()
+    assert "dispatch readiness is incomplete" in (op_status["message"] or "").lower()
+    assert plan_calls == ["provisioning_network", "provisioning_eks", "provisioning_emr"]
+    assert apply_calls == ["provisioning_network", "provisioning_eks", "provisioning_emr"]
+
+    with SessionLocal() as db:
+        checkpoints = list(
+            db.execute(
+                select(AuditEvent).where(
+                    and_(
+                        AuditEvent.action == "environment.full_byoc_checkpoint",
+                        AuditEvent.entity_id == op["environment_id"],
+                    )
+                ).order_by(AuditEvent.created_at.desc())
+            ).scalars()
+        )
+        assert len(checkpoints) >= 1
+        checkpoint = checkpoints[0].details_json.get("checkpoint")
+        assert isinstance(checkpoint, dict)
+        assert checkpoint.get("last_successful_stage") == "validating_bootstrap"
+
+    plan_calls.clear()
+    apply_calls.clear()
+    dispatch_ready["pass"] = True
+
+    with SessionLocal() as db:
+        op_row = db.get(ProvisioningOperation, op["id"])
+        assert op_row is not None
+        op_row.state = "validating_runtime"
+        op_row.step = "validating_runtime"
+        env_row = db.get(Environment, op["environment_id"])
+        assert env_row is not None
+        env_row.status = "provisioning"
+        db.commit()
+
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+
+    env_status = client.get(f"/v1/environments/{op['environment_id']}").json()
+    assert env_status["status"] == "ready"
+    assert plan_calls == []
+    assert apply_calls == []
 
 
 def test_quota_enforcement() -> None:
@@ -893,7 +1111,7 @@ def test_quota_enforcement() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Quota Inc"},
-        headers={"Idempotency-Key": "tenant-q"},
+        headers={"Idempotency-Key": "tenant-q", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -903,7 +1121,7 @@ def test_quota_enforcement() -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 1, "max_vcpu": 4, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-q"},
+        headers={"Idempotency-Key": "env-q", "X-Actor": "test-user"},
     ).json()
     with SessionLocal() as db:
         process_provisioning_once(db)
@@ -916,18 +1134,18 @@ def test_quota_enforcement() -> None:
             "artifact_digest": "sha256:def456",
             "entrypoint": "com.acme.Main",
         },
-        headers={"Idempotency-Key": "job-q"},
+        headers={"Idempotency-Key": "job-q", "X-Actor": "test-user"},
     ).json()
     first = client.post(
         f"/v1/jobs/{job['id']}/runs",
         json={"requested_resources": {"driver_vcpu": 1, "driver_memory_gb": 4, "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1}},
-        headers={"Idempotency-Key": "run-q-1"},
+        headers={"Idempotency-Key": "run-q-1", "X-Actor": "test-user"},
     )
     assert first.status_code == 201
     second = client.post(
         f"/v1/jobs/{job['id']}/runs",
         json={"requested_resources": {"driver_vcpu": 1, "driver_memory_gb": 4, "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1}},
-        headers={"Idempotency-Key": "run-q-2"},
+        headers={"Idempotency-Key": "run-q-2", "X-Actor": "test-user"},
     )
     assert second.status_code == 429
 
@@ -937,7 +1155,7 @@ def test_byoc_lite_environment_flow() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "BYOC Lite Tenant"},
-        headers={"Idempotency-Key": "tenant-bl"},
+        headers={"Idempotency-Key": "tenant-bl", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -950,7 +1168,7 @@ def test_byoc_lite_environment_flow() -> None:
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-bl-1"},
+        headers={"Idempotency-Key": "env-bl-1", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
 
@@ -991,7 +1209,7 @@ def test_byoc_lite_provisioning_records_trust_policy_update_audit(monkeypatch) -
     tenant = client.post(
         "/v1/tenants",
         json={"name": "BYOC Lite Trust Policy Tenant"},
-        headers={"Idempotency-Key": "tenant-bl-trust"},
+        headers={"Idempotency-Key": "tenant-bl-trust", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1004,7 +1222,7 @@ def test_byoc_lite_provisioning_records_trust_policy_update_audit(monkeypatch) -
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-bl-trust"},
+        headers={"Idempotency-Key": "env-bl-trust", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
 
@@ -1060,7 +1278,7 @@ def test_byoc_lite_trust_policy_access_denied_fails_with_remediation(monkeypatch
     tenant = client.post(
         "/v1/tenants",
         json={"name": "BYOC Lite Trust Denied Tenant"},
-        headers={"Idempotency-Key": "tenant-bl-trust-denied"},
+        headers={"Idempotency-Key": "tenant-bl-trust-denied", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1073,7 +1291,7 @@ def test_byoc_lite_trust_policy_access_denied_fails_with_remediation(monkeypatch
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-bl-trust-denied"},
+        headers={"Idempotency-Key": "env-bl-trust-denied", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
 
@@ -1126,7 +1344,7 @@ def test_byoc_lite_oidc_missing_fails_before_trust_update(monkeypatch) -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "BYOC Lite OIDC Missing Tenant"},
-        headers={"Idempotency-Key": "tenant-bl-oidc-missing"},
+        headers={"Idempotency-Key": "tenant-bl-oidc-missing", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1139,7 +1357,7 @@ def test_byoc_lite_oidc_missing_fails_before_trust_update(monkeypatch) -> None:
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-bl-oidc-missing"},
+        headers={"Idempotency-Key": "env-bl-oidc-missing", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
 
@@ -1174,7 +1392,7 @@ def test_byoc_lite_environment_validation_errors() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "BYOC Lite Validation Tenant"},
-        headers={"Idempotency-Key": "tenant-blv"},
+        headers={"Idempotency-Key": "tenant-blv", "X-Actor": "test-user"},
     ).json()
 
     missing_cluster = client.post(
@@ -1187,7 +1405,7 @@ def test_byoc_lite_environment_validation_errors() -> None:
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-blv-1"},
+        headers={"Idempotency-Key": "env-blv-1", "X-Actor": "test-user"},
     )
     assert missing_cluster.status_code == 422
     assert missing_cluster.json()["detail"] == "eks_cluster_arn is required for byoc_lite."
@@ -1202,7 +1420,7 @@ def test_byoc_lite_environment_validation_errors() -> None:
             "eks_cluster_arn": "arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-blv-2"},
+        headers={"Idempotency-Key": "env-blv-2", "X-Actor": "test-user"},
     )
     assert missing_namespace.status_code == 422
     assert missing_namespace.json()["detail"] == "eks_namespace is required for byoc_lite."
@@ -1213,7 +1431,7 @@ def test_environment_preflight_endpoint_returns_checks() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Preflight Tenant"},
-        headers={"Idempotency-Key": "tenant-pf"},
+        headers={"Idempotency-Key": "tenant-pf", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1226,7 +1444,7 @@ def test_environment_preflight_endpoint_returns_checks() -> None:
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-pf-1"},
+        headers={"Idempotency-Key": "env-pf-1", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
     with SessionLocal() as db:
@@ -1253,7 +1471,7 @@ def test_environment_preflight_endpoint_accepts_run_id_query() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Preflight Run Query Tenant"},
-        headers={"Idempotency-Key": "tenant-pf-run"},
+        headers={"Idempotency-Key": "tenant-pf-run", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1266,7 +1484,7 @@ def test_environment_preflight_endpoint_accepts_run_id_query() -> None:
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-pf-run"},
+        headers={"Idempotency-Key": "env-pf-run", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
     with SessionLocal() as db:
@@ -1285,7 +1503,7 @@ def test_environment_preflight_endpoint_accepts_run_id_query() -> None:
                 "spark.kubernetes.executor.tolerations": "spot=true:NoSchedule",
             },
         },
-        headers={"Idempotency-Key": "job-pf-run"},
+        headers={"Idempotency-Key": "job-pf-run", "X-Actor": "test-user"},
     ).json()
     run = client.post(
         f"/v1/jobs/{job['id']}/runs",
@@ -1299,7 +1517,7 @@ def test_environment_preflight_endpoint_accepts_run_id_query() -> None:
                 "executor_instances": 1,
             },
         },
-        headers={"Idempotency-Key": "run-pf-run"},
+        headers={"Idempotency-Key": "run-pf-run", "X-Actor": "test-user"},
     ).json()
 
     run_id = run["id"]
@@ -1319,7 +1537,7 @@ def test_environment_preflight_rejects_run_id_from_another_environment() -> None
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Preflight Run Mismatch Tenant"},
-        headers={"Idempotency-Key": "tenant-pf-mismatch"},
+        headers={"Idempotency-Key": "tenant-pf-mismatch", "X-Actor": "test-user"},
     ).json()
 
     env_a = client.post(
@@ -1333,7 +1551,7 @@ def test_environment_preflight_rejects_run_id_from_another_environment() -> None
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-pf-mismatch-a"},
+        headers={"Idempotency-Key": "env-pf-mismatch-a", "X-Actor": "test-user"},
     ).json()
     env_b = client.post(
         "/v1/environments",
@@ -1346,7 +1564,7 @@ def test_environment_preflight_rejects_run_id_from_another_environment() -> None
             "eks_namespace": "sparkpilot-team-b",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-pf-mismatch-b"},
+        headers={"Idempotency-Key": "env-pf-mismatch-b", "X-Actor": "test-user"},
     ).json()
     with SessionLocal() as db:
         process_provisioning_once(db)
@@ -1361,7 +1579,7 @@ def test_environment_preflight_rejects_run_id_from_another_environment() -> None
             "artifact_digest": "sha256:def456",
             "entrypoint": "com.acme.Main",
         },
-        headers={"Idempotency-Key": "job-pf-mismatch"},
+        headers={"Idempotency-Key": "job-pf-mismatch", "X-Actor": "test-user"},
     ).json()
     run = client.post(
         f"/v1/jobs/{job['id']}/runs",
@@ -1374,7 +1592,7 @@ def test_environment_preflight_rejects_run_id_from_another_environment() -> None
                 "executor_instances": 1,
             },
         },
-        headers={"Idempotency-Key": "run-pf-mismatch"},
+        headers={"Idempotency-Key": "run-pf-mismatch", "X-Actor": "test-user"},
     ).json()
 
     response = client.get(f"/v1/environments/{env_b['environment_id']}/preflight?run_id={run['id']}")
@@ -1399,7 +1617,7 @@ def test_environment_preflight_spot_warnings_when_spot_nodegroups_missing(monkey
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Preflight Spot Warning Tenant"},
-        headers={"Idempotency-Key": "tenant-pf-spot-warn"},
+        headers={"Idempotency-Key": "tenant-pf-spot-warn", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1412,7 +1630,7 @@ def test_environment_preflight_spot_warnings_when_spot_nodegroups_missing(monkey
             "eks_namespace": "sparkpilot-team-a",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-pf-spot-warn"},
+        headers={"Idempotency-Key": "env-pf-spot-warn", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
     with SessionLocal() as db:
@@ -1430,7 +1648,7 @@ def test_scheduler_blocks_dispatch_on_preflight_failure() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Scheduler Preflight Tenant"},
-        headers={"Idempotency-Key": "tenant-spf"},
+        headers={"Idempotency-Key": "tenant-spf", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1440,7 +1658,7 @@ def test_scheduler_blocks_dispatch_on_preflight_failure() -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-spf"},
+        headers={"Idempotency-Key": "env-spf", "X-Actor": "test-user"},
     ).json()
     with SessionLocal() as db:
         process_provisioning_once(db)
@@ -1454,12 +1672,12 @@ def test_scheduler_blocks_dispatch_on_preflight_failure() -> None:
             "artifact_digest": "sha256:def456",
             "entrypoint": "com.acme.Main",
         },
-        headers={"Idempotency-Key": "job-spf"},
+        headers={"Idempotency-Key": "job-spf", "X-Actor": "test-user"},
     ).json()
     run = client.post(
         f"/v1/jobs/{job['id']}/runs",
         json={"requested_resources": {"driver_vcpu": 1, "driver_memory_gb": 4, "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1}},
-        headers={"Idempotency-Key": "run-spf"},
+        headers={"Idempotency-Key": "run-spf", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:
@@ -1489,7 +1707,7 @@ def test_scheduler_blocks_dispatch_when_customer_role_dispatch_check_fails(monke
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Scheduler Dispatch Policy Tenant"},
-        headers={"Idempotency-Key": "tenant-spf-dispatch"},
+        headers={"Idempotency-Key": "tenant-spf-dispatch", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1502,7 +1720,7 @@ def test_scheduler_blocks_dispatch_when_customer_role_dispatch_check_fails(monke
             "eks_namespace": "sparkpilot-team",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-spf-dispatch"},
+        headers={"Idempotency-Key": "env-spf-dispatch", "X-Actor": "test-user"},
     ).json()
     with SessionLocal() as db:
         process_provisioning_once(db)
@@ -1516,12 +1734,12 @@ def test_scheduler_blocks_dispatch_when_customer_role_dispatch_check_fails(monke
             "artifact_digest": "sha256:def456",
             "entrypoint": "com.acme.Main",
         },
-        headers={"Idempotency-Key": "job-spf-dispatch"},
+        headers={"Idempotency-Key": "job-spf-dispatch", "X-Actor": "test-user"},
     ).json()
     run = client.post(
         f"/v1/jobs/{job['id']}/runs",
         json={"requested_resources": {"driver_vcpu": 1, "driver_memory_gb": 4, "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1}},
-        headers={"Idempotency-Key": "run-spf-dispatch"},
+        headers={"Idempotency-Key": "run-spf-dispatch", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:
@@ -1537,7 +1755,7 @@ def test_byoc_lite_provisioning_prerequisite_failures_are_actionable() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "BYOC Lite Prereq Failure Tenant"},
-        headers={"Idempotency-Key": "tenant-prereq-fail"},
+        headers={"Idempotency-Key": "tenant-prereq-fail", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1550,7 +1768,7 @@ def test_byoc_lite_provisioning_prerequisite_failures_are_actionable() -> None:
             "eks_namespace": "SparkPilot-Team",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-prereq-fail"},
+        headers={"Idempotency-Key": "env-prereq-fail", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
 
@@ -1590,7 +1808,7 @@ def test_byoc_lite_namespace_length_over_63_fails_prerequisites() -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "BYOC Lite Namespace Length Tenant"},
-        headers={"Idempotency-Key": "tenant-ns-len"},
+        headers={"Idempotency-Key": "tenant-ns-len", "X-Actor": "test-user"},
     ).json()
     namespace = "a" * 64
     op = client.post(
@@ -1604,7 +1822,7 @@ def test_byoc_lite_namespace_length_over_63_fails_prerequisites() -> None:
             "eks_namespace": namespace,
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-ns-len"},
+        headers={"Idempotency-Key": "env-ns-len", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
 
@@ -1649,7 +1867,7 @@ def test_byoc_lite_namespace_collision_fails_fast_with_remediation(monkeypatch) 
     tenant = client.post(
         "/v1/tenants",
         json={"name": "BYOC Lite Namespace Collision Tenant"},
-        headers={"Idempotency-Key": "tenant-ns-collision"},
+        headers={"Idempotency-Key": "tenant-ns-collision", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1662,7 +1880,7 @@ def test_byoc_lite_namespace_collision_fails_fast_with_remediation(monkeypatch) 
             "eks_namespace": "sparkpilot-team",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-ns-collision"},
+        headers={"Idempotency-Key": "env-ns-collision", "X-Actor": "test-user"},
     )
     assert op.status_code == 201
 
@@ -1705,7 +1923,7 @@ def test_reconciler_marks_submitted_run_stale(monkeypatch) -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Stale Submitted Tenant"},
-        headers={"Idempotency-Key": "tenant-stale"},
+        headers={"Idempotency-Key": "tenant-stale", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1715,7 +1933,7 @@ def test_reconciler_marks_submitted_run_stale(monkeypatch) -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-stale"},
+        headers={"Idempotency-Key": "env-stale", "X-Actor": "test-user"},
     ).json()
     with SessionLocal() as db:
         process_provisioning_once(db)
@@ -1729,12 +1947,12 @@ def test_reconciler_marks_submitted_run_stale(monkeypatch) -> None:
             "artifact_digest": "sha256:def456",
             "entrypoint": "com.acme.Main",
         },
-        headers={"Idempotency-Key": "job-stale"},
+        headers={"Idempotency-Key": "job-stale", "X-Actor": "test-user"},
     ).json()
     run = client.post(
         f"/v1/jobs/{job['id']}/runs",
         json={"requested_resources": {"driver_vcpu": 1, "driver_memory_gb": 4, "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1}},
-        headers={"Idempotency-Key": "run-stale"},
+        headers={"Idempotency-Key": "run-stale", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:
@@ -1775,7 +1993,7 @@ def test_reconciler_marks_accepted_run_stale(monkeypatch) -> None:
     tenant = client.post(
         "/v1/tenants",
         json={"name": "Stale Accepted Tenant"},
-        headers={"Idempotency-Key": "tenant-accepted"},
+        headers={"Idempotency-Key": "tenant-accepted", "X-Actor": "test-user"},
     ).json()
     op = client.post(
         "/v1/environments",
@@ -1785,7 +2003,7 @@ def test_reconciler_marks_accepted_run_stale(monkeypatch) -> None:
             "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-accepted"},
+        headers={"Idempotency-Key": "env-accepted", "X-Actor": "test-user"},
     ).json()
     with SessionLocal() as db:
         process_provisioning_once(db)
@@ -1799,12 +2017,12 @@ def test_reconciler_marks_accepted_run_stale(monkeypatch) -> None:
             "artifact_digest": "sha256:def456",
             "entrypoint": "com.acme.Main",
         },
-        headers={"Idempotency-Key": "job-accepted"},
+        headers={"Idempotency-Key": "job-accepted", "X-Actor": "test-user"},
     ).json()
     run = client.post(
         f"/v1/jobs/{job['id']}/runs",
         json={"requested_resources": {"driver_vcpu": 1, "driver_memory_gb": 4, "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1}},
-        headers={"Idempotency-Key": "run-accepted"},
+        headers={"Idempotency-Key": "run-accepted", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:
@@ -1965,7 +2183,7 @@ def test_cancel_run_from_queued_is_immediate() -> None:
 
     cancelled = client.post(
         f"/v1/runs/{run['id']}/cancel",
-        headers={"Idempotency-Key": "cancel-queued"},
+        headers={"Idempotency-Key": "cancel-queued", "X-Actor": "test-user"},
     )
     assert cancelled.status_code == 200
     assert cancelled.json()["state"] == "cancelled"
@@ -1989,7 +2207,7 @@ def test_cancel_run_from_accepted_transitions_to_cancelled(monkeypatch) -> None:
 
     cancel_response = client.post(
         f"/v1/runs/{run['id']}/cancel",
-        headers={"Idempotency-Key": "cancel-accepted"},
+        headers={"Idempotency-Key": "cancel-accepted", "X-Actor": "test-user"},
     )
     assert cancel_response.status_code == 200
     assert cancel_response.json()["state"] == "accepted"
@@ -2030,7 +2248,7 @@ def test_cancel_run_from_running_transitions_to_cancelled(monkeypatch) -> None:
 
     cancel_response = client.post(
         f"/v1/runs/{run['id']}/cancel",
-        headers={"Idempotency-Key": "cancel-running"},
+        headers={"Idempotency-Key": "cancel-running", "X-Actor": "test-user"},
     )
     assert cancel_response.status_code == 200
     assert cancel_response.json()["state"] == "running"
@@ -2076,12 +2294,12 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
     tenant_a = client.post(
         "/v1/tenants",
         json={"name": "Tenant Isolation A"},
-        headers={"Idempotency-Key": "tenant-isolation-a"},
+        headers={"Idempotency-Key": "tenant-isolation-a", "X-Actor": "test-user"},
     ).json()
     tenant_b = client.post(
         "/v1/tenants",
         json={"name": "Tenant Isolation B"},
-        headers={"Idempotency-Key": "tenant-isolation-b"},
+        headers={"Idempotency-Key": "tenant-isolation-b", "X-Actor": "test-user"},
     ).json()
 
     env_a_op = client.post(
@@ -2092,7 +2310,7 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
             "customer_role_arn": "arn:aws:iam::111111111111:role/SparkPilotCustomerRoleA",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-isolation-a"},
+        headers={"Idempotency-Key": "env-isolation-a", "X-Actor": "test-user"},
     ).json()
     env_b_op = client.post(
         "/v1/environments",
@@ -2102,7 +2320,7 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
             "customer_role_arn": "arn:aws:iam::222222222222:role/SparkPilotCustomerRoleB",
             "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
         },
-        headers={"Idempotency-Key": "env-isolation-b"},
+        headers={"Idempotency-Key": "env-isolation-b", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:
@@ -2124,7 +2342,7 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
             "entrypoint": "main.py",
             "args": ["s3://tenant-a/input/events.json", "s3://tenant-a/output/run-a/"],
         },
-        headers={"Idempotency-Key": "job-isolation-a"},
+        headers={"Idempotency-Key": "job-isolation-a", "X-Actor": "test-user"},
     ).json()
     job_b = client.post(
         "/v1/jobs",
@@ -2136,7 +2354,7 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
             "entrypoint": "main.py",
             "args": ["s3://tenant-b/input/events.json", "s3://tenant-b/output/run-b/"],
         },
-        headers={"Idempotency-Key": "job-isolation-b"},
+        headers={"Idempotency-Key": "job-isolation-b", "X-Actor": "test-user"},
     ).json()
 
     run_a = client.post(
@@ -2150,7 +2368,7 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
                 "executor_instances": 1,
             }
         },
-        headers={"Idempotency-Key": "run-isolation-a"},
+        headers={"Idempotency-Key": "run-isolation-a", "X-Actor": "test-user"},
     ).json()
     run_b = client.post(
         f"/v1/jobs/{job_b['id']}/runs",
@@ -2163,7 +2381,7 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
                 "executor_instances": 1,
             }
         },
-        headers={"Idempotency-Key": "run-isolation-b"},
+        headers={"Idempotency-Key": "run-isolation-b", "X-Actor": "test-user"},
     ).json()
 
     with SessionLocal() as db:

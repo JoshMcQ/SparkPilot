@@ -5,9 +5,11 @@ from functools import lru_cache
 import hmac
 from typing import Any, TypeVar
 
+import boto3
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from botocore.exceptions import BotoCoreError, ClientError
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from sparkpilot.config import get_settings, validate_runtime_settings
@@ -46,6 +48,7 @@ from sparkpilot.schemas import (
 )
 from sparkpilot.services import (
     add_team_environment_scope,
+    remove_team_environment_scope,
     cancel_run,
     create_environment,
     create_golden_path,
@@ -67,6 +70,7 @@ from sparkpilot.services import (
     get_usage,
     list_golden_paths,
     list_environments,
+    list_jobs,
     list_run_diagnostics,
     list_team_environment_scopes,
     list_teams,
@@ -307,8 +311,43 @@ def _run_response(payload: dict[str, Any]) -> RunResponse:
 
 
 @app.get("/healthz")
-def healthcheck() -> dict[str, str]:
-    return {"status": "ok"}
+def healthcheck(
+    response: Response,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    database_status: dict[str, Any]
+    aws_status: dict[str, Any]
+
+    try:
+        db.execute(text("SELECT 1"))
+        database_status = {"status": "ok"}
+    except Exception as exc:  # noqa: BLE001 - health endpoint must degrade gracefully
+        database_status = {"status": "error", "detail": f"{type(exc).__name__}: {exc}"}
+
+    runtime_settings = get_settings()
+    if runtime_settings.dry_run_mode:
+        aws_status = {"status": "skipped", "detail": "dry_run_mode=true"}
+    else:
+        try:
+            caller = boto3.client("sts", region_name=runtime_settings.aws_region).get_caller_identity()
+            aws_status = {
+                "status": "ok",
+                "account_id": caller.get("Account"),
+                "caller_arn": caller.get("Arn"),
+            }
+        except (ClientError, BotoCoreError, ValueError) as exc:
+            aws_status = {"status": "error", "detail": f"{type(exc).__name__}: {exc}"}
+
+    is_healthy = database_status.get("status") == "ok" and aws_status.get("status") != "error"
+    if not is_healthy:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {
+        "status": "ok" if is_healthy else "degraded",
+        "checks": {
+            "database": database_status,
+            "aws": aws_status,
+        },
+    }
 
 
 @app.post("/v1/tenants", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
@@ -424,16 +463,35 @@ def post_team_environment_scope(
     return _response(model_to_dict(row), TeamEnvironmentScopeResponse)
 
 
+@app.delete(
+    "/v1/teams/{team_id}/environments/{environment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_team_environment_scope(
+    team_id: str,
+    environment_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    actor, source_ip = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    remove_team_environment_scope(db, team_id, environment_id, actor=actor, source_ip=source_ip)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get("/v1/teams/{team_id}/environments", response_model=list[TeamEnvironmentScopeResponse])
 def get_team_environment_scope(
     team_id: str,
     request: Request,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[TeamEnvironmentScopeResponse]:
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
     _require_admin(access)
-    rows = list_team_environment_scopes(db, team_id)
+    rows = list_team_environment_scopes(db, team_id, limit=limit, offset=offset)
     return [_response(model_to_dict(row), TeamEnvironmentScopeResponse) for row in rows]
 
 
@@ -569,6 +627,31 @@ def post_job(
     return _job_response(result.body)
 
 
+@app.get("/v1/jobs", response_model=list[JobResponse])
+def get_jobs(
+    request: Request,
+    environment_id: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[JobResponse]:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator", "user"}, "Only admin/operator/user can list jobs.")
+    if environment_id:
+        env = get_environment(db, environment_id)
+        _require_environment_access(access, env)
+    env_ids_filter = None if access.role == "admin" else access.scoped_environment_ids
+    rows = list_jobs(
+        db,
+        environment_id=environment_id,
+        limit=limit,
+        offset=offset,
+        environment_ids=env_ids_filter,
+    )
+    return [_job_response(model_to_dict(row)) for row in rows]
+
+
 @app.get("/v1/golden-paths", response_model=list[GoldenPathResponse])
 def get_golden_paths(
     request: Request,
@@ -647,11 +730,14 @@ def get_runs(
 @app.get("/v1/emr-releases", response_model=list[EmrReleaseResponse])
 def get_emr_releases(
     request: Request,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[EmrReleaseResponse]:
     actor, _ = _actor_and_ip(request)
     _resolve_access_context(db, actor)
-    return [_response(model_to_dict(item), EmrReleaseResponse) for item in list_emr_releases(db)]
+    rows = list_emr_releases(db, limit=limit, offset=offset)
+    return [_response(model_to_dict(item), EmrReleaseResponse) for item in rows]
 
 
 @app.post("/v1/jobs/{job_id}/runs", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
@@ -754,6 +840,8 @@ def get_run_logs(
 def get_run_diagnostics(
     run_id: str,
     request: Request,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> DiagnosticsResponse:
     actor, _ = _actor_and_ip(request)
@@ -761,7 +849,7 @@ def get_run_diagnostics(
     run = get_run(db, run_id)
     env = get_environment(db, run.environment_id)
     _require_run_access(access, run, env)
-    items = list_run_diagnostics(db, run_id)
+    items = list_run_diagnostics(db, run_id, limit=limit, offset=offset)
     return DiagnosticsResponse(
         run_id=run_id,
         items=[_response(model_to_dict(item), DiagnosticItem) for item in items],
@@ -774,6 +862,8 @@ def get_usage_for_tenant(
     request: Request,
     from_ts: datetime | None = Query(default=None),
     to_ts: datetime | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> UsageResponse:
     actor, _ = _actor_and_ip(request)
@@ -784,7 +874,7 @@ def get_usage_for_tenant(
     now = datetime.now(UTC)
     effective_to = to_ts or now
     effective_from = from_ts or (effective_to - timedelta(days=30))
-    items = get_usage(db, tenant_id, effective_from, effective_to)
+    items = get_usage(db, tenant_id, effective_from, effective_to, limit=limit, offset=offset)
     return UsageResponse(
         tenant_id=tenant_id,
         from_ts=effective_from,
@@ -835,6 +925,8 @@ def get_costs_showback(
     team: str,
     request: Request,
     period: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> CostShowbackResponse:
     actor, _ = _actor_and_ip(request)
@@ -842,7 +934,7 @@ def get_costs_showback(
     _require_role(access, {"admin", "operator"}, "Only admin/operator can view showback costs.")
     if access.role != "admin" and access.tenant_id != team:
         raise _forbidden("Operator can only view showback for assigned tenant key.")
-    return get_cost_showback(db, team=team, period=period)
+    return get_cost_showback(db, team=team, period=period, limit=limit, offset=offset)
 
 
 def _create_tenant_result(

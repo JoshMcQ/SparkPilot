@@ -163,12 +163,20 @@ def _record_run_diagnostics_if_needed(db: Session, run: Run, env: Environment) -
         )
 
 
-def list_run_diagnostics(db: Session, run_id: str) -> list[RunDiagnostic]:
+def list_run_diagnostics(
+    db: Session,
+    run_id: str,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[RunDiagnostic]:
     _require_run(db, run_id)
     return list(
         db.execute(
             select(RunDiagnostic)
             .where(RunDiagnostic.run_id == run_id)
             .order_by(RunDiagnostic.created_at.asc())
+            .limit(limit)
+            .offset(offset)
         ).scalars()
     )

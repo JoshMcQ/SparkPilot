@@ -32,6 +32,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--poll-seconds", type=int, default=20)
     parser.add_argument("--wait-timeout-seconds", type=int, default=3600)
     parser.add_argument("--max-estimated-cost-usd", type=float, default=None)
+    parser.add_argument("--max-scenario-cost-usd", type=float, default=None)
     parser.add_argument("--allow-over-budget", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--logs-limit", type=int, default=200)
@@ -84,6 +85,7 @@ def main() -> int:
             poll_seconds=args.poll_seconds,
             wait_timeout_seconds=args.wait_timeout_seconds,
             max_estimated_cost_usd=args.max_estimated_cost_usd,
+            max_scenario_cost_usd=args.max_scenario_cost_usd,
             allow_over_budget=args.allow_over_budget,
             fail_fast=args.fail_fast,
             logs_limit=args.logs_limit,

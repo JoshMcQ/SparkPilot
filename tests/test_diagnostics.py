@@ -105,6 +105,10 @@ def test_reconciler_persists_diagnostics_and_api_exposes_them(monkeypatch) -> No
     assert len(payload["items"]) >= 1
     assert any(item["category"] == "oom" for item in payload["items"])
 
+    paged = client.get(f"/v1/runs/{run['id']}/diagnostics?limit=1&offset=0")
+    assert paged.status_code == 200
+    assert len(paged.json()["items"]) == 1
+
 
 def test_reconciler_records_unknown_failure_from_error_message_when_logs_empty(monkeypatch) -> None:
     client = TestClient(app)

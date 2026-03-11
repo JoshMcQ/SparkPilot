@@ -17,7 +17,20 @@
   - `process_cur_reconciliation_once`
   - Worker CLI mode: `python -m sparkpilot.workers cur-reconciliation --once`
 - EMR run tag propagation for attribution:
-  - run/environment/team/namespace/virtual-cluster tags added on `start_job_run`.
+  - run/environment/team/project/cost-center/namespace/virtual-cluster tags added on `start_job_run`.
+- Chargeback label propagation for Spark pods:
+  - driver/executor labels (`sparkpilot-team`, `sparkpilot-project`, `sparkpilot-cost-center`, `sparkpilot-run-id`) are injected into Spark submit parameters for EKS attribution surfaces.
+- Cost center policy surface:
+  - `SPARKPILOT_COST_CENTER_POLICY_JSON` supports explicit mapping by namespace, virtual cluster id, team, and default fallback.
+  - Example:
+    ```json
+    {
+      "by_namespace": {"sparkpilot-finops-team": "cc-finops"},
+      "by_virtual_cluster_id": {"vc-0123456789abcdef0": "cc-platform"},
+      "by_team": {"<tenant-id>": "cc-shared"},
+      "default": "cc-unmapped"
+    }
+    ```
 
 ## Automated Validation
 - New tests in `tests/test_finops.py`:
@@ -61,5 +74,3 @@ Validated flow:
 
 ## Remaining to close R03
 - Wire billing-managed CUR delivery/catalog and run the same reconciliation path against production CUR tables.
-- Add explicit namespace/virtual-cluster -> cost center mapping policy surface (currently derived from environment namespace/VC).
-- Expand tag propagation strategy for EC2-level attribution path where applicable.

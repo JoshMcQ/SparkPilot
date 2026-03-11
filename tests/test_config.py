@@ -45,6 +45,33 @@ def test_dry_run_allows_missing_execution_role(monkeypatch) -> None:
     _clear_settings_cache()
 
 
+def test_dry_run_is_blocked_outside_dev_like_environments(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENVIRONMENT", "production")
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
+    monkeypatch.setenv(
+        "SPARKPILOT_DATABASE_URL",
+        "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot",
+    )
+    _clear_settings_cache()
+    with pytest.raises(ValueError, match="SPARKPILOT_DRY_RUN_MODE=true is only allowed"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
+def test_sqlite_is_blocked_outside_dev_like_environments(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENVIRONMENT", "staging")
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv("SPARKPILOT_DATABASE_URL", "sqlite:///./sparkpilot.db")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotExecRole",
+    )
+    _clear_settings_cache()
+    with pytest.raises(ValueError, match="SQLite is only supported in development/test"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
 def test_auth_mode_must_be_oidc(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_AUTH_MODE", "legacy")
     _clear_settings_cache()
@@ -81,5 +108,29 @@ def test_cors_rejects_wildcard_origin(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_CORS_ORIGINS", "*")
     _clear_settings_cache()
     with pytest.raises(ValueError, match="wildcard origins"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
+def test_pricing_cache_seconds_must_be_positive(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_PRICING_CACHE_SECONDS", "0")
+    _clear_settings_cache()
+    with pytest.raises(ValueError, match="SPARKPILOT_PRICING_CACHE_SECONDS must be greater than 0"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
+def test_cost_center_policy_json_must_be_valid(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_COST_CENTER_POLICY_JSON", "{invalid-json")
+    _clear_settings_cache()
+    with pytest.raises(ValueError, match="SPARKPILOT_COST_CENTER_POLICY_JSON is invalid"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
+def test_cost_center_policy_json_rejects_unsupported_keys(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_COST_CENTER_POLICY_JSON", '{"by_cluster":{"a":"b"}}')
+    _clear_settings_cache()
+    with pytest.raises(ValueError, match="unsupported keys"):
         validate_runtime_settings(get_settings())
     _clear_settings_cache()

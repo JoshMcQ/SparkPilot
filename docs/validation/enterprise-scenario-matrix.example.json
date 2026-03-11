@@ -31,6 +31,16 @@
       "description": "Baseline Spot-capable submission path with small resources.",
       "repeat": 1,
       "submit_run": true,
+      "orchestrator_path": "api",
+      "security_context": {
+        "role": "admin",
+        "team_scope": "tenant-wide"
+      },
+      "integration_requirements": [
+        "spot",
+        "golden-path",
+        "preflight"
+      ],
       "requested_resources": {
         "driver_vcpu": 1,
         "driver_memory_gb": 2,
@@ -95,6 +105,13 @@
       "description": "Moderate burst load for queueing/reconciliation stress without high spend.",
       "repeat": 10,
       "submit_run": true,
+      "orchestrator_path": "cli",
+      "cluster_mutations": {
+        "nodegroup_scale_profile": "burst-small"
+      },
+      "failure_injection": {
+        "enabled": false
+      },
       "requested_resources": {
         "driver_vcpu": 1,
         "driver_memory_gb": 2,

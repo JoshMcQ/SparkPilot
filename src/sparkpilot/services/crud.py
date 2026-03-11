@@ -240,13 +240,60 @@ def add_team_environment_scope(
     return row
 
 
-def list_team_environment_scopes(db: Session, team_id: str) -> list[TeamEnvironmentScope]:
+def remove_team_environment_scope(
+    db: Session,
+    team_id: str,
+    environment_id: str,
+    *,
+    actor: str,
+    source_ip: str | None,
+) -> None:
+    """Remove a team-environment scope (unassign an environment from a team)."""
+    team = _require_team(db, team_id)
+    row = db.execute(
+        select(TeamEnvironmentScope).where(
+            and_(
+                TeamEnvironmentScope.team_id == team_id,
+                TeamEnvironmentScope.environment_id == environment_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise EntityNotFoundError("TeamEnvironmentScope", f"{team_id}/{environment_id}")
+    scope_id = row.id
+    db.delete(row)
+    write_audit_event(
+        db,
+        actor=actor,
+        source_ip=source_ip,
+        action="team_environment_scope.delete",
+        entity_type="team_environment_scope",
+        entity_id=scope_id,
+        tenant_id=team.tenant_id,
+        details={
+            "team_id": team_id,
+            "team_name": team.name,
+            "environment_id": environment_id,
+        },
+    )
+    db.commit()
+
+
+def list_team_environment_scopes(
+    db: Session,
+    team_id: str,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[TeamEnvironmentScope]:
     _require_team(db, team_id)
     return list(
         db.execute(
             select(TeamEnvironmentScope)
             .where(TeamEnvironmentScope.team_id == team_id)
             .order_by(TeamEnvironmentScope.created_at.asc())
+            .limit(limit)
+            .offset(offset)
         ).scalars()
     )
 
@@ -280,7 +327,12 @@ def create_environment(
         if not req.eks_namespace:
             raise ValidationError("eks_namespace is required for byoc_lite.")
     if req.provisioning_mode == "full":
-        if not runtime_settings.dry_run_mode and not FULL_BYOC_TERRAFORM_ROOT.is_dir():
+        if not runtime_settings.enable_full_byoc_mode:
+            raise ValidationError(
+                "Full provisioning mode is disabled for this deployment. "
+                "Set SPARKPILOT_ENABLE_FULL_BYOC_MODE=true only after full-BYOC infrastructure is deployed."
+            )
+        if not FULL_BYOC_TERRAFORM_ROOT.is_dir():
             raise ValidationError(
                 "Full provisioning mode is unavailable for this deployment: "
                 f"missing Terraform modules at '{FULL_BYOC_TERRAFORM_ROOT}'. "
@@ -408,6 +460,23 @@ def create_job(
     else:
         db.flush()
     return job
+
+
+def list_jobs(
+    db: Session,
+    environment_id: str | None = None,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+    environment_ids: set[str] | None = None,
+) -> list[Job]:
+    stmt = select(Job).order_by(Job.created_at.desc())
+    if environment_id:
+        stmt = stmt.where(Job.environment_id == environment_id)
+    if environment_ids is not None:
+        stmt = stmt.where(Job.environment_id.in_(environment_ids))
+    stmt = stmt.limit(limit).offset(offset)
+    return list(db.execute(stmt).scalars())
 
 
 # ---------------------------------------------------------------------------
@@ -607,6 +676,9 @@ def get_usage(
     tenant_id: str,
     from_ts: datetime,
     to_ts: datetime,
+    *,
+    limit: int = 200,
+    offset: int = 0,
 ) -> list[UsageRecord]:
     _require_tenant(db, tenant_id)
     stmt = (
@@ -615,6 +687,8 @@ def get_usage(
         .where(UsageRecord.recorded_at >= from_ts)
         .where(UsageRecord.recorded_at <= to_ts)
         .order_by(UsageRecord.recorded_at.asc())
+        .limit(limit)
+        .offset(offset)
     )
     return list(db.execute(stmt).scalars())
 

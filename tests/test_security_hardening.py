@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from sparkpilot.api import app
@@ -69,7 +71,9 @@ def test_self_declared_actor_header_cannot_escalate_privileges(oidc_token) -> No
 
 def test_live_full_mode_is_blocked_without_full_byoc_modules(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
     monkeypatch.setenv("SPARKPILOT_EMR_EXECUTION_ROLE_ARN", "arn:aws:iam::123456789012:role/SparkPilotExecRole")
+    monkeypatch.setattr("sparkpilot.services.crud.FULL_BYOC_TERRAFORM_ROOT", Path("infra/terraform/full-byoc-missing"))
     get_settings.cache_clear()
 
     client = TestClient(app)

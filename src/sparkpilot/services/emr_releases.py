@@ -45,14 +45,15 @@ def _lake_formation_supported_for_label(label: str) -> bool:
 # CRUD / sync
 # ---------------------------------------------------------------------------
 
-def list_emr_releases(db: Session) -> list[EmrRelease]:
+def list_emr_releases(db: Session, *, limit: int = 200, offset: int = 0) -> list[EmrRelease]:
     rows = list(db.execute(select(EmrRelease)).scalars())
     # Keep unknown/non-standard labels at the bottom by using (0,0,0) fallback.
-    return sorted(
+    ordered = sorted(
         rows,
         key=lambda row: (_parse_release_version(row.release_label) or (0, 0, 0), row.release_label),
         reverse=True,
     )
+    return ordered[offset:offset + limit]
 
 
 def sync_emr_releases_once(db: Session, *, actor: str = "worker:emr-release-sync") -> int:

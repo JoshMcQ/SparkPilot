@@ -34,6 +34,7 @@ from sparkpilot.services._helpers import model_to_dict  # noqa: F401
 # --- crud ---
 from sparkpilot.services.crud import (  # noqa: F401
     add_team_environment_scope,
+    remove_team_environment_scope,
     cancel_run,
     create_environment,
     create_job,
@@ -48,6 +49,7 @@ from sparkpilot.services.crud import (  # noqa: F401
     get_run,
     get_usage,
     list_environments,
+    list_jobs,
     list_runs,
     list_team_environment_scopes,
     list_teams,

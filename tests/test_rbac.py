@@ -225,6 +225,145 @@ def test_rbac_admin_with_identity_can_list_runs() -> None:
     assert {item["id"] for item in listed.json()} == {run["id"]}
 
 
+def test_rbac_operator_job_listing_is_scope_filtered() -> None:
+    client = TestClient(app)
+
+    tenant = _create_tenant(client, actor="bootstrap-admin", suffix="rbac-jobscope")
+    env_a = _create_environment(
+        client,
+        actor="bootstrap-admin",
+        tenant_id=str(tenant["id"]),
+        suffix="rbac-jobscope-a",
+    )
+    env_b = _create_environment(
+        client,
+        actor="bootstrap-admin",
+        tenant_id=str(tenant["id"]),
+        suffix="rbac-jobscope-b",
+    )
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+        process_provisioning_once(db)
+
+    team = client.post(
+        "/v1/teams",
+        json={"tenant_id": tenant["id"], "name": "team-jobscope"},
+        headers=_headers("bootstrap-admin"),
+    )
+    assert team.status_code == 201
+
+    operator_identity = client.post(
+        "/v1/user-identities",
+        json={
+            "actor": "operator-jobscope",
+            "role": "operator",
+            "tenant_id": tenant["id"],
+            "team_id": team.json()["id"],
+            "active": True,
+        },
+        headers=_headers("bootstrap-admin"),
+    )
+    assert operator_identity.status_code == 201
+
+    scope = client.post(
+        f"/v1/teams/{team.json()['id']}/environments/{env_a['environment_id']}",
+        headers=_headers("bootstrap-admin"),
+    )
+    assert scope.status_code == 201
+
+    job_a = _create_job(
+        client,
+        actor="bootstrap-admin",
+        environment_id=str(env_a["environment_id"]),
+        suffix="rbac-jobscope-a",
+    )
+    _create_job(
+        client,
+        actor="bootstrap-admin",
+        environment_id=str(env_b["environment_id"]),
+        suffix="rbac-jobscope-b",
+    )
+
+    listed = client.get("/v1/jobs", headers=_headers("operator-jobscope"))
+    assert listed.status_code == 200
+    assert {item["id"] for item in listed.json()} == {job_a["id"]}
+
+    filtered_allowed = client.get(
+        f"/v1/jobs?environment_id={env_a['environment_id']}",
+        headers=_headers("operator-jobscope"),
+    )
+    assert filtered_allowed.status_code == 200
+    assert {item["id"] for item in filtered_allowed.json()} == {job_a["id"]}
+
+    filtered_forbidden = client.get(
+        f"/v1/jobs?environment_id={env_b['environment_id']}",
+        headers=_headers("operator-jobscope"),
+    )
+    assert filtered_forbidden.status_code == 403
+
+
+def test_rbac_admin_can_paginate_team_environment_scopes() -> None:
+    client = TestClient(app)
+
+    tenant = _create_tenant(client, actor="bootstrap-admin", suffix="rbac-scope-page")
+    env_a = _create_environment(
+        client,
+        actor="bootstrap-admin",
+        tenant_id=str(tenant["id"]),
+        suffix="rbac-scope-page-a",
+    )
+    env_b = _create_environment(
+        client,
+        actor="bootstrap-admin",
+        tenant_id=str(tenant["id"]),
+        suffix="rbac-scope-page-b",
+    )
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+        process_provisioning_once(db)
+
+    admin_identity = client.post(
+        "/v1/user-identities",
+        json={"actor": "bootstrap-admin", "role": "admin", "active": True},
+        headers=_headers("bootstrap-admin"),
+    )
+    assert admin_identity.status_code == 201
+
+    team = client.post(
+        "/v1/teams",
+        json={"tenant_id": tenant["id"], "name": "team-scope-page"},
+        headers=_headers("bootstrap-admin"),
+    )
+    assert team.status_code == 201
+    team_id = team.json()["id"]
+
+    scope_a = client.post(
+        f"/v1/teams/{team_id}/environments/{env_a['environment_id']}",
+        headers=_headers("bootstrap-admin"),
+    )
+    assert scope_a.status_code == 201
+    scope_b = client.post(
+        f"/v1/teams/{team_id}/environments/{env_b['environment_id']}",
+        headers=_headers("bootstrap-admin"),
+    )
+    assert scope_b.status_code == 201
+
+    page_one = client.get(
+        f"/v1/teams/{team_id}/environments?limit=1&offset=0",
+        headers=_headers("bootstrap-admin"),
+    )
+    page_two = client.get(
+        f"/v1/teams/{team_id}/environments?limit=1&offset=1",
+        headers=_headers("bootstrap-admin"),
+    )
+    assert page_one.status_code == 200
+    assert page_two.status_code == 200
+    assert len(page_one.json()) == 1
+    assert len(page_two.json()) == 1
+    combined = {item["id"] for item in page_one.json()} | {item["id"] for item in page_two.json()}
+    assert len(combined) == 2
+
+
 def test_rbac_role_permissions_admin_operator_user() -> None:
     client = TestClient(app)
 

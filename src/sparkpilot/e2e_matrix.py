@@ -12,6 +12,8 @@ import uuid
 
 import httpx
 
+from sparkpilot.config import get_settings
+from sparkpilot.services.finops import PricingSnapshot, resolve_runtime_pricing
 
 TERMINAL_RUN_STATES = {"succeeded", "failed", "cancelled", "timed_out"}
 PREFLIGHT_STATUSES = {"pass", "warning", "fail"}
@@ -244,6 +246,11 @@ class MatrixScenario:
     collect_diagnostics: bool
     collect_showback: bool
     required_external_evidence: list[str]
+    cluster_mutations: dict[str, Any]
+    failure_injection: dict[str, Any]
+    security_context: dict[str, str]
+    orchestrator_path: str
+    integration_requirements: list[str]
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "MatrixScenario":
@@ -284,6 +291,24 @@ class MatrixScenario:
         collect_diagnostics = bool(payload.get("collect_diagnostics", True))
         collect_showback = bool(payload.get("collect_showback", True))
         required_external_evidence = _optional_string_list(payload, "required_external_evidence") or []
+        cluster_mutations_raw = payload.get("cluster_mutations") or {}
+        if not isinstance(cluster_mutations_raw, dict):
+            raise ValueError(f"scenario:{name}.cluster_mutations must be an object when provided.")
+        failure_injection_raw = payload.get("failure_injection") or {}
+        if not isinstance(failure_injection_raw, dict):
+            raise ValueError(f"scenario:{name}.failure_injection must be an object when provided.")
+        security_context_raw = payload.get("security_context") or {}
+        if not isinstance(security_context_raw, dict):
+            raise ValueError(f"scenario:{name}.security_context must be an object when provided.")
+        security_context: dict[str, str] = {}
+        for key, value in security_context_raw.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise ValueError(f"scenario:{name}.security_context must map strings to strings.")
+            security_context[key] = value
+        orchestrator_path = _optional_string(payload, "orchestrator_path") or "api"
+        if orchestrator_path not in {"api", "cli", "airflow", "dagster", "ui"}:
+            raise ValueError(f"scenario:{name}.orchestrator_path must be one of api|cli|airflow|dagster|ui.")
+        integration_requirements = _optional_string_list(payload, "integration_requirements") or []
         return cls(
             name=name,
             description=description,
@@ -303,6 +328,11 @@ class MatrixScenario:
             collect_diagnostics=collect_diagnostics,
             collect_showback=collect_showback,
             required_external_evidence=required_external_evidence,
+            cluster_mutations=dict(cluster_mutations_raw),
+            failure_injection=dict(failure_injection_raw),
+            security_context=security_context,
+            orchestrator_path=orchestrator_path,
+            integration_requirements=integration_requirements,
         )
 
 
@@ -338,11 +368,15 @@ def load_matrix_config(path: Path) -> MatrixConfig:
     return MatrixConfig.from_dict(payload)
 
 
-def _architecture_multiplier(architecture: str) -> float:
+def _runtime_pricing_snapshot() -> PricingSnapshot:
+    return resolve_runtime_pricing(get_settings())
+
+
+def _architecture_multiplier(architecture: str, pricing: PricingSnapshot) -> float:
     if architecture == "arm64":
-        return 0.8
+        return max(0.0, 1.0 - (pricing.arm64_discount_pct / 100.0))
     if architecture == "mixed":
-        return 0.9
+        return max(0.0, 1.0 - (pricing.mixed_discount_pct / 100.0))
     return 1.0
 
 
@@ -351,10 +385,16 @@ def estimate_run_cost_usd_micros(
     *,
     timeout_seconds: int,
     instance_architecture: str,
+    pricing_snapshot: PricingSnapshot | None = None,
 ) -> int:
+    pricing = pricing_snapshot or _runtime_pricing_snapshot()
     vcpu_seconds = timeout_seconds * resources.total_vcpu()
     memory_gb_seconds = timeout_seconds * resources.total_memory_gb()
-    return int(((vcpu_seconds * 35) + (memory_gb_seconds * 4)) * _architecture_multiplier(instance_architecture))
+    estimated_cost_usd = (
+        (vcpu_seconds * pricing.vcpu_usd_per_second)
+        + (memory_gb_seconds * pricing.memory_gb_usd_per_second)
+    )
+    return int((estimated_cost_usd * 1_000_000) * _architecture_multiplier(instance_architecture, pricing))
 
 
 def estimate_scenario_cost_usd_micros(
@@ -362,24 +402,32 @@ def estimate_scenario_cost_usd_micros(
     *,
     default_timeout_seconds: int,
     instance_architecture: str,
+    pricing_snapshot: PricingSnapshot | None = None,
 ) -> int:
     timeout_seconds = scenario.timeout_seconds or default_timeout_seconds
     per_run = estimate_run_cost_usd_micros(
         scenario.requested_resources,
         timeout_seconds=timeout_seconds,
         instance_architecture=instance_architecture,
+        pricing_snapshot=pricing_snapshot,
     )
     if not scenario.submit_run:
         return 0
     return per_run * scenario.repeat
 
 
-def estimate_matrix_cost_usd_micros(config: MatrixConfig) -> int:
+def estimate_matrix_cost_usd_micros(
+    config: MatrixConfig,
+    *,
+    pricing_snapshot: PricingSnapshot | None = None,
+) -> int:
+    snapshot = pricing_snapshot or _runtime_pricing_snapshot()
     return sum(
         estimate_scenario_cost_usd_micros(
             scenario,
             default_timeout_seconds=config.job_defaults.timeout_seconds,
             instance_architecture=config.environment.instance_architecture,
+            pricing_snapshot=snapshot,
         )
         for scenario in config.scenarios
     )
@@ -564,6 +612,7 @@ class MatrixRunOptions:
     poll_seconds: int = 15
     wait_timeout_seconds: int = 1800
     max_estimated_cost_usd: float | None = None
+    max_scenario_cost_usd: float | None = None
     allow_over_budget: bool = False
     fail_fast: bool = False
     logs_limit: int = 200
@@ -608,9 +657,13 @@ def _wait_for_run_terminal(
 
 
 def _check_cost_guard(config: MatrixConfig, options: MatrixRunOptions) -> tuple[int, str]:
-    estimated_usd_micros = estimate_matrix_cost_usd_micros(config)
+    pricing_snapshot = _runtime_pricing_snapshot()
+    estimated_usd_micros = estimate_matrix_cost_usd_micros(config, pricing_snapshot=pricing_snapshot)
     estimated_usd = estimated_usd_micros / 1_000_000
-    message = f"Estimated total matrix cost: ${estimated_usd:.4f} ({estimated_usd_micros} micros)."
+    message = (
+        f"Estimated total matrix cost: ${estimated_usd:.4f} ({estimated_usd_micros} micros). "
+        f"Pricing source: {pricing_snapshot.source}."
+    )
     if options.max_estimated_cost_usd is None:
         return estimated_usd_micros, message
     if estimated_usd <= options.max_estimated_cost_usd:
@@ -619,6 +672,37 @@ def _check_cost_guard(config: MatrixConfig, options: MatrixRunOptions) -> tuple[
         return estimated_usd_micros, f"{message} Over budget but allowed by flag."
     raise RuntimeError(
         f"{message} This exceeds --max-estimated-cost-usd={options.max_estimated_cost_usd:.4f}. "
+        "Increase the cap or pass --allow-over-budget."
+    )
+
+
+def _check_scenario_cost_guard(
+    *,
+    scenario: MatrixScenario,
+    config: MatrixConfig,
+    options: MatrixRunOptions,
+) -> tuple[int, str]:
+    pricing_snapshot = _runtime_pricing_snapshot()
+    estimated_micros = estimate_scenario_cost_usd_micros(
+        scenario,
+        default_timeout_seconds=config.job_defaults.timeout_seconds,
+        instance_architecture=config.environment.instance_architecture,
+        pricing_snapshot=pricing_snapshot,
+    )
+    estimated_usd = estimated_micros / 1_000_000
+    message = (
+        f"Estimated scenario cost for '{scenario.name}': "
+        f"${estimated_usd:.4f} ({estimated_micros} micros). "
+        f"Pricing source: {pricing_snapshot.source}."
+    )
+    if options.max_scenario_cost_usd is None:
+        return estimated_micros, message
+    if estimated_usd <= options.max_scenario_cost_usd:
+        return estimated_micros, message
+    if options.allow_over_budget:
+        return estimated_micros, f"{message} Over budget but allowed by flag."
+    raise RuntimeError(
+        f"{message} This exceeds --max-scenario-cost-usd={options.max_scenario_cost_usd:.4f}. "
         "Increase the cap or pass --allow-over-budget."
     )
 
@@ -666,6 +750,35 @@ def _scenario_run_payload(
     return payload
 
 
+def _required_external_evidence_status(required_external_evidence: list[str]) -> list[dict[str, Any]]:
+    statuses: list[dict[str, Any]] = []
+    for item in required_external_evidence:
+        path = Path(item)
+        statuses.append(
+            {
+                "path": item,
+                "exists": path.exists(),
+            }
+        )
+    return statuses
+
+
+def _coverage_gaps_from_results(scenario_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    gaps: list[dict[str, Any]] = []
+    for scenario in scenario_results:
+        for evidence_status in scenario.get("required_external_evidence_status", []):
+            if bool(evidence_status.get("exists")):
+                continue
+            gaps.append(
+                {
+                    "scenario": scenario.get("name"),
+                    "iteration": scenario.get("iteration"),
+                    "missing_evidence": evidence_status.get("path"),
+                }
+            )
+    return gaps
+
+
 def run_matrix(
     *,
     client: SparkPilotApiClient,
@@ -710,9 +823,15 @@ def run_matrix(
 
     scenario_results: list[dict[str, Any]] = []
     failure_count = 0
+    expected_block_events = 0
     billing_period = _current_billing_period()
 
     for scenario in config.scenarios:
+        scenario_estimated_cost_micros, scenario_cost_message = _check_scenario_cost_guard(
+            scenario=scenario,
+            config=config,
+            options=options,
+        )
         scenario_actor = scenario.actor or options.default_actor
         for iteration in range(1, scenario.repeat + 1):
             scenario_start = _utc_now_iso()
@@ -724,6 +843,16 @@ def run_matrix(
                 "started_at": scenario_start,
                 "expected_run_state": scenario.expected_run_state,
                 "required_external_evidence": scenario.required_external_evidence,
+                "required_external_evidence_status": _required_external_evidence_status(
+                    scenario.required_external_evidence
+                ),
+                "cluster_mutations": scenario.cluster_mutations,
+                "failure_injection": scenario.failure_injection,
+                "security_context": scenario.security_context,
+                "orchestrator_path": scenario.orchestrator_path,
+                "integration_requirements": scenario.integration_requirements,
+                "estimated_scenario_cost_usd_micros": scenario_estimated_cost_micros,
+                "estimated_scenario_cost_message": scenario_cost_message,
             }
             try:
                 if scenario.team_budget is not None:
@@ -744,6 +873,8 @@ def run_matrix(
                     raise RuntimeError("; ".join(preflight_failures))
                 if not scenario.submit_run:
                     result["status"] = "passed"
+                    if not scenario.expect_preflight_ready or scenario.expected_run_state != "succeeded":
+                        expected_block_events += 1
                     result["completed_at"] = _utc_now_iso()
                     scenario_results.append(result)
                     scenario_file = artifacts_dir / f"{scenario.name}-{iteration}.json"
@@ -792,6 +923,8 @@ def run_matrix(
                         period=billing_period,
                     )
                 result["status"] = "passed"
+                if not scenario.expect_preflight_ready or scenario.expected_run_state != "succeeded":
+                    expected_block_events += 1
             except Exception as exc:  # noqa: BLE001
                 result["status"] = "failed"
                 result["error"] = str(exc)
@@ -805,6 +938,7 @@ def run_matrix(
         if options.fail_fast and failure_count > 0:
             break
 
+    coverage_gaps = _coverage_gaps_from_results(scenario_results)
     summary = {
         "matrix_name": config.matrix_name,
         "started_at": started_at,
@@ -819,7 +953,10 @@ def run_matrix(
         "operation_state": operation_ready.get("state"),
         "total_scenarios_executed": len(scenario_results),
         "failed_scenarios": failure_count,
+        "unexpected_failures": failure_count,
+        "expected_block_events": expected_block_events,
         "passed_scenarios": len(scenario_results) - failure_count,
+        "coverage_gaps": coverage_gaps,
         "scenario_results": scenario_results,
     }
     (artifacts_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
