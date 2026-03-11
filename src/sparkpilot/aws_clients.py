@@ -10,8 +10,8 @@ import boto3
 from botocore.exceptions import ClientError
 
 from sparkpilot.config import get_settings, validate_runtime_settings
+from sparkpilot.cost_center import resolve_cost_center_for_environment
 from sparkpilot.models import Environment, Job, Run
-from sparkpilot.time_utils import _as_utc
 
 logger = logging.getLogger(__name__)
 ROLE_ARN_PATTERN = re.compile(r"^arn:aws[a-zA-Z-]*:iam::\d{12}:role/(.+)$")
@@ -29,6 +29,10 @@ DISPATCH_SIMULATION_ACTIONS = [
     "emr-containers:DescribeJobRun",
     "emr-containers:CancelJobRun",
 ]
+VIRTUAL_CLUSTER_REFERENCE_REQUIRED_ACTIONS = [
+    "emr-containers:DescribeVirtualCluster",
+    "eks:DescribeCluster",
+]
 SPOT_VALIDATION_REQUIRED_ACTIONS = [
     "eks:ListNodegroups",
     "eks:DescribeNodegroup",
@@ -36,6 +40,11 @@ SPOT_VALIDATION_REQUIRED_ACTIONS = [
 
 
 _BASE36_CHARS = "0123456789abcdefghijklmnopqrstuvwxyz"
+_EMR_JOB_NAME_ALLOWED_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+_EMR_JOB_NAME_MAX_LENGTH = 64
+_EMR_JOB_NAME_RUN_ID_CHARS = 12
+_K8S_LABEL_VALUE_DISALLOWED_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
+_K8S_LABEL_VALUE_MAX_LENGTH = 63
 
 
 def _base36_encode_name(name: str) -> str:
@@ -52,6 +61,49 @@ def _base36_encode_name(name: str) -> str:
 def _emr_sa_pattern(namespace: str, account_id: str, role_name: str) -> str:
     encoded = _base36_encode_name(role_name)
     return f"system:serviceaccount:{namespace}:emr-containers-sa-*-*-{account_id}-{encoded}"
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _sanitize_emr_job_name_component(value: str) -> str:
+    sanitized = _EMR_JOB_NAME_ALLOWED_PATTERN.sub("-", value.strip())
+    sanitized = re.sub(r"-{2,}", "-", sanitized)
+    normalized = sanitized.strip("-._")
+    return normalized or "run"
+
+
+def _emr_job_run_name(job_name: str, run_id: str) -> str:
+    safe_job = _sanitize_emr_job_name_component(job_name)
+    safe_run = _sanitize_emr_job_name_component(run_id)
+    suffix = safe_run[-_EMR_JOB_NAME_RUN_ID_CHARS:] or "run"
+    prefix_budget = _EMR_JOB_NAME_MAX_LENGTH - len(suffix) - 1
+    prefix = safe_job[: max(prefix_budget, 1)].rstrip("-._")
+    if not prefix:
+        prefix = "run"
+    name = f"{prefix}-{suffix}"
+    if len(name) <= _EMR_JOB_NAME_MAX_LENGTH:
+        return name
+    trimmed = name[:_EMR_JOB_NAME_MAX_LENGTH].rstrip("-._")
+    if trimmed:
+        return trimmed
+    return f"run-{suffix}"[:_EMR_JOB_NAME_MAX_LENGTH]
+
+
+def _safe_k8s_label_value(value: str | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "unknown"
+    text = _K8S_LABEL_VALUE_DISALLOWED_PATTERN.sub("-", text)
+    text = text[:_K8S_LABEL_VALUE_MAX_LENGTH]
+    while text and not text[0].isalnum():
+        text = text[1:]
+    while text and not text[-1].isalnum():
+        text = text[:-1]
+    return text or "unknown"
 
 
 def assume_role_session(role_arn: str, region: str) -> boto3.Session:
@@ -79,15 +131,6 @@ class EmrDispatchResult:
     aws_request_id: str | None = None
 
 
-@dataclass(slots=True, frozen=True)
-class _TrustPolicyTarget:
-    cluster_name: str
-    namespace: str
-    role_name: str
-    account_id: str
-    region: str
-
-
 class EmrEksClient:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -113,156 +156,6 @@ class EmrEksClient:
         if len(parts) < 6:
             raise ValueError("Invalid ARN.")
         return parts[4]
-
-    def _build_trust_policy_target(self, environment: Environment) -> _TrustPolicyTarget:
-        if not environment.eks_cluster_arn:
-            raise ValueError("Missing EKS cluster ARN.")
-        if not environment.eks_namespace:
-            raise ValueError("Missing EKS namespace.")
-
-        validate_runtime_settings(self.settings)
-        return _TrustPolicyTarget(
-            cluster_name=self._eks_cluster_name_from_arn(environment.eks_cluster_arn),
-            namespace=environment.eks_namespace,
-            role_name=self._role_name_from_arn(self.settings.emr_execution_role_arn),
-            account_id=self._account_id_from_arn(environment.eks_cluster_arn),
-            region=environment.region,
-        )
-
-    @staticmethod
-    def _is_access_denied_error(code: str) -> bool:
-        return code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}
-
-    def _describe_cluster_oidc(
-        self,
-        *,
-        session: boto3.Session,
-        target: _TrustPolicyTarget,
-        denied_message: str,
-        missing_oidc_message: str,
-    ) -> tuple[str, str]:
-        eks_client = session.client("eks", region_name=target.region)
-        try:
-            cluster = eks_client.describe_cluster(name=target.cluster_name).get("cluster", {})
-        except ClientError as exc:
-            code = exc.response.get("Error", {}).get("Code", "")
-            if self._is_access_denied_error(code):
-                raise ValueError(denied_message) from None
-            raise
-
-        issuer = cluster.get("identity", {}).get("oidc", {}).get("issuer", "")
-        if not issuer:
-            raise ValueError(missing_oidc_message)
-        provider_path = issuer.removeprefix("https://")
-        provider_arn = f"arn:aws:iam::{target.account_id}:oidc-provider/{provider_path}"
-        return provider_path, provider_arn
-
-    def _load_execution_role_trust_policy(
-        self,
-        *,
-        iam_client: Any,
-        target: _TrustPolicyTarget,
-        missing_role_message: str,
-        denied_message: str,
-    ) -> dict[str, Any]:
-        try:
-            role_data = iam_client.get_role(RoleName=target.role_name)
-        except ClientError as exc:
-            code = exc.response.get("Error", {}).get("Code", "")
-            if code == "NoSuchEntity":
-                raise ValueError(missing_role_message) from None
-            if self._is_access_denied_error(code):
-                raise ValueError(denied_message) from None
-            raise
-
-        trust_policy = role_data["Role"]["AssumeRolePolicyDocument"]
-        if isinstance(trust_policy, str):
-            trust_policy = json.loads(trust_policy)
-        return trust_policy
-
-    def _matches_web_identity_statement(
-        self,
-        statement: dict[str, Any],
-        *,
-        provider_arn: str,
-        provider_path: str,
-        sa_pattern: str,
-    ) -> bool:
-        actions = self._action_values(statement.get("Action"))
-        if "sts:AssumeRoleWithWebIdentity" not in actions:
-            return False
-        principal_value = self._federated_value(statement.get("Principal"))
-        if principal_value != provider_arn:
-            return False
-        condition = statement.get("Condition", {})
-        if not isinstance(condition, dict):
-            return False
-        string_like = condition.get("StringLike", {})
-        if not isinstance(string_like, dict):
-            return False
-        return string_like.get(f"{provider_path}:sub") == sa_pattern
-
-    def _ensure_web_identity_statement(
-        self,
-        *,
-        trust_policy: dict[str, Any],
-        provider_arn: str,
-        provider_path: str,
-        sa_pattern: str,
-    ) -> bool:
-        statements = trust_policy.get("Statement", [])
-        if not isinstance(statements, list):
-            statements = []
-        already_present = any(
-            isinstance(statement, dict)
-            and self._matches_web_identity_statement(
-                statement,
-                provider_arn=provider_arn,
-                provider_path=provider_path,
-                sa_pattern=sa_pattern,
-            )
-            for statement in statements
-        )
-        if already_present:
-            return True
-
-        statements.append(
-            {
-                "Effect": "Allow",
-                "Principal": {"Federated": provider_arn},
-                "Action": "sts:AssumeRoleWithWebIdentity",
-                "Condition": {
-                    "StringLike": {f"{provider_path}:sub": sa_pattern}
-                },
-            }
-        )
-        trust_policy["Statement"] = statements
-        return False
-
-    def _update_execution_role_policy(
-        self,
-        *,
-        iam_client: Any,
-        target: _TrustPolicyTarget,
-        trust_policy: dict[str, Any],
-        denied_message: str,
-        malformed_policy_message: str,
-    ) -> None:
-        try:
-            iam_client.update_assume_role_policy(
-                RoleName=target.role_name,
-                PolicyDocument=json.dumps(trust_policy),
-            )
-        except ClientError as exc:
-            code = exc.response.get("Error", {}).get("Code", "")
-            message = exc.response.get("Error", {}).get("Message", "")
-            if self._is_access_denied_error(code):
-                raise ValueError(denied_message) from None
-            if code == "MalformedPolicyDocument":
-                raise ValueError(
-                    f"Trust policy update failed: {message}. {malformed_policy_message}"
-                ) from None
-            raise
 
     def create_virtual_cluster(self, environment: Environment) -> str:
         if not environment.eks_cluster_arn:
@@ -387,6 +280,7 @@ class EmrEksClient:
             raise ValueError("Missing EKS cluster ARN.")
         if not environment.eks_namespace:
             raise ValueError("Missing EKS namespace.")
+
         cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
 
         if self.settings.dry_run_mode:
@@ -399,80 +293,122 @@ class EmrEksClient:
                 "aws_request_id": None,
             }
 
-        target = self._build_trust_policy_target(environment)
+        validate_runtime_settings(self.settings)
+        role_name = self._role_name_from_arn(self.settings.emr_execution_role_arn)
+        account_id = self._account_id_from_arn(environment.eks_cluster_arn)
         session = assume_role_session(environment.customer_role_arn, environment.region)
-        required = ", ".join(TRUST_POLICY_REQUIRED_ACTIONS)
-        remediation_cmd = (
-            "aws emr-containers update-role-trust-policy "
-            f"--cluster-name {target.cluster_name} "
-            f"--namespace {target.namespace} "
-            f"--role-name {target.role_name} "
-            f"--region {target.region}"
-        )
 
-        provider_path, provider_arn = self._describe_cluster_oidc(
-            session=session,
-            target=target,
-            denied_message=(
-                "Access denied while describing EKS cluster for trust policy update. "
-                f"Required permissions: {required}. "
-                f"Remediation: run `{remediation_cmd}` with an admin role, "
-                "or grant the permissions above to customer_role_arn."
-            ),
-            missing_oidc_message=(
-                f"EKS cluster '{target.cluster_name}' does not have an OIDC issuer. "
+        # 1. Get OIDC issuer from EKS cluster
+        eks_client = session.client("eks", region_name=environment.region)
+        try:
+            cluster = eks_client.describe_cluster(name=cluster_name).get("cluster", {})
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                required = ", ".join(TRUST_POLICY_REQUIRED_ACTIONS)
+                raise ValueError(
+                    "Access denied while describing EKS cluster for trust policy update. "
+                    f"Required permissions: {required}. "
+                    "Remediation: run "
+                    f"`aws emr-containers update-role-trust-policy --cluster-name {cluster_name} "
+                    f"--namespace {environment.eks_namespace} --role-name {role_name} --region {environment.region}` "
+                    "with an admin role, or grant the permissions above to customer_role_arn."
+                ) from None
+            raise
+
+        issuer = cluster.get("identity", {}).get("oidc", {}).get("issuer", "")
+        if not issuer:
+            raise ValueError(
+                f"EKS cluster '{cluster_name}' does not have an OIDC issuer. "
                 "Remediation: associate the IAM OIDC provider first with "
-                f"`eksctl utils associate-iam-oidc-provider --cluster {target.cluster_name} "
-                f"--region {target.region} --approve`."
-            ),
-        )
+                f"`eksctl utils associate-iam-oidc-provider --cluster {cluster_name} "
+                f"--region {environment.region} --approve`."
+            )
+        provider_path = issuer.removeprefix("https://")
+        provider_arn = f"arn:aws:iam::{account_id}:oidc-provider/{provider_path}"
 
+        # 2. Get current trust policy and add EMR service account statement
         iam_client = session.client("iam")
-        trust_policy = self._load_execution_role_trust_policy(
-            iam_client=iam_client,
-            target=target,
-            missing_role_message=(
-                f"Execution role '{target.role_name}' not found in account {target.account_id}. "
-                "Remediation: verify SPARKPILOT_EMR_EXECUTION_ROLE_ARN is correct."
-            ),
-            denied_message=(
-                "Access denied while reading execution role trust policy. "
-                f"Required permissions: {required}. "
-                "Remediation: grant iam:GetRole to customer_role_arn, or run "
-                f"`{remediation_cmd}` with an admin role."
-            ),
-        )
+        try:
+            role_data = iam_client.get_role(RoleName=role_name)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code == "NoSuchEntity":
+                raise ValueError(
+                    f"Execution role '{role_name}' not found in account {account_id}. "
+                    "Remediation: verify SPARKPILOT_EMR_EXECUTION_ROLE_ARN is correct."
+                ) from None
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                required = ", ".join(TRUST_POLICY_REQUIRED_ACTIONS)
+                raise ValueError(
+                    "Access denied while reading execution role trust policy. "
+                    f"Required permissions: {required}. "
+                    "Remediation: grant iam:GetRole to customer_role_arn, or run "
+                    f"`aws emr-containers update-role-trust-policy --cluster-name {cluster_name} "
+                    f"--namespace {environment.eks_namespace} --role-name {role_name} --region {environment.region}` "
+                    "with an admin role."
+                ) from None
+            raise
 
-        sa_pattern = _emr_sa_pattern(target.namespace, target.account_id, target.role_name)
-        already_present = self._ensure_web_identity_statement(
-            trust_policy=trust_policy,
-            provider_arn=provider_arn,
-            provider_path=provider_path,
-            sa_pattern=sa_pattern,
-        )
+        trust_policy = role_data["Role"]["AssumeRolePolicyDocument"]
+        if isinstance(trust_policy, str):
+            trust_policy = json.loads(trust_policy)
 
-        self._update_execution_role_policy(
-            iam_client=iam_client,
-            target=target,
-            trust_policy=trust_policy,
-            denied_message=(
-                "Access denied while updating execution role trust policy. "
-                f"Required permissions: {required}. "
-                f"Remediation: run `{remediation_cmd}` with an admin role, "
-                "or grant the permissions above to customer_role_arn."
-            ),
-            malformed_policy_message=(
-                "Remediation: verify execution role ARN and EKS cluster name, then run "
-                f"`{remediation_cmd}`."
-            ),
+        sa_pattern = _emr_sa_pattern(environment.eks_namespace, account_id, role_name)
+        new_statement = {
+            "Effect": "Allow",
+            "Principal": {"Federated": provider_arn},
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+                "StringLike": {f"{provider_path}:sub": sa_pattern}
+            },
+        }
+
+        # Avoid duplicate statements
+        statements = trust_policy.get("Statement", [])
+        already_present = any(
+            stmt.get("Action") == "sts:AssumeRoleWithWebIdentity"
+            and stmt.get("Condition", {}).get("StringLike", {}).get(f"{provider_path}:sub") == sa_pattern
+            for stmt in statements
         )
+        if not already_present:
+            statements.append(new_statement)
+            trust_policy["Statement"] = statements
+
+        # 3. Update the trust policy
+        try:
+            iam_client.update_assume_role_policy(
+                RoleName=role_name,
+                PolicyDocument=json.dumps(trust_policy),
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            message = exc.response.get("Error", {}).get("Message", "")
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                required = ", ".join(TRUST_POLICY_REQUIRED_ACTIONS)
+                raise ValueError(
+                    "Access denied while updating execution role trust policy. "
+                    f"Required permissions: {required}. "
+                    "Remediation: run "
+                    f"`aws emr-containers update-role-trust-policy --cluster-name {cluster_name} "
+                    f"--namespace {environment.eks_namespace} --role-name {role_name} --region {environment.region}` "
+                    "with an admin role, or grant the permissions above to customer_role_arn."
+                ) from None
+            if code == "MalformedPolicyDocument":
+                raise ValueError(
+                    f"Trust policy update failed: {message}. "
+                    "Remediation: verify execution role ARN and EKS cluster name, then run "
+                    f"`aws emr-containers update-role-trust-policy --cluster-name {cluster_name} "
+                    f"--namespace {environment.eks_namespace} --role-name {role_name} --region {environment.region}`."
+                ) from None
+            raise
 
         return {
             "updated": True,
             "already_present": already_present,
-            "cluster_name": target.cluster_name,
-            "namespace": target.namespace,
-            "role_name": target.role_name,
+            "cluster_name": cluster_name,
+            "namespace": environment.eks_namespace,
+            "role_name": role_name,
             "provider_arn": provider_arn,
             "sa_pattern": sa_pattern,
         }
@@ -572,28 +508,6 @@ class EmrEksClient:
 
         return results
 
-    @staticmethod
-    def _collect_release_labels(
-        *,
-        client: Any,
-        list_method: str,
-        labels_field: str,
-        token_field: str,
-    ) -> list[str]:
-        labels: list[str] = []
-        next_token: str | None = None
-        while True:
-            kwargs: dict[str, Any] = {}
-            if next_token:
-                kwargs[token_field] = next_token
-            result = getattr(client, list_method)(**kwargs)
-            for item in result.get(labels_field, []):
-                if isinstance(item, str):
-                    labels.append(item)
-            next_token = result.get(token_field)
-            if not next_token:
-                return labels
-
     def list_release_labels(self, region: str) -> list[str]:
         if self.settings.dry_run_mode:
             return [
@@ -604,22 +518,41 @@ class EmrEksClient:
                 "emr-6.15.0-latest",
             ]
 
+        labels: list[str] = []
+
+        # Primary source when available in SDK/API model.
         containers_client = boto3.client("emr-containers", region_name=region)
         if hasattr(containers_client, "list_release_labels"):
-            return self._collect_release_labels(
-                client=containers_client,
-                list_method="list_release_labels",
-                labels_field="releaseLabels",
-                token_field="nextToken",
-            )
+            next_token: str | None = None
+            while True:
+                kwargs: dict[str, Any] = {}
+                if next_token:
+                    kwargs["nextToken"] = next_token
+                result = containers_client.list_release_labels(**kwargs)
+                for item in result.get("releaseLabels", []):
+                    if isinstance(item, str):
+                        labels.append(item)
+                next_token = result.get("nextToken")
+                if not next_token:
+                    break
+            return labels
 
+        # Fallback: EMR release labels API.
         emr_client = boto3.client("emr", region_name=region)
-        return self._collect_release_labels(
-            client=emr_client,
-            list_method="list_release_labels",
-            labels_field="ReleaseLabels",
-            token_field="NextToken",
-        )
+        next_token = None
+        while True:
+            kwargs = {}
+            if next_token:
+                kwargs["NextToken"] = next_token
+            result = emr_client.list_release_labels(**kwargs)
+            for item in result.get("ReleaseLabels", []):
+                if isinstance(item, str):
+                    labels.append(item)
+            next_token = result.get("NextToken")
+            if not next_token:
+                break
+
+        return labels
 
     @staticmethod
     def _action_values(value: str | list[str] | None) -> list[str]:
@@ -653,66 +586,84 @@ class EmrEksClient:
                 "role_name": "dry-run",
             }
 
-        target = self._build_trust_policy_target(environment)
+        validate_runtime_settings(self.settings)
+        cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
+        role_name = self._role_name_from_arn(self.settings.emr_execution_role_arn)
+        account_id = self._account_id_from_arn(environment.eks_cluster_arn)
         session = assume_role_session(environment.customer_role_arn, environment.region)
-        remediation_cmd = (
-            "aws emr-containers update-role-trust-policy "
-            f"--cluster-name {target.cluster_name} "
-            f"--namespace {target.namespace} "
-            f"--role-name {target.role_name} "
-            f"--region {target.region}"
-        )
-        provider_path, provider_arn = self._describe_cluster_oidc(
-            session=session,
-            target=target,
-            denied_message=(
-                "Access denied while validating execution role trust policy. "
-                "Remediation: grant customer_role_arn eks:DescribeCluster and iam:GetRole."
-            ),
-            missing_oidc_message=(
-                f"EKS cluster '{target.cluster_name}' does not expose an OIDC issuer. "
+
+        eks_client = session.client("eks", region_name=environment.region)
+        try:
+            cluster = eks_client.describe_cluster(name=cluster_name).get("cluster", {})
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                raise ValueError(
+                    "Access denied while validating execution role trust policy. "
+                    "Remediation: grant customer_role_arn eks:DescribeCluster and iam:GetRole."
+                ) from None
+            raise
+
+        issuer = cluster.get("identity", {}).get("oidc", {}).get("issuer", "")
+        if not issuer:
+            raise ValueError(
+                f"EKS cluster '{cluster_name}' does not expose an OIDC issuer. "
                 "Remediation: associate OIDC provider and retry."
-            ),
-        )
-        sa_pattern = _emr_sa_pattern(target.namespace, target.account_id, target.role_name)
+            )
+        provider_path = issuer.removeprefix("https://")
+        provider_arn = f"arn:aws:iam::{account_id}:oidc-provider/{provider_path}"
+        sa_pattern = _emr_sa_pattern(environment.eks_namespace, account_id, role_name)
 
         iam_client = session.client("iam")
-        trust_policy = self._load_execution_role_trust_policy(
-            iam_client=iam_client,
-            target=target,
-            missing_role_message=(
-                f"Execution role '{target.role_name}' not found. "
-                "Remediation: verify SPARKPILOT_EMR_EXECUTION_ROLE_ARN."
-            ),
-            denied_message=(
-                "Access denied while reading execution role trust policy. "
-                "Remediation: grant customer_role_arn iam:GetRole."
-            ),
-        )
+        try:
+            role_data = iam_client.get_role(RoleName=role_name)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code == "NoSuchEntity":
+                raise ValueError(
+                    f"Execution role '{role_name}' not found. "
+                    "Remediation: verify SPARKPILOT_EMR_EXECUTION_ROLE_ARN."
+                ) from None
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                raise ValueError(
+                    "Access denied while reading execution role trust policy. "
+                    "Remediation: grant customer_role_arn iam:GetRole."
+                ) from None
+            raise
+
+        trust_policy = role_data["Role"]["AssumeRolePolicyDocument"]
+        if isinstance(trust_policy, str):
+            trust_policy = json.loads(trust_policy)
         statements = trust_policy.get("Statement", [])
-        if not isinstance(statements, list):
-            statements = []
-        matches = any(
-            isinstance(statement, dict)
-            and self._matches_web_identity_statement(
-                statement,
-                provider_arn=provider_arn,
-                provider_path=provider_path,
-                sa_pattern=sa_pattern,
-            )
-            for statement in statements
-        )
-        if not matches:
+
+        def _matches(stmt: dict[str, Any]) -> bool:
+            actions = self._action_values(stmt.get("Action"))
+            if "sts:AssumeRoleWithWebIdentity" not in actions:
+                return False
+            principal_value = self._federated_value(stmt.get("Principal"))
+            if principal_value != provider_arn:
+                return False
+            condition = stmt.get("Condition", {})
+            if not isinstance(condition, dict):
+                return False
+            string_like = condition.get("StringLike", {})
+            if not isinstance(string_like, dict):
+                return False
+            return string_like.get(f"{provider_path}:sub") == sa_pattern
+
+        if not any(isinstance(stmt, dict) and _matches(stmt) for stmt in statements):
             raise ValueError(
                 "Execution role trust policy is missing required EMR on EKS web-identity statement. "
-                f"Remediation: run `{remediation_cmd}` and retry."
+                "Remediation: run `aws emr-containers update-role-trust-policy --cluster-name "
+                f"{cluster_name} --namespace {environment.eks_namespace} --role-name {role_name} "
+                f"--region {environment.region}` and retry."
             )
 
         return {
             "valid": True,
             "provider_arn": provider_arn,
             "service_account_pattern": sa_pattern,
-            "role_name": target.role_name,
+            "role_name": role_name,
         }
 
     def check_customer_role_dispatch_permissions(self, environment: Environment) -> dict[str, str | bool]:
@@ -764,6 +715,110 @@ class EmrEksClient:
             "execution_role_arn": self.settings.emr_execution_role_arn,
         }
 
+    def validate_virtual_cluster_reference(
+        self,
+        environment: Environment,
+        *,
+        require_running: bool = False,
+    ) -> dict[str, str | bool]:
+        if not environment.eks_cluster_arn:
+            raise ValueError("Missing EKS cluster ARN.")
+        if not environment.emr_virtual_cluster_id:
+            raise ValueError("Missing EMR virtual cluster id.")
+
+        cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
+        virtual_cluster_id = str(environment.emr_virtual_cluster_id).strip()
+
+        if self.settings.dry_run_mode:
+            namespace = environment.eks_namespace or "sparkpilot-system"
+            return {
+                "valid": True,
+                "mode": "dry_run",
+                "virtual_cluster_id": virtual_cluster_id,
+                "state": "RUNNING",
+                "cluster_name": cluster_name,
+                "namespace": namespace,
+            }
+
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        client = session.client("emr-containers", region_name=environment.region)
+        try:
+            result = client.describe_virtual_cluster(id=virtual_cluster_id)
+        except ClientError as exc:
+            error = exc.response.get("Error", {})
+            code = error.get("Code", "")
+            if code in {"ResourceNotFoundException", "ValidationException"}:
+                raise ValueError(
+                    f"EMR virtual cluster '{virtual_cluster_id}' was not found. "
+                    "Remediation: rerun full-BYOC provisioning_emr stage to recreate and wire the virtual cluster."
+                ) from None
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                required = ", ".join(VIRTUAL_CLUSTER_REFERENCE_REQUIRED_ACTIONS)
+                raise ValueError(
+                    "Access denied while validating EMR virtual cluster reference. "
+                    f"Required permissions: {required}. "
+                    "Remediation: grant permissions above to customer_role_arn and retry provisioning."
+                ) from None
+            raise
+
+        virtual_cluster = result.get("virtualCluster", {})
+        if not isinstance(virtual_cluster, dict):
+            raise ValueError(
+                "EMR virtual cluster validation returned an unexpected response shape. "
+                "Remediation: retry; if persistent, verify emr-containers API access in customer account."
+            )
+
+        state = str(virtual_cluster.get("state") or "").upper()
+        if require_running and state != "RUNNING":
+            raise ValueError(
+                f"EMR virtual cluster '{virtual_cluster_id}' is in state '{state or 'UNKNOWN'}'. "
+                "Remediation: wait until RUNNING or rerun provisioning_emr if the cluster does not recover."
+            )
+        if not require_running and state in {"TERMINATING", "TERMINATED", "ARRESTED"}:
+            raise ValueError(
+                f"EMR virtual cluster '{virtual_cluster_id}' is in terminal state '{state}'. "
+                "Remediation: rerun provisioning_emr to create a healthy virtual cluster."
+            )
+
+        container_provider = virtual_cluster.get("containerProvider", {})
+        if not isinstance(container_provider, dict):
+            container_provider = {}
+        provider_type = str(container_provider.get("type") or "")
+        if provider_type and provider_type != "EKS":
+            raise ValueError(
+                f"EMR virtual cluster '{virtual_cluster_id}' is bound to unsupported provider type '{provider_type}'. "
+                "Remediation: recreate the virtual cluster with container provider type EKS."
+            )
+
+        provider_cluster = str(container_provider.get("id") or "").strip()
+        if provider_cluster and provider_cluster != cluster_name:
+            raise ValueError(
+                f"EMR virtual cluster '{virtual_cluster_id}' is bound to EKS cluster '{provider_cluster}', "
+                f"expected '{cluster_name}'. Remediation: rerun provisioning_emr to bind the correct EKS cluster."
+            )
+
+        provider_info = container_provider.get("info", {})
+        if not isinstance(provider_info, dict):
+            provider_info = {}
+        eks_info = provider_info.get("eksInfo", {})
+        if not isinstance(eks_info, dict):
+            eks_info = {}
+        namespace = eks_info.get("namespace")
+        namespace_text = str(namespace or "").strip()
+        if environment.eks_namespace and namespace_text and namespace_text != environment.eks_namespace:
+            raise ValueError(
+                f"EMR virtual cluster namespace '{namespace_text}' does not match environment namespace "
+                f"'{environment.eks_namespace}'. Remediation: rerun provisioning_emr and align namespace wiring."
+            )
+
+        return {
+            "valid": True,
+            "virtual_cluster_id": virtual_cluster_id,
+            "state": state or "UNKNOWN",
+            "cluster_name": provider_cluster or cluster_name,
+            "namespace": namespace_text or environment.eks_namespace or "",
+        }
+
     def start_job_run(self, environment: Environment, job: Job, run: Run) -> EmrDispatchResult:
         log_group = f"{self.settings.log_group_prefix}/{environment.id}"
         stream_prefix = f"{run.id}/attempt-{run.attempt}"
@@ -782,6 +837,20 @@ class EmrEksClient:
         session = assume_role_session(environment.customer_role_arn, environment.region)
         client = session.client("emr-containers", region_name=environment.region)
         spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
+        project = environment.eks_namespace or environment.id
+        cost_center = resolve_cost_center_for_environment(settings=self.settings, environment=environment)
+
+        chargeback_labels = {
+            "sparkpilot-run-id": run.id,
+            "sparkpilot-team": environment.tenant_id,
+            "sparkpilot-project": project,
+            "sparkpilot-cost-center": cost_center,
+        }
+        for label_key, raw_value in chargeback_labels.items():
+            safe_value = _safe_k8s_label_value(raw_value)
+            spark_conf.setdefault(f"spark.kubernetes.driver.label.{label_key}", safe_value)
+            spark_conf.setdefault(f"spark.kubernetes.executor.label.{label_key}", safe_value)
+
         spark_submit_driver: dict[str, Any] = {
             "entryPoint": job.artifact_uri,
             "entryPointArguments": run.args_overrides_json or job.args_json,
@@ -796,7 +865,7 @@ class EmrEksClient:
 
         result = client.start_job_run(
             virtualClusterId=environment.emr_virtual_cluster_id,
-            name=f"{job.name}-{run.id}",
+            name=_emr_job_run_name(job.name, run.id),
             executionRoleArn=self.settings.emr_execution_role_arn,
             releaseLabel=self.settings.emr_release_label,
             jobDriver={
@@ -815,6 +884,8 @@ class EmrEksClient:
                 "sparkpilot:run_id": _safe_tag_value(run.id),
                 "sparkpilot:environment_id": _safe_tag_value(environment.id),
                 "sparkpilot:team": _safe_tag_value(environment.tenant_id),
+                "sparkpilot:project": _safe_tag_value(project),
+                "sparkpilot:cost_center": _safe_tag_value(cost_center),
                 "sparkpilot:namespace": _safe_tag_value(environment.eks_namespace),
                 "sparkpilot:virtual_cluster_id": _safe_tag_value(environment.emr_virtual_cluster_id),
             },
@@ -830,39 +901,32 @@ class EmrEksClient:
         )
 
     def describe_job_run(self, environment: Environment, run: Run) -> tuple[str, str | None]:
-        state = "FAILED"
-        failure: str | None = None
-
         if run.cancellation_requested:
-            state = "CANCELLED"
-        elif self.settings.dry_run_mode:
+            return "CANCELLED", None
+        if self.settings.dry_run_mode:
             if not run.started_at:
-                state = "PENDING"
-            else:
-                elapsed = (datetime.now(UTC) - _as_utc(run.started_at)).total_seconds()
-                if elapsed < 10:
-                    state = "SUBMITTED"
-                elif elapsed < 40:
-                    state = "RUNNING"
-                else:
-                    state = "COMPLETED"
-        elif not run.emr_job_run_id:
-            failure = "Missing EMR job id."
-        else:
-            session = assume_role_session(environment.customer_role_arn, environment.region)
-            client = session.client("emr-containers", region_name=environment.region)
-            try:
-                result = client.describe_job_run(
-                    virtualClusterId=environment.emr_virtual_cluster_id,
-                    id=run.emr_job_run_id,
-                )
-            except ClientError as exc:
-                failure = str(exc)
-            else:
-                job_run = result.get("jobRun", {})
-                state = job_run.get("state", "FAILED")
-                failure = job_run.get("failureReason")
+                return "PENDING", None
+            elapsed = (datetime.now(UTC) - _as_utc(run.started_at)).total_seconds()
+            if elapsed < 10:
+                return "SUBMITTED", None
+            if elapsed < 40:
+                return "RUNNING", None
+            return "COMPLETED", None
 
+        if not run.emr_job_run_id:
+            return "FAILED", "Missing EMR job id."
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        client = session.client("emr-containers", region_name=environment.region)
+        try:
+            result = client.describe_job_run(
+                virtualClusterId=environment.emr_virtual_cluster_id,
+                id=run.emr_job_run_id,
+            )
+        except ClientError as exc:
+            return "FAILED", str(exc)
+        job_run = result.get("jobRun", {})
+        state = job_run.get("state", "FAILED")
+        failure = job_run.get("failureReason")
         return state, failure
 
     def cancel_job_run(self, environment: Environment, run: Run) -> str | None:

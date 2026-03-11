@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
+from typing import Any
 
 from sparkpilot.config import get_settings
 from sparkpilot.models import Environment, ProvisioningOperation
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FULL_BYOC_TERRAFORM_ROOT = REPO_ROOT / "infra" / "terraform" / "full-byoc"
+FULL_BYOC_TERRAFORM_ROOT = Path("infra/terraform/full-byoc")
 FULL_BYOC_STATE_PREFIX = "sparkpilot/full-byoc"
 
 
@@ -45,7 +47,7 @@ class TerraformApplyResult:
     stdout_excerpt: str
     stderr_excerpt: str
     error: str | None = None
-    outputs: dict[str, str] = field(default_factory=dict)
+    outputs: dict[str, Any] = field(default_factory=dict)
 
 
 class TerraformOrchestrator:
@@ -60,6 +62,11 @@ class TerraformOrchestrator:
         self.terraform_binary = terraform_binary
         self.enable_subprocess = (not settings.dry_run_mode) if enable_subprocess is None else enable_subprocess
         self.timeout_seconds = timeout_seconds
+        self.backend_bucket = os.getenv("SPARKPILOT_TERRAFORM_STATE_BUCKET", "").strip()
+        self.backend_region = os.getenv("SPARKPILOT_TERRAFORM_STATE_REGION", "").strip() or settings.aws_region
+        self.backend_lock_table = os.getenv("SPARKPILOT_TERRAFORM_STATE_LOCK_TABLE", "").strip()
+        self.backend_role_arn = os.getenv("SPARKPILOT_TERRAFORM_STATE_ROLE_ARN", "").strip()
+        self._initialized_contexts: set[tuple[str, str]] = set()
 
     def build_stage_context(
         self,
@@ -78,7 +85,10 @@ class TerraformOrchestrator:
             "stage": stage,
             "workspace": workspace,
             "state_key": state_key,
+            "customer_role_arn": environment.customer_role_arn,
         }
+        if environment.eks_namespace:
+            var_overrides["eks_namespace"] = environment.eks_namespace
         return ProvisioningStageContext(
             operation_id=operation.id,
             environment_id=environment.id,
@@ -105,6 +115,7 @@ class TerraformOrchestrator:
             )
 
         self._validate_runtime_prerequisites(context)
+        self._ensure_initialized(context)
         completed = self._run(command, cwd=context.working_dir)
         return TerraformPlanResult(
             ok=completed.returncode == 0,
@@ -141,14 +152,18 @@ class TerraformOrchestrator:
             )
 
         self._validate_runtime_prerequisites(context)
+        self._ensure_initialized(context)
         completed = self._run(command, cwd=context.working_dir)
+        outputs: dict[str, Any] = {}
+        if completed.returncode == 0:
+            outputs = self._collect_outputs(context.working_dir)
         return TerraformApplyResult(
             ok=completed.returncode == 0,
             command=command,
             stdout_excerpt=self._excerpt(completed.stdout),
             stderr_excerpt=self._excerpt(completed.stderr),
             error=None if completed.returncode == 0 else "terraform apply failed",
-            outputs={},
+            outputs=outputs,
         )
 
     def _build_plan_command(self, context: ProvisioningStageContext, plan_path: Path) -> list[str]:
@@ -176,6 +191,48 @@ class TerraformOrchestrator:
                 "Add full-BYOC Terraform modules before enabling live full-mode provisioning."
             )
 
+    def _ensure_initialized(self, context: ProvisioningStageContext) -> None:
+        cache_key = (str(context.working_dir.resolve()), context.workspace)
+        if cache_key in self._initialized_contexts:
+            return
+
+        init_command = [
+            self.terraform_binary,
+            "init",
+            "-input=false",
+            "-no-color",
+            "-reconfigure",
+        ]
+        if self.backend_bucket:
+            init_command.extend(["-backend-config", f"bucket={self.backend_bucket}"])
+            init_command.extend(["-backend-config", f"key={context.state_key}"])
+            init_command.extend(["-backend-config", f"region={self.backend_region}"])
+            if self.backend_lock_table:
+                init_command.extend(["-backend-config", f"dynamodb_table={self.backend_lock_table}"])
+            if self.backend_role_arn:
+                init_command.extend(["-backend-config", f"role_arn={self.backend_role_arn}"])
+        else:
+            init_command.append("-backend=false")
+
+        init_result = self._run(init_command, cwd=context.working_dir)
+        if init_result.returncode != 0:
+            raise ValueError(
+                "Terraform init failed: " + self._excerpt(init_result.stderr or init_result.stdout)
+            )
+
+        select_workspace_command = [self.terraform_binary, "workspace", "select", context.workspace]
+        select_result = self._run(select_workspace_command, cwd=context.working_dir)
+        if select_result.returncode != 0:
+            create_workspace_command = [self.terraform_binary, "workspace", "new", context.workspace]
+            create_result = self._run(create_workspace_command, cwd=context.working_dir)
+            if create_result.returncode != 0:
+                raise ValueError(
+                    "Terraform workspace setup failed: "
+                    + self._excerpt(create_result.stderr or create_result.stdout)
+                )
+
+        self._initialized_contexts.add(cache_key)
+
     def _run(self, command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         try:
             return subprocess.run(
@@ -192,6 +249,24 @@ class TerraformOrchestrator:
             raise ValueError(
                 f"Terraform command timed out after {self.timeout_seconds} seconds: {' '.join(command)}"
             ) from exc
+
+    def _collect_outputs(self, cwd: Path) -> dict[str, Any]:
+        command = [self.terraform_binary, "output", "-json"]
+        completed = self._run(command, cwd=cwd)
+        if completed.returncode != 0:
+            raise ValueError(
+                "Terraform apply succeeded, but `terraform output -json` failed: "
+                + self._excerpt(completed.stderr or completed.stdout)
+            )
+        try:
+            payload = json.loads(completed.stdout or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "Terraform output JSON parsing failed. Ensure outputs are valid JSON serializable values."
+            ) from exc
+        if not isinstance(payload, dict):
+            raise ValueError("Terraform output payload is invalid; expected JSON object.")
+        return payload
 
     def _excerpt(self, value: str, *, limit: int = 2000) -> str:
         text = value.strip()

@@ -3,7 +3,7 @@ import json
 import pytest
 from types import SimpleNamespace
 
-from sparkpilot.aws_clients import CloudWatchLogsProxy, EmrEksClient
+from sparkpilot.aws_clients import CloudWatchLogsProxy, EmrEksClient, _emr_job_run_name
 from sparkpilot.config import get_settings
 
 
@@ -299,13 +299,17 @@ def test_check_oidc_provider_association_access_denied_is_actionable(monkeypatch
     get_settings.cache_clear()
 
 
-def test_start_job_run_omits_empty_spark_submit_parameters(monkeypatch) -> None:
+def test_start_job_run_adds_chargeback_tags_and_labels(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     monkeypatch.setenv("SPARKPILOT_LOG_GROUP_PREFIX", "/sparkpilot/runs")
     monkeypatch.setenv("SPARKPILOT_EMR_RELEASE_LABEL", "emr-6.15.0-latest")
     monkeypatch.setenv(
         "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
         "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+    )
+    monkeypatch.setenv(
+        "SPARKPILOT_COST_CENTER_POLICY_JSON",
+        '{"by_namespace":{"sparkpilot-team-a":"cc-analytics"}}',
     )
     get_settings.cache_clear()
 
@@ -356,11 +360,33 @@ def test_start_job_run_omits_empty_spark_submit_parameters(monkeypatch) -> None:
     spark_driver = captured_request["jobDriver"]["sparkSubmitJobDriver"]
     assert spark_driver["entryPoint"] == "s3://bucket/jobs/demo.py"
     assert spark_driver["entryPointArguments"] == ["s3://bucket/input/events.json"]
-    assert "sparkSubmitParameters" not in spark_driver
+    parameters = spark_driver["sparkSubmitParameters"]
+    assert "--conf spark.kubernetes.driver.label.sparkpilot-team=tenant-123" in parameters
+    assert "--conf spark.kubernetes.executor.label.sparkpilot-team=tenant-123" in parameters
+    assert "--conf spark.kubernetes.driver.label.sparkpilot-project=sparkpilot-team-a" in parameters
+    assert "--conf spark.kubernetes.executor.label.sparkpilot-project=sparkpilot-team-a" in parameters
+    assert "--conf spark.kubernetes.driver.label.sparkpilot-cost-center=cc-analytics" in parameters
+    assert "--conf spark.kubernetes.executor.label.sparkpilot-cost-center=cc-analytics" in parameters
+    run_name = str(captured_request["name"])
+    assert len(run_name) <= 64
+    assert run_name.endswith("run-123")
     assert captured_request["tags"]["sparkpilot:run_id"] == "run-123"
     assert captured_request["tags"]["sparkpilot:team"] == "tenant-123"
+    assert captured_request["tags"]["sparkpilot:project"] == "sparkpilot-team-a"
+    assert captured_request["tags"]["sparkpilot:cost_center"] == "cc-analytics"
 
     get_settings.cache_clear()
+
+
+def test_emr_job_run_name_is_length_safe_and_sanitized() -> None:
+    name = _emr_job_run_name(
+        "live matrix job with spaces and symbols !!! " + ("x" * 100),
+        "aba75407-9a39-4212-be08-fcfd180aeeeb",
+    )
+    assert len(name) <= 64
+    assert name.endswith("fcfd180aeeeb")
+    assert " " not in name
+    assert "!" not in name
 
 
 def test_check_execution_role_trust_policy_missing_statement_is_actionable(monkeypatch) -> None:
@@ -461,6 +487,168 @@ def test_check_customer_role_dispatch_permissions_detects_denies(monkeypatch) ->
     assert result["dispatch_actions_allowed"] is False
     assert result["pass_role_allowed"] is False
     assert "emr-containers:DescribeJobRun" in (result["denied_dispatch_actions"] or "")
+    get_settings.cache_clear()
+
+
+def test_validate_virtual_cluster_reference_success(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakeEmrContainersClient:
+        def describe_virtual_cluster(self, **kwargs):
+            assert kwargs["id"] == "vc-abc123"
+            return {
+                "virtualCluster": {
+                    "state": "RUNNING",
+                    "containerProvider": {
+                        "id": "customer-shared",
+                        "type": "EKS",
+                        "info": {"eksInfo": {"namespace": "sparkpilot-team"}},
+                    },
+                }
+            }
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr-containers"
+            assert region_name == "us-east-1"
+            return _FakeEmrContainersClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace=None,
+        emr_virtual_cluster_id="vc-abc123",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+    result = EmrEksClient().validate_virtual_cluster_reference(environment, require_running=True)
+    assert result["valid"] is True
+    assert result["state"] == "RUNNING"
+    assert result["cluster_name"] == "customer-shared"
+    assert result["namespace"] == "sparkpilot-team"
+    get_settings.cache_clear()
+
+
+def test_validate_virtual_cluster_reference_requires_running_state(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakeEmrContainersClient:
+        def describe_virtual_cluster(self, **kwargs):
+            return {
+                "virtualCluster": {
+                    "state": "TERMINATED",
+                    "containerProvider": {
+                        "id": "customer-shared",
+                        "type": "EKS",
+                        "info": {"eksInfo": {"namespace": "sparkpilot-team"}},
+                    },
+                }
+            }
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr-containers"
+            assert region_name == "us-east-1"
+            return _FakeEmrContainersClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace="sparkpilot-team",
+        emr_virtual_cluster_id="vc-abc123",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        EmrEksClient().validate_virtual_cluster_reference(environment, require_running=True)
+    message = str(exc_info.value)
+    assert "vc-abc123" in message
+    assert "RUNNING" in message
+    assert "provisioning_emr" in message
+    get_settings.cache_clear()
+
+
+def test_validate_virtual_cluster_reference_resource_not_found_is_actionable(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakeEmrContainersClient:
+        def describe_virtual_cluster(self, **_kwargs):
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "ResourceNotFoundException",
+                        "Message": "Virtual cluster not found",
+                    }
+                },
+                "DescribeVirtualCluster",
+            )
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr-containers"
+            assert region_name == "us-east-1"
+            return _FakeEmrContainersClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace="sparkpilot-team",
+        emr_virtual_cluster_id="vc-missing",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        EmrEksClient().validate_virtual_cluster_reference(environment, require_running=False)
+    message = str(exc_info.value)
+    assert "vc-missing" in message
+    assert "not found" in message.lower()
+    assert "provisioning_emr" in message
+    get_settings.cache_clear()
+
+
+def test_validate_virtual_cluster_reference_access_denied_is_actionable(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakeEmrContainersClient:
+        def describe_virtual_cluster(self, **_kwargs):
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "AccessDeniedException",
+                        "Message": "User is not authorized to perform emr-containers:DescribeVirtualCluster",
+                    }
+                },
+                "DescribeVirtualCluster",
+            )
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr-containers"
+            assert region_name == "us-east-1"
+            return _FakeEmrContainersClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace="sparkpilot-team",
+        emr_virtual_cluster_id="vc-access-denied",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        EmrEksClient().validate_virtual_cluster_reference(environment, require_running=False)
+    message = str(exc_info.value)
+    assert "Access denied while validating EMR virtual cluster reference." in message
+    assert "emr-containers:DescribeVirtualCluster" in message
+    assert "eks:DescribeCluster" in message
     get_settings.cache_clear()
 
 

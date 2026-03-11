@@ -1,7 +1,6 @@
 """Provisioning worker: brings environments from 'queued' to 'ready'."""
 
 import logging
-import uuid
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -9,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from sparkpilot.audit import write_audit_event
 from sparkpilot.aws_clients import EmrEksClient
+from sparkpilot.config import get_settings
 from sparkpilot.exceptions import ProvisioningPermanentError
 from sparkpilot.models import Environment, ProvisioningOperation
 from sparkpilot.terraform_orchestrator import TerraformApplyResult, TerraformOrchestrator, TerraformPlanResult
@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PROVISIONING_STEPS = [
-    "validating_bootstrap",
     "provisioning_network",
     "provisioning_eks",
     "provisioning_emr",
+    "validating_bootstrap",
     "validating_runtime",
 ]
 FULL_BYOC_TERRAFORM_STAGES = {"provisioning_network", "provisioning_eks", "provisioning_emr"}
@@ -49,6 +49,14 @@ KNOWN_GOOD_VPC_ENDPOINTS = [
     "eks-auth",
     "elasticloadbalancing",
 ]
+REQUIRED_FULL_BYOC_OUTPUTS = ("eks_cluster_arn", "emr_virtual_cluster_id")
+FULL_BYOC_RUNTIME_PREFLIGHT_CODES = {
+    "config.execution_role",
+    "config.log_group_prefix",
+    "config.emr_release_label",
+    "environment.customer_role_arn",
+    "environment.virtual_cluster",
+}
 
 
 def _new_full_byoc_checkpoint() -> dict[str, Any]:
@@ -133,6 +141,36 @@ def _record_full_byoc_stage_artifact(
     }
     if isinstance(result, TerraformPlanResult):
         entry["plan_path"] = result.plan_path
+    artifacts.append(entry)
+    if len(artifacts) > 40:
+        artifacts = artifacts[-40:]
+    updated = dict(checkpoint)
+    updated["artifacts"] = artifacts
+    return updated
+
+
+def _record_full_byoc_validation_artifact(
+    checkpoint: dict[str, Any],
+    *,
+    step: str,
+    attempt: int,
+    ok: bool,
+    summary: str,
+    details: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    artifacts = checkpoint.get("artifacts", [])
+    if not isinstance(artifacts, list):
+        artifacts = []
+    entry: dict[str, Any] = {
+        "stage": step,
+        "attempt": attempt,
+        "kind": "validation",
+        "ok": ok,
+        "summary": summary,
+        "error": error,
+        "details": details or {},
+    }
     artifacts.append(entry)
     if len(artifacts) > 40:
         artifacts = artifacts[-40:]
@@ -273,11 +311,48 @@ def _audit_byoc_lite_event(
     )
 
 
-def _assign_placeholder_environment_resources(environment: Environment) -> None:
-    environment.eks_cluster_arn = (
-        f"arn:aws:eks:{environment.region}:000000000000:cluster/sparkpilot-{environment.id[:8]}"
-    )
-    environment.emr_virtual_cluster_id = f"vc-{uuid.uuid4().hex[:10]}"
+def _extract_terraform_output(outputs: dict[str, Any], key: str) -> str:
+    raw = outputs.get(key)
+    if isinstance(raw, dict):
+        candidate = raw.get("value")
+    else:
+        candidate = raw
+    if not isinstance(candidate, str):
+        return ""
+    return candidate.strip()
+
+
+def _account_id_from_role_arn(role_arn: str) -> str:
+    parts = role_arn.split(":")
+    if len(parts) >= 5 and len(parts[4]) == 12 and parts[4].isdigit():
+        return parts[4]
+    return "123456789012"
+
+
+def _assign_full_byoc_outputs(environment: Environment, outputs: dict[str, Any]) -> None:
+    values = {
+        key: _extract_terraform_output(outputs, key)
+        for key in REQUIRED_FULL_BYOC_OUTPUTS
+    }
+    missing = [key for key, value in values.items() if not value]
+    if missing:
+        if get_settings().dry_run_mode:
+            account_id = _account_id_from_role_arn(environment.customer_role_arn)
+            if not values["eks_cluster_arn"]:
+                values["eks_cluster_arn"] = (
+                    f"arn:aws:eks:{environment.region}:{account_id}:cluster/sparkpilot-{environment.id[:8]}"
+                )
+            if not values["emr_virtual_cluster_id"]:
+                values["emr_virtual_cluster_id"] = f"vc-dryrun-{environment.id[:8]}"
+        else:
+            missing_csv = ", ".join(missing)
+            raise ValueError(
+                "Full BYOC Terraform apply completed but required outputs are missing: "
+                f"{missing_csv}. "
+                "Define these outputs in infra/terraform/full-byoc and retry provisioning."
+            )
+    environment.eks_cluster_arn = values["eks_cluster_arn"]
+    environment.emr_virtual_cluster_id = values["emr_virtual_cluster_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +536,114 @@ def _record_full_byoc_stage_failure(
     raise ValueError(f"Full BYOC stage '{step}' {phase} failed: {failure_message}")
 
 
+def _run_full_byoc_bootstrap_validation(
+    *,
+    environment: Environment,
+    emr: EmrEksClient,
+) -> dict[str, Any]:
+    settings = get_settings()
+    if settings.dry_run_mode and (not environment.eks_cluster_arn or not environment.emr_virtual_cluster_id):
+        _assign_full_byoc_outputs(environment, {})
+
+    missing_outputs: list[str] = []
+    if not environment.eks_cluster_arn:
+        missing_outputs.append("eks_cluster_arn")
+    if not environment.emr_virtual_cluster_id:
+        missing_outputs.append("emr_virtual_cluster_id")
+    if missing_outputs:
+        missing_csv = ", ".join(missing_outputs)
+        raise ValueError(
+            "Full BYOC bootstrap validation failed: required Terraform outputs are missing "
+            f"({missing_csv}). Remediation: ensure provisioning_emr exports these outputs and rerun provisioning."
+        )
+
+    virtual_cluster = emr.validate_virtual_cluster_reference(environment, require_running=False)
+    discovered_namespace = str(virtual_cluster.get("namespace") or "").strip()
+    if discovered_namespace:
+        environment.eks_namespace = discovered_namespace
+    if not environment.eks_namespace:
+        raise ValueError(
+            "Full BYOC bootstrap validation failed: EKS namespace could not be inferred from the EMR virtual cluster. "
+            "Remediation: ensure provisioning_emr creates a namespace-scoped virtual cluster and surfaces namespace output."
+        )
+
+    oidc_result = emr.check_oidc_provider_association(environment)
+    if not bool(oidc_result.get("associated")):
+        cluster_name = str(oidc_result.get("cluster_name") or "<cluster-name>")
+        raise ValueError(
+            "Full BYOC bootstrap validation failed: EKS OIDC provider association is missing. "
+            f"Remediation: run `eksctl utils associate-iam-oidc-provider --cluster {cluster_name} "
+            f"--region {environment.region} --approve` in the customer account."
+        )
+
+    trust_result = emr.check_execution_role_trust_policy(environment)
+    return {
+        "eks_cluster_arn": environment.eks_cluster_arn,
+        "eks_namespace": environment.eks_namespace,
+        "virtual_cluster": virtual_cluster,
+        "oidc_association": oidc_result,
+        "execution_role_trust": trust_result,
+    }
+
+
+def _run_full_byoc_runtime_validation(
+    db: Session,
+    *,
+    environment: Environment,
+    emr: EmrEksClient,
+) -> dict[str, Any]:
+    virtual_cluster = emr.validate_virtual_cluster_reference(environment, require_running=True)
+    discovered_namespace = str(virtual_cluster.get("namespace") or "").strip()
+    if discovered_namespace:
+        environment.eks_namespace = discovered_namespace
+    if not environment.eks_namespace:
+        raise ValueError(
+            "Full BYOC runtime validation failed: EKS namespace is missing. "
+            "Remediation: ensure provisioning_emr outputs a namespace-bound EMR virtual cluster."
+        )
+
+    preflight = _build_preflight(
+        environment,
+        require_environment_ready=False,
+        require_virtual_cluster=True,
+        db=db,
+    )
+    runtime_checks = [
+        check
+        for check in preflight["checks"]
+        if check.get("code") in FULL_BYOC_RUNTIME_PREFLIGHT_CODES
+    ]
+    failed_runtime_checks = [check for check in runtime_checks if check.get("status") == "fail"]
+    if failed_runtime_checks:
+        raise ValueError(
+            "Full BYOC runtime validation failed: "
+            + _preflight_summary(runtime_checks, include_remediation=True)
+        )
+
+    trust_result = emr.check_execution_role_trust_policy(environment)
+    permissions = emr.check_customer_role_dispatch_permissions(environment)
+    dispatch_allowed = bool(permissions.get("dispatch_actions_allowed"))
+    pass_role_allowed = bool(permissions.get("pass_role_allowed"))
+    if not dispatch_allowed or not pass_role_allowed:
+        denied_dispatch_actions = str(permissions.get("denied_dispatch_actions") or "").strip()
+        raise ValueError(
+            "Full BYOC runtime validation failed: customer role dispatch readiness is incomplete. "
+            f"Denied dispatch actions: {denied_dispatch_actions or 'none reported'}, "
+            f"iam:PassRole allowed: {pass_role_allowed}. "
+            "Remediation: grant customer_role_arn emr-containers:StartJobRun, "
+            "emr-containers:DescribeJobRun, emr-containers:CancelJobRun, and iam:PassRole "
+            "on SPARKPILOT_EMR_EXECUTION_ROLE_ARN."
+        )
+
+    return {
+        "virtual_cluster": virtual_cluster,
+        "runtime_preflight_summary": _preflight_summary(runtime_checks, include_warnings=True),
+        "runtime_preflight_checks": runtime_checks,
+        "execution_role_trust": trust_result,
+        "dispatch_permissions": permissions,
+    }
+
+
 def _run_full_byoc_step(
     db: Session,
     *,
@@ -470,16 +653,69 @@ def _run_full_byoc_step(
     step: str,
     checkpoint: dict[str, Any],
     terraform: TerraformOrchestrator,
-) -> dict[str, Any]:
+    emr: EmrEksClient,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     operation.state = step
     operation.step = step
     attempts = _checkpoint_attempts(checkpoint)
     if step not in FULL_BYOC_TERRAFORM_STAGES:
-        operation.message = f"{step} placeholder: no validation performed."
-        return _checkpoint_with_updates(
+        stage_attempt = attempts.get(step, 0) + 1
+        operation.message = f"{step}: running full-BYOC validation checks (attempt {stage_attempt})."
+        try:
+            if step == "validating_bootstrap":
+                details = _run_full_byoc_bootstrap_validation(
+                    environment=environment,
+                    emr=emr,
+                )
+                summary = "bootstrap prerequisites validated (EKS/OIDC/trust + virtual cluster wiring)."
+            elif step == "validating_runtime":
+                details = _run_full_byoc_runtime_validation(
+                    db,
+                    environment=environment,
+                    emr=emr,
+                )
+                summary = "runtime readiness validated (preflight + execution-role trust + dispatch permissions)."
+            else:
+                raise ValueError(f"Unsupported full-BYOC validation step '{step}'.")
+        except ValueError as exc:
+            checkpoint = _record_full_byoc_validation_artifact(
+                checkpoint,
+                step=step,
+                attempt=stage_attempt,
+                ok=False,
+                summary=f"{step} validation failed.",
+                error=str(exc),
+            )
+            _record_full_byoc_stage_failure(
+                db,
+                actor=actor,
+                environment=environment,
+                operation=operation,
+                step=step,
+                stage_attempt=stage_attempt,
+                phase="validation",
+                failure_message=str(exc),
+                checkpoint=checkpoint,
+                attempts=attempts,
+            )
+
+        attempts[step] = stage_attempt
+        checkpoint = _record_full_byoc_validation_artifact(
             checkpoint,
-            attempts=attempts,
-            last_successful_stage=step,
+            step=step,
+            attempt=stage_attempt,
+            ok=True,
+            summary=summary,
+            details=details,
+        )
+        operation.message = f"{step}: {summary}"
+        return (
+            _checkpoint_with_updates(
+                checkpoint,
+                attempts=attempts,
+                last_successful_stage=step,
+            ),
+            {},
         )
 
     stage_attempt = attempts.get(step, 0) + 1
@@ -531,12 +767,15 @@ def _run_full_byoc_step(
         )
 
     attempts[step] = stage_attempt
-    return _checkpoint_with_updates(
-        checkpoint,
-        attempts=attempts,
-        last_successful_stage=step,
-        workspace=context.workspace,
-        state_key=context.state_key,
+    return (
+        _checkpoint_with_updates(
+            checkpoint,
+            attempts=attempts,
+            last_successful_stage=step,
+            workspace=context.workspace,
+            state_key=context.state_key,
+        ),
+        dict(apply_result.outputs or {}),
     )
 
 
@@ -547,11 +786,13 @@ def _run_full_byoc_provisioning(
     environment: Environment,
     operation: ProvisioningOperation,
     terraform: TerraformOrchestrator,
+    emr: EmrEksClient,
 ) -> None:
     checkpoint = _load_full_byoc_checkpoint(db, operation.id, environment.id)
     start_idx = _checkpoint_resume_index(checkpoint, operation)
+    terraform_outputs: dict[str, Any] = {}
     for step in PROVISIONING_STEPS[start_idx:]:
-        checkpoint = _run_full_byoc_step(
+        checkpoint, step_outputs = _run_full_byoc_step(
             db,
             actor=actor,
             environment=environment,
@@ -559,7 +800,11 @@ def _run_full_byoc_provisioning(
             step=step,
             checkpoint=checkpoint,
             terraform=terraform,
+            emr=emr,
         )
+        if step_outputs:
+            terraform_outputs.update(step_outputs)
+            _assign_full_byoc_outputs(environment, terraform_outputs)
         _write_full_byoc_checkpoint(
             db,
             actor=actor,
@@ -569,7 +814,8 @@ def _run_full_byoc_provisioning(
         )
         operation.worker_claimed_at = _now()
         db.commit()
-    _assign_placeholder_environment_resources(environment)
+    if not environment.eks_cluster_arn or not environment.emr_virtual_cluster_id:
+        _assign_full_byoc_outputs(environment, terraform_outputs)
 
 
 # ---------------------------------------------------------------------------
@@ -601,9 +847,10 @@ def process_provisioning_once(db: Session, *, actor: str = "worker:provisioner")
                         environment=environment,
                         operation=operation,
                         terraform=terraform,
+                        emr=emr,
                     )
                 else:
-                    _assign_placeholder_environment_resources(environment)
+                    raise ValueError(f"Unsupported provisioning_mode '{environment.provisioning_mode}'.")
                 _set_provisioning_ready(
                     db,
                     actor=actor,
