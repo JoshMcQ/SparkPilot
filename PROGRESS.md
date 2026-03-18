@@ -23,7 +23,7 @@ Last updated: 2026-03-18 18:20 ET
 ## Phase 2 — Open critical path
 
 - [x] Complete #3 preflight IAM/IRSA validation evidence and closure package. <!-- completed 2026-03-18 19:03 ET; evidence refresh posted in issue #3 comment with live run.preflight_failed + run.preflight_diagnostic artifacts -->
-- [ ] Complete #7 UI BYOC vs BYOC-Lite differentiation and validation package.
+- [x] Complete #7 UI BYOC vs BYOC-Lite differentiation and validation package. <!-- completed 2026-03-18 19:06 ET; live evidence bundle + runtime IDs posted in issue #7 comment -->
 - [ ] Complete #75 production IdP login + subject mapping evidence package.
 - [ ] Complete #81 access-page guided workflow polish + validation package.
 
