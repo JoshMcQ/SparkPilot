@@ -17,7 +17,15 @@ from sparkpilot.terraform_orchestrator import TerraformApplyResult, TerraformPla
 
 
 def setup_function() -> None:
-    Base.metadata.drop_all(bind=engine)
+    import sparkpilot.models  # noqa: F401 — ensure all tables are registered before drop
+    from sqlalchemy import text
+    engine.dispose()
+    # Disable FK constraints so tables can be dropped in any order
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys = OFF"))
+    Base.metadata.drop_all(bind=engine, checkfirst=True)
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys = ON"))
     init_db()
 
 

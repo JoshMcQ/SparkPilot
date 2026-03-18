@@ -70,7 +70,7 @@ def init_db() -> None:
     from sparkpilot.services import ensure_default_golden_paths
 
     if _is_dev_like_environment():
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=engine, checkfirst=True)
     else:
         _require_migrated_schema()
 

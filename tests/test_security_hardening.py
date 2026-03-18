@@ -8,7 +8,14 @@ from sparkpilot.db import Base, engine, init_db
 
 
 def setup_function() -> None:
-    Base.metadata.drop_all(bind=engine)
+    import sparkpilot.models  # noqa: F401 -- register all tables before drop
+    # Drop with sorted tables to avoid FK ordering issues, then recreate
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text('PRAGMA foreign_keys = OFF'))
+    Base.metadata.drop_all(bind=engine, checkfirst=True)
+    with engine.begin() as conn:
+        conn.execute(text('PRAGMA foreign_keys = ON'))
     init_db()
 
 
