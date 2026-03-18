@@ -3872,3 +3872,193 @@ def test_identity_mode_field_returned() -> None:
     assert resp.status_code == 200
     env = resp.json()
     assert "identity_mode" in env
+
+
+# ---------------------------------------------------------------------------
+# EMR Security Configuration tests (#53)
+# ---------------------------------------------------------------------------
+
+
+def _create_env_with_sec_config(client, suffix: str, sec_config_id: str | None = None):
+    """Helper to create a tenant+env optionally with security_configuration_id."""
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": f"SecConfig Tenant {suffix}"},
+        headers={"Idempotency-Key": f"t-sc-{suffix}", "X-Actor": "test-user"},
+    ).json()
+    env_payload = {
+        "tenant_id": tenant["id"],
+        "region": "us-east-1",
+        "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+    }
+    if sec_config_id:
+        env_payload["security_configuration_id"] = sec_config_id
+    op_resp = client.post(
+        "/v1/environments",
+        json=env_payload,
+        headers={"Idempotency-Key": f"e-sc-{suffix}", "X-Actor": "test-user"},
+    )
+    assert op_resp.status_code == 201, op_resp.text
+    env_id = op_resp.json()["environment_id"]
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+    return {"tenant": tenant, "env_id": env_id}
+
+
+def test_security_configuration_id_persisted_on_environment() -> None:
+    """Environment response includes security_configuration_id field (#53)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "persist", sec_config_id="sc-test-abc123")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}")
+    assert resp.status_code == 200
+    env = resp.json()
+    assert env["security_configuration_id"] == "sc-test-abc123"
+
+
+def test_security_configuration_id_null_by_default() -> None:
+    """Environment response has null security_configuration_id when not set (#53)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "null-sc")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}")
+    assert resp.status_code == 200
+    assert resp.json()["security_configuration_id"] is None
+
+
+def test_security_configuration_preflight_pass(monkeypatch) -> None:
+    """Preflight passes when security configuration exists (#53)."""
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.EmrEksClient.describe_security_configuration",
+        lambda self, env, sc_id: {
+            "id": sc_id,
+            "name": "test-sec-config",
+            "securityConfigurationData": {},
+        },
+    )
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "pf-pass", sec_config_id="sc-pf-pass")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["emr.security_configuration"]["status"] == "pass"
+    assert "exists" in checks["emr.security_configuration"]["message"].lower()
+
+
+def test_security_configuration_preflight_fail(monkeypatch) -> None:
+    """Preflight fails when security configuration not found (#53)."""
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.EmrEksClient.describe_security_configuration",
+        lambda self, env, sc_id: (_ for _ in ()).throw(
+            ValueError(f"Security configuration '{sc_id}' not found.")
+        ),
+    )
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "pf-fail", sec_config_id="sc-nonexistent")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["emr.security_configuration"]["status"] == "fail"
+    assert "not found" in checks["emr.security_configuration"]["message"].lower()
+
+
+def test_security_configuration_policy_blocks_disallowed() -> None:
+    """Policy engine blocks disallowed security configuration (#53)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "policy-block", sec_config_id="sc-unapproved")
+
+    # Create policy allowing only specific configs
+    policy_resp = client.post(
+        "/v1/policies",
+        json={
+            "name": "Allowed SecConfigs",
+            "scope": "global",
+            "rule_type": "allowed_security_configurations",
+            "config": {"allowed": ["sc-approved-1", "sc-approved-2"]},
+            "enforcement": "hard",
+        },
+        headers={"X-Actor": "test-user"},
+    )
+    assert policy_resp.status_code == 201
+
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["policy.allowed_security_configurations"]["status"] == "fail"
+    assert "not in the allowed list" in checks["policy.allowed_security_configurations"]["message"]
+
+
+def test_security_configuration_policy_passes_approved() -> None:
+    """Policy engine passes approved security configuration (#53)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "policy-pass", sec_config_id="sc-approved-1")
+
+    client.post(
+        "/v1/policies",
+        json={
+            "name": "Allowed SecConfigs Pass",
+            "scope": "global",
+            "rule_type": "allowed_security_configurations",
+            "config": {"allowed": ["sc-approved-1", "sc-approved-2"]},
+            "enforcement": "hard",
+        },
+        headers={"X-Actor": "test-user"},
+    )
+
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["policy.allowed_security_configurations"]["status"] == "pass"
+
+
+def test_security_configuration_policy_requires_config() -> None:
+    """Policy engine fails when security configuration is required but missing (#53)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "policy-require")  # no sec config
+
+    client.post(
+        "/v1/policies",
+        json={
+            "name": "Require SecConfig",
+            "scope": "global",
+            "rule_type": "allowed_security_configurations",
+            "config": {"require_security_configuration": True},
+            "enforcement": "hard",
+        },
+        headers={"X-Actor": "test-user"},
+    )
+
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["policy.allowed_security_configurations"]["status"] == "fail"
+    assert "required by policy" in checks["policy.allowed_security_configurations"]["message"]
+
+
+def test_security_configuration_create_endpoint() -> None:
+    """Create security configuration endpoint returns result (#53)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "create-ep")
+    resp = client.post(
+        f"/v1/environments/{fixtures['env_id']}/security-configurations",
+        json={
+            "name": "test-sec-config",
+            "virtual_cluster_id": "vc-test-123",
+            "encryption_config": {"inTransitEncryptionConfiguration": {}},
+        },
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["name"] == "test-sec-config"
+    assert data["id"]
+
+
+def test_security_configuration_list_endpoint() -> None:
+    """List security configurations endpoint returns list (#53)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "list-ep")
+    resp = client.get(
+        f"/v1/environments/{fixtures['env_id']}/security-configurations",
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)

@@ -1001,6 +1001,129 @@ class EmrEksClient:
                 ) from None
             raise
 
+    # ---- EMR on EKS Security Configuration APIs (#53) ----
+
+    def create_security_configuration(
+        self,
+        environment: Environment,
+        *,
+        name: str,
+        encryption_config: dict | None = None,
+        authorization_config: dict | None = None,
+    ) -> dict[str, str]:
+        """Create an EMR on EKS SecurityConfiguration via emr-containers API."""
+        if not environment.emr_virtual_cluster_id:
+            raise ValueError("Missing EMR virtual cluster ID.")
+
+        sec_config_data: dict = {}
+        if authorization_config:
+            sec_config_data["authorizationConfiguration"] = authorization_config
+        # Future: encryptionConfiguration when supported by emr-containers
+        # For now we store the intent and create via emr-containers API
+        if encryption_config:
+            sec_config_data["encryptionConfiguration"] = encryption_config
+
+        if self.settings.dry_run_mode:
+            import uuid as _uuid
+            return {
+                "id": f"sc-{_uuid.uuid4().hex[:12]}",
+                "name": name,
+                "virtual_cluster_id": environment.emr_virtual_cluster_id,
+                "mode": "dry_run",
+            }
+
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        emr_client = session.client("emr-containers", region_name=environment.region)
+        try:
+            import uuid as _uuid
+            resp = emr_client.create_security_configuration(
+                clientToken=str(_uuid.uuid4()),
+                name=name,
+                securityConfigurationData=sec_config_data,
+            )
+            return {
+                "id": resp.get("id", ""),
+                "name": resp.get("name", name),
+                "arn": resp.get("arn", ""),
+            }
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in {"AccessDeniedException", "AccessDenied"}:
+                raise ValueError(
+                    "Access denied creating security configuration. "
+                    "Grant emr-containers:CreateSecurityConfiguration."
+                ) from None
+            raise
+
+    def describe_security_configuration(
+        self,
+        environment: Environment,
+        security_configuration_id: str,
+    ) -> dict:
+        """Describe an EMR on EKS SecurityConfiguration."""
+        if self.settings.dry_run_mode:
+            return {
+                "id": security_configuration_id,
+                "name": f"dry-run-secconfig-{security_configuration_id[:8]}",
+                "securityConfigurationData": {},
+                "mode": "dry_run",
+            }
+
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        emr_client = session.client("emr-containers", region_name=environment.region)
+        try:
+            resp = emr_client.describe_security_configuration(id=security_configuration_id)
+            sc = resp.get("securityConfiguration", {})
+            return {
+                "id": sc.get("id", security_configuration_id),
+                "name": sc.get("name", ""),
+                "arn": sc.get("arn", ""),
+                "securityConfigurationData": sc.get("securityConfigurationData", {}),
+                "createdAt": str(sc.get("createdAt", "")),
+            }
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code == "ResourceNotFoundException":
+                raise ValueError(
+                    f"Security configuration '{security_configuration_id}' not found."
+                ) from None
+            if code in {"AccessDeniedException", "AccessDenied"}:
+                raise ValueError(
+                    "Access denied describing security configuration. "
+                    "Grant emr-containers:DescribeSecurityConfiguration."
+                ) from None
+            raise
+
+    def list_security_configurations(
+        self,
+        environment: Environment,
+    ) -> list[dict]:
+        """List EMR on EKS SecurityConfigurations for the virtual cluster."""
+        if not environment.emr_virtual_cluster_id:
+            raise ValueError("Missing EMR virtual cluster ID.")
+
+        if self.settings.dry_run_mode:
+            return []
+
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        emr_client = session.client("emr-containers", region_name=environment.region)
+        try:
+            configs = []
+            paginator = emr_client.get_paginator("list_security_configurations")
+            for page in paginator.paginate(
+                virtualClusterId=environment.emr_virtual_cluster_id,
+            ):
+                configs.extend(page.get("securityConfigurations", []))
+            return configs
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in {"AccessDeniedException", "AccessDenied"}:
+                raise ValueError(
+                    "Access denied listing security configurations. "
+                    "Grant emr-containers:ListSecurityConfigurations."
+                ) from None
+            raise
+
     def validate_virtual_cluster_reference(
         self,
         environment: Environment,

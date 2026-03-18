@@ -43,6 +43,8 @@ from sparkpilot.schemas import (
     QueueUtilizationResponse,
     RunCreateRequest,
     RunResponse,
+    SecurityConfigurationCreateRequest,
+    SecurityConfigurationResponse,
     TeamCreateRequest,
     TeamEnvironmentScopeResponse,
     TenantCreateRequest,
@@ -1562,3 +1564,129 @@ def delete_policy_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+# ---------------------------------------------------------------------------
+# Security Configuration endpoints (#53)
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/v1/environments/{environment_id}/security-configurations",
+    response_model=SecurityConfigurationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_security_configuration_endpoint(
+    environment_id: str,
+    req: SecurityConfigurationCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    actor, source_ip = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    env = db.get(Environment, environment_id)
+    if env is None:
+        raise HTTPException(status_code=404, detail="Environment not found.")
+    from sparkpilot.aws_clients import EmrEksClient
+    from sparkpilot.audit import write_audit_event
+    emr = EmrEksClient()
+    result = emr.create_security_configuration(
+        env,
+        name=req.name,
+        encryption_config=req.encryption_config,
+        authorization_config=req.authorization_config,
+    )
+    write_audit_event(
+        db,
+        actor=actor,
+        source_ip=source_ip,
+        action="security_configuration.created",
+        entity_type="security_configuration",
+        entity_id=result.get("id", ""),
+        details={
+            "environment_id": environment_id,
+            "name": req.name,
+            "result": result,
+        },
+    )
+    db.commit()
+    return _response(
+        {
+            "id": result.get("id", ""),
+            "name": result.get("name", req.name),
+            "virtual_cluster_id": req.virtual_cluster_id,
+            "encryption_config": req.encryption_config,
+            "authorization_config": req.authorization_config,
+            "created_at": datetime.now(UTC).isoformat(),
+        },
+        SecurityConfigurationResponse,
+    )
+
+
+@app.get(
+    "/v1/environments/{environment_id}/security-configurations",
+    response_model=list[SecurityConfigurationResponse],
+)
+def list_security_configurations_endpoint(
+    environment_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Operator or admin role required.")
+    env = db.get(Environment, environment_id)
+    if env is None:
+        raise HTTPException(status_code=404, detail="Environment not found.")
+    from sparkpilot.aws_clients import EmrEksClient
+    emr = EmrEksClient()
+    configs = emr.list_security_configurations(env)
+    return [
+        _response(
+            {
+                "id": c.get("id", ""),
+                "name": c.get("name", ""),
+                "virtual_cluster_id": env.emr_virtual_cluster_id or "",
+                "encryption_config": c.get("securityConfigurationData", {}).get("encryptionConfiguration"),
+                "authorization_config": c.get("securityConfigurationData", {}).get("authorizationConfiguration"),
+                "created_at": str(c.get("createdAt", "")),
+            },
+            SecurityConfigurationResponse,
+        )
+        for c in configs
+    ]
+
+
+@app.get(
+    "/v1/environments/{environment_id}/security-configurations/{config_id}",
+    response_model=SecurityConfigurationResponse,
+)
+def describe_security_configuration_endpoint(
+    environment_id: str,
+    config_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Operator or admin role required.")
+    env = db.get(Environment, environment_id)
+    if env is None:
+        raise HTTPException(status_code=404, detail="Environment not found.")
+    from sparkpilot.aws_clients import EmrEksClient
+    emr = EmrEksClient()
+    try:
+        result = emr.describe_security_configuration(env, config_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    sc_data = result.get("securityConfigurationData", {})
+    return _response(
+        {
+            "id": result.get("id", config_id),
+            "name": result.get("name", ""),
+            "virtual_cluster_id": env.emr_virtual_cluster_id or "",
+            "encryption_config": sc_data.get("encryptionConfiguration"),
+            "authorization_config": sc_data.get("authorizationConfiguration"),
+            "created_at": result.get("createdAt"),
+        },
+        SecurityConfigurationResponse,
+    )

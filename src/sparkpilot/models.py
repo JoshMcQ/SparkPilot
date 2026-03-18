@@ -119,6 +119,7 @@ class Environment(Base):
     lf_catalog_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     lf_data_access_scope_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     identity_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    security_configuration_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -432,6 +433,7 @@ POLICY_RULE_TYPES = {
     "allowed_golden_paths",
     "allowed_release_labels",
     "allowed_instance_types",
+    "allowed_security_configurations",
 }
 
 POLICY_ENFORCEMENT_MODES = {"hard", "soft"}

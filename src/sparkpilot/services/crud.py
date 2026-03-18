@@ -354,6 +354,7 @@ def create_environment(
         lake_formation_enabled=req.lake_formation_enabled,
         lf_catalog_id=req.lf_catalog_id,
         lf_data_access_scope_json=req.lf_data_access_scope,
+        security_configuration_id=req.security_configuration_id,
         max_concurrent_runs=req.quotas.max_concurrent_runs,
         max_vcpu=req.quotas.max_vcpu,
         max_run_seconds=req.quotas.max_run_seconds,

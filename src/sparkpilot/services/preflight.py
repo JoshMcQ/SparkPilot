@@ -600,6 +600,48 @@ def _check_yunikorn_queue_capacity(
 
 
 # ---------------------------------------------------------------------------
+# Security Configuration check (#53)
+# ---------------------------------------------------------------------------
+
+
+def _add_security_configuration_check(
+    *,
+    environment: Environment,
+    add_check: Callable[..., None],
+) -> None:
+    """Validate that a referenced security configuration exists via EMR API."""
+    sec_config_id = getattr(environment, "security_configuration_id", None)
+    if not sec_config_id:
+        return  # no security configuration referenced, nothing to check
+
+    from sparkpilot.aws_clients import EmrEksClient
+
+    emr = EmrEksClient()
+    try:
+        result = emr.describe_security_configuration(environment, sec_config_id)
+        add_check(
+            code="emr.security_configuration",
+            status_value="pass",
+            message=f"Security configuration '{result.get('name', sec_config_id)}' exists and is accessible.",
+            details={
+                "security_configuration_id": sec_config_id,
+                "name": str(result.get("name", "")),
+            },
+        )
+    except ValueError as exc:
+        add_check(
+            code="emr.security_configuration",
+            status_value="fail",
+            message=str(exc),
+            remediation=(
+                "Verify the security configuration ID is correct and the customer role "
+                "has emr-containers:DescribeSecurityConfiguration permission."
+            ),
+            details={"security_configuration_id": sec_config_id},
+        )
+
+
+# ---------------------------------------------------------------------------
 # Policy engine integration (#39)
 # ---------------------------------------------------------------------------
 
@@ -632,6 +674,7 @@ def _add_policy_engine_checks(
             requested_resources=requested_resources,
             spark_conf=spark_conf,
             golden_path=golden_path,
+            security_configuration_id=getattr(environment, "security_configuration_id", None),
         )
 
     if db is not None:
@@ -784,6 +827,12 @@ def _build_preflight(
     _add_lake_formation_fgac_checks(
         environment=environment,
         db=db,
+        add_check=add_check,
+    )
+
+    # Security Configuration existence check (#53)
+    _add_security_configuration_check(
+        environment=environment,
         add_check=add_check,
     )
 

@@ -292,6 +292,33 @@ def _evaluate_allowed_instance_types(
     return {"passed": True, "message": f"Instance type '{instance_type}' is allowed."}
 
 
+def _evaluate_allowed_security_configurations(
+    policy: Policy,
+    *,
+    security_configuration_id: str | None,
+    **_: Any,
+) -> dict:
+    allowed = policy.config_json.get("allowed", [])
+    required = policy.config_json.get("require_security_configuration", False)
+    if not allowed and not required:
+        return {"passed": True, "message": "No security configuration restrictions configured."}
+    if not security_configuration_id:
+        if required:
+            return {
+                "passed": False,
+                "message": "A security configuration is required by policy.",
+                "remediation": f"Associate one of: {', '.join(allowed)}." if allowed else "Associate a security configuration.",
+            }
+        return {"passed": True, "message": "No security configuration specified (not required)."}
+    if allowed and security_configuration_id not in allowed:
+        return {
+            "passed": False,
+            "message": f"Security configuration '{security_configuration_id}' is not in the allowed list.",
+            "remediation": f"Use one of: {', '.join(allowed)}.",
+        }
+    return {"passed": True, "message": f"Security configuration '{security_configuration_id}' is allowed."}
+
+
 _RULE_EVALUATORS = {
     "max_runtime_seconds": _evaluate_max_runtime_seconds,
     "max_vcpu": _evaluate_max_vcpu,
@@ -300,6 +327,7 @@ _RULE_EVALUATORS = {
     "allowed_golden_paths": _evaluate_allowed_golden_paths,
     "allowed_release_labels": _evaluate_allowed_release_labels,
     "allowed_instance_types": _evaluate_allowed_instance_types,
+    "allowed_security_configurations": _evaluate_allowed_security_configurations,
 }
 
 
@@ -312,6 +340,7 @@ def evaluate_policies(
     spark_conf: dict | None = None,
     golden_path: str | None = None,
     release_label: str | None = None,
+    security_configuration_id: str | None = None,
     actor: str = "system",
     source_ip: str | None = None,
     commit: bool = False,
@@ -334,6 +363,7 @@ def evaluate_policies(
             spark_conf=spark_conf,
             golden_path=golden_path,
             release_label=release_label,
+            security_configuration_id=security_configuration_id,
         )
         entry = {
             "policy_id": policy.id,

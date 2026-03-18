@@ -106,6 +106,7 @@ class EnvironmentCreateRequest(BaseModel):
     lake_formation_enabled: bool = False
     lf_catalog_id: str | None = None
     lf_data_access_scope: dict | None = None
+    security_configuration_id: str | None = None
     quotas: EnvironmentQuotas = Field(default_factory=EnvironmentQuotas)
 
 
@@ -127,6 +128,7 @@ class EnvironmentResponse(BaseModel):
     lf_catalog_id: str | None
     lf_data_access_scope: dict | None = Field(default=None, validation_alias="lf_data_access_scope_json")
     identity_mode: str | None
+    security_configuration_id: str | None
     max_concurrent_runs: int
     max_vcpu: int
     max_run_seconds: int
@@ -432,6 +434,7 @@ PolicyRuleType = Literal[
     "allowed_golden_paths",
     "allowed_release_labels",
     "allowed_instance_types",
+    "allowed_security_configurations",
 ]
 
 PolicyScope = Literal["global", "tenant", "environment"]
@@ -469,4 +472,24 @@ class PolicyEvaluationResult(BaseModel):
     enforcement: str
     passed: bool
     message: str
+
+
+# ---------------------------------------------------------------------------
+# Security Configuration schemas (#53)
+# ---------------------------------------------------------------------------
+
+class SecurityConfigurationCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    virtual_cluster_id: str
+    encryption_config: dict | None = None
+    authorization_config: dict | None = None
+
+
+class SecurityConfigurationResponse(BaseModel):
+    id: str
+    name: str
+    virtual_cluster_id: str
+    encryption_config: dict | None
+    authorization_config: dict | None
+    created_at: datetime | None
     remediation: str | None = None

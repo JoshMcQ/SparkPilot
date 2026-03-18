@@ -55,8 +55,16 @@ def upgrade() -> None:
             sa.Column("identity_mode", sa.String(32), nullable=True),
         )
 
+    # EMR Security Configuration (#53)
+    if "security_configuration_id" not in env_columns:
+        op.add_column(
+            "environments",
+            sa.Column("security_configuration_id", sa.String(255), nullable=True),
+        )
+
 
 def downgrade() -> None:
+    op.drop_column("environments", "security_configuration_id")
     op.drop_column("environments", "identity_mode")
     op.drop_column("golden_paths", "data_access_scope_json")
     op.drop_column("environments", "lf_data_access_scope_json")
