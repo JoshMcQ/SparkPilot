@@ -1,6 +1,6 @@
 # SparkPilot Production Hardening Progress
 
-Last updated: 2026-03-18 19:17 ET
+Last updated: 2026-03-18 19:18 ET
 
 ## Phase 0 — Tracker bootstrap
 
@@ -32,6 +32,7 @@ Last updated: 2026-03-18 19:17 ET
 - 2026-03-18 19:09 ET — #75 blocked for completion in this pass: required non-prod *external* IdP OIDC auth-code+PKCE trace is not currently configured in this local stack (current issuer is internal mock OIDC). Need external IdP tenant/client config + callback setup to capture closure-grade artifacts.
 - 2026-03-18 19:12 ET — Re-validated blocker for #75 while executing this heartbeat: local environment still uses internal mock issuer; cannot produce required external-IdP acceptance artifacts without external tenant/client details.
 - 2026-03-18 19:17 ET — Posted blocker/evidence request in issue #75 comment (`#issuecomment-4086219182`) listing required external IdP tenant/client/callback config needed to complete acceptance package.
+- 2026-03-18 19:18 ET — Re-checked #75 as first unchecked task this heartbeat; still blocked until external IdP tenant/client config is available. No further closure-grade evidence can be generated in current mock-only setup.
 
 ## Verification passes
 
