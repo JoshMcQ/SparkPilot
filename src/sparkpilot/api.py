@@ -1690,3 +1690,42 @@ def describe_security_configuration_endpoint(
         },
         SecurityConfigurationResponse,
     )
+
+
+# ---------------------------------------------------------------------------
+# IAM credential chain validation (#76)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/v1/environments/{environment_id}/iam-validation")
+def validate_iam_credential_chain(
+    environment_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    env = db.get(Environment, environment_id)
+    if env is None:
+        raise HTTPException(status_code=404, detail="Environment not found.")
+    from sparkpilot.services.iam_validation import validate_full_credential_chain
+    result = validate_full_credential_chain(
+        customer_role_arn=env.customer_role_arn,
+        region=env.region,
+    )
+    result["environment_id"] = environment_id
+    return result
+
+
+@app.get("/v1/iam-validation")
+def validate_runtime_iam_identity(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Validate runtime identity without customer role assumption."""
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    from sparkpilot.services.iam_validation import validate_full_credential_chain
+    return validate_full_credential_chain()

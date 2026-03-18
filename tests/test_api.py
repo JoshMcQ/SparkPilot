@@ -4062,3 +4062,68 @@ def test_security_configuration_list_endpoint() -> None:
     )
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+# ---------------------------------------------------------------------------
+# IAM credential chain validation tests (#76)
+# ---------------------------------------------------------------------------
+
+
+def test_iam_runtime_identity_preflight_check() -> None:
+    """Preflight includes iam.runtime_identity check (#76)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "iam-rt")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert "iam.runtime_identity" in checks
+    assert checks["iam.runtime_identity"]["status"] == "pass"
+
+
+def test_iam_assume_role_preflight_check() -> None:
+    """Preflight includes iam.assume_role_chain check (#76)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "iam-ar")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert "iam.assume_role_chain" in checks
+    assert checks["iam.assume_role_chain"]["status"] == "pass"
+
+
+def test_iam_validation_endpoint() -> None:
+    """GET /v1/iam-validation returns runtime identity (#76)."""
+    client = TestClient(app)
+    resp = client.get("/v1/iam-validation")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "overall_valid" in data
+    assert data["overall_valid"] is True
+    assert data["runtime_identity"]["valid"] is True
+
+
+def test_iam_environment_validation_endpoint() -> None:
+    """GET /v1/environments/{id}/iam-validation includes assume_role (#76)."""
+    client = TestClient(app)
+    fixtures = _create_env_with_sec_config(client, "iam-env-val")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/iam-validation")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["environment_id"] == fixtures["env_id"]
+    assert data["overall_valid"] is True
+    assert "assume_role" in data
+    assert data["assume_role"]["success"] is True
+
+
+def test_iam_static_credentials_check(monkeypatch) -> None:
+    """Static credentials detection warns in preflight (#76)."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fakesecretkey")
+    # Remove session token to simulate long-lived static creds
+    monkeypatch.delenv("AWS_SESSION_TOKEN", raising=False)
+
+    from sparkpilot.services.iam_validation import check_static_credentials
+    result = check_static_credentials()
+    assert result["static_credentials_detected"] is True
+    assert result["compliant"] is False
+    assert result["remediation"] is not None

@@ -642,6 +642,80 @@ def _add_security_configuration_check(
 
 
 # ---------------------------------------------------------------------------
+# IAM credential chain validation (#76)
+# ---------------------------------------------------------------------------
+
+
+def _add_iam_credential_chain_check(
+    *,
+    environment: Environment,
+    add_check: Callable[..., None],
+) -> None:
+    """Validate runtime IAM credential chain (#76)."""
+    from sparkpilot.services.iam_validation import (
+        validate_runtime_identity,
+        check_static_credentials,
+        validate_assume_role_chain,
+    )
+
+    # 1. Runtime identity check
+    identity = validate_runtime_identity()
+    if identity.get("valid"):
+        add_check(
+            code="iam.runtime_identity",
+            status_value="pass",
+            message=f"Runtime identity resolved: {identity.get('credential_source', 'unknown')}.",
+            details={
+                "arn": identity.get("arn", ""),
+                "credential_source": identity.get("credential_source", ""),
+            },
+        )
+    else:
+        add_check(
+            code="iam.runtime_identity",
+            status_value="fail",
+            message=identity.get("error", "Unable to resolve runtime identity."),
+            remediation="Ensure the runtime environment has valid AWS credentials (task role, instance profile).",
+        )
+        return  # Can't validate further without identity
+
+    # 2. Static credential detection
+    static_check = check_static_credentials()
+    if not static_check.get("compliant"):
+        add_check(
+            code="iam.no_static_credentials",
+            status_value="warning",
+            message="Static AWS credentials detected in environment variables.",
+            remediation=static_check.get("remediation", "Use IAM task roles instead of static credentials."),
+        )
+
+    # 3. AssumeRole into customer role
+    if environment.customer_role_arn:
+        assume_result = validate_assume_role_chain(
+            environment.customer_role_arn,
+            environment.region,
+        )
+        if assume_result.get("success"):
+            add_check(
+                code="iam.assume_role_chain",
+                status_value="pass",
+                message="Successfully assumed customer role.",
+                details={
+                    "customer_role_arn": environment.customer_role_arn,
+                    "assumed_account": str(assume_result.get("assumed_account", "")),
+                },
+            )
+        else:
+            add_check(
+                code="iam.assume_role_chain",
+                status_value="fail",
+                message=assume_result.get("error", "Failed to assume customer role."),
+                remediation=assume_result.get("remediation", "Review IAM role trust policy."),
+                details={"customer_role_arn": environment.customer_role_arn},
+            )
+
+
+# ---------------------------------------------------------------------------
 # Policy engine integration (#39)
 # ---------------------------------------------------------------------------
 
@@ -832,6 +906,12 @@ def _build_preflight(
 
     # Security Configuration existence check (#53)
     _add_security_configuration_check(
+        environment=environment,
+        add_check=add_check,
+    )
+
+    # IAM credential chain check (#76)
+    _add_iam_credential_chain_check(
         environment=environment,
         add_check=add_check,
     )
