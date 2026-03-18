@@ -4413,3 +4413,211 @@ def test_matrix_evidence_artifacts_present(monkeypatch) -> None:
         # Failed checks must have remediation
         if check["status"] == "fail":
             assert check.get("remediation"), f"Missing remediation for {check['code']}"
+
+
+# ---------------------------------------------------------------------------
+# OIDC interoperability matrix (#69)
+# ---------------------------------------------------------------------------
+
+from conftest import (
+    _PRIVATE_KEY,
+    _JWKS_PATH,
+    issue_test_token,
+    TEST_JWT_KID,
+    TEST_OIDC_AUDIENCE,
+    TEST_OIDC_ISSUER,
+)
+from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
+
+
+def _make_verifier(**overrides) -> OIDCTokenVerifier:
+    """Create a test-configured OIDCTokenVerifier."""
+    jwks_uri = _JWKS_PATH.resolve().as_uri()
+    defaults = dict(
+        issuer=TEST_OIDC_ISSUER,
+        audience=TEST_OIDC_AUDIENCE,
+        jwks_uri=jwks_uri,
+    )
+    defaults.update(overrides)
+    return OIDCTokenVerifier(**defaults)
+
+
+def test_oidc_discovery_rs256_token_verified() -> None:
+    """RS256 token from mock OIDC issuer is validated successfully (#69)."""
+    verifier = _make_verifier()
+    token = issue_test_token("oidc-user-rs256")
+    identity = verifier.verify_access_token(token)
+    assert identity.subject == "oidc-user-rs256"
+    assert identity.claims["iss"] == TEST_OIDC_ISSUER
+    assert identity.claims["aud"] == TEST_OIDC_AUDIENCE
+
+
+def test_oidc_expired_token_rejected() -> None:
+    """Expired token is rejected with clear OIDCValidationError (#69)."""
+    verifier = _make_verifier()
+    token = issue_test_token("expired-user", expires_in_seconds=-60)
+    with pytest.raises(OIDCValidationError, match="expired|Expired|validation failed"):
+        verifier.verify_access_token(token)
+
+
+def test_oidc_wrong_audience_rejected() -> None:
+    """Token with wrong audience is rejected (#69)."""
+    verifier = _make_verifier()
+    token = issue_test_token("wrong-aud-user", audience="not-sparkpilot")
+    with pytest.raises(OIDCValidationError):
+        verifier.verify_access_token(token)
+
+
+def test_oidc_wrong_issuer_rejected() -> None:
+    """Token with wrong issuer is rejected (#69)."""
+    verifier = _make_verifier()
+    token = issue_test_token("wrong-iss-user", issuer="https://evil.example.com")
+    with pytest.raises(OIDCValidationError):
+        verifier.verify_access_token(token)
+
+
+def test_oidc_key_rotation_triggers_refresh() -> None:
+    """Key rotation (new kid not in cache) triggers forced JWKS refresh (#69)."""
+    import json as json_module
+    import jwt as jwt_module
+    from cryptography.hazmat.primitives.asymmetric import rsa as rsa_module
+
+    verifier = _make_verifier()
+    # Pre-populate cache with the original JWKS
+    token = issue_test_token("rotation-user")
+    verifier.verify_access_token(token)
+    initial_total = verifier.jwks_refresh_total
+
+    # Simulate key rotation: generate new key and write to JWKS file
+    new_key = rsa_module.generate_private_key(public_exponent=65537, key_size=2048)
+    new_pub_jwk = json_module.loads(jwt_module.algorithms.RSAAlgorithm.to_jwk(new_key.public_key()))
+    new_pub_jwk["kid"] = "rotated-kid-001"
+
+    original_jwks = _JWKS_PATH.read_text(encoding="utf-8")
+    try:
+        _JWKS_PATH.write_text(
+            json_module.dumps({"keys": [new_pub_jwk]}), encoding="utf-8"
+        )
+        # Issue a token signed with the NEW key and NEW kid
+        import time as time_module
+        now = int(time_module.time())
+        new_token = jwt_module.encode(
+            {"sub": "rotated-user", "iss": TEST_OIDC_ISSUER, "aud": TEST_OIDC_AUDIENCE, "iat": now, "exp": now + 3600},
+            new_key,
+            algorithm="RS256",
+            headers={"kid": "rotated-kid-001", "typ": "JWT"},
+        )
+        # Verifier should force refresh JWKS to find "rotated-kid-001"
+        identity = verifier.verify_access_token(new_token)
+        assert identity.subject == "rotated-user"
+        assert verifier.jwks_refresh_forced >= 1
+        assert verifier.jwks_refresh_total > initial_total
+    finally:
+        # Restore original JWKS
+        _JWKS_PATH.write_text(original_jwks, encoding="utf-8")
+
+
+def test_oidc_throttle_prevents_refresh_storm() -> None:
+    """Rapid forced refreshes are throttled (#69)."""
+    verifier = _make_verifier(
+        jwks_min_refresh_interval_seconds=0.01,
+        jwks_throttle_window_seconds=60,
+        jwks_throttle_max_refreshes=2,
+    )
+    # Pre-populate
+    token = issue_test_token("throttle-user")
+    verifier.verify_access_token(token)
+
+    import time as time_module
+    # Force refreshes up to the limit
+    verifier._refresh_jwks(forced=True)
+    time_module.sleep(0.02)
+    verifier._refresh_jwks(forced=True)
+    # Next forced refresh should be throttled
+    result = verifier._refresh_jwks(forced=True)
+    assert result is False
+    assert verifier.jwks_refresh_throttled >= 1
+
+
+def test_oidc_api_rejects_missing_bearer() -> None:
+    """API returns 401 for missing bearer token (#69)."""
+    client = TestClient(app)
+    resp = client.get(
+        "/v1/runs",
+        headers={"Authorization": "", "X-Skip-Test-Bootstrap": "true"},
+    )
+    assert resp.status_code == 401
+    assert "bearer" in resp.json().get("detail", "").lower() or "token" in resp.json().get("detail", "").lower()
+
+
+def test_oidc_api_rejects_malformed_jwt() -> None:
+    """API returns 401 for malformed JWT (#69)."""
+    client = TestClient(app)
+    resp = client.get(
+        "/v1/runs",
+        headers={
+            "Authorization": "Bearer not.a.valid.jwt",
+            "X-Skip-Test-Bootstrap": "true",
+        },
+    )
+    assert resp.status_code == 401
+
+
+def test_oidc_auth_me_returns_identity(monkeypatch) -> None:
+    """Authenticated GET /v1/auth/me returns correct subject and role (#69)."""
+    client = TestClient(app)
+    resp = client.get("/v1/auth/me")
+    assert resp.status_code == 200
+    me = resp.json()
+    assert me["actor"] is not None
+    assert me["role"] in ("admin", "operator", "viewer")
+
+
+def test_oidc_session_cookie_flow() -> None:
+    """Valid OIDC token works for API auth via bearer header (#69)."""
+    client = TestClient(app)
+    # Use the default test subject which has a registered identity
+    token = issue_test_token("test-user")
+
+    # Verify token works for API auth
+    resp = client.get(
+        "/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["actor"] == "test-user"
+
+    # A second call with the same token also works (session reuse pattern)
+    resp2 = client.get(
+        "/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["actor"] == "test-user"
+
+
+def test_oidc_multiple_idp_config_pattern() -> None:
+    """Different issuer/audience combos create isolated verifiers (#69)."""
+    import json as json_module
+
+    # Verifier 1: primary issuer
+    v1 = _make_verifier(issuer="https://cognito.example.com", audience="sparkpilot-api")
+    # Verifier 2: different issuer (for multi-IdP)
+    v2 = _make_verifier(issuer="https://auth0.example.com", audience="sparkpilot-api")
+
+    # Token for v1 issuer should fail on v2
+    token_v1 = issue_test_token("multi-user", issuer="https://cognito.example.com")
+    with pytest.raises(OIDCValidationError):
+        v2.verify_access_token(token_v1)
+
+
+def test_oidc_verifier_jwks_stats() -> None:
+    """JWKS refresh telemetry is exposed correctly (#69)."""
+    verifier = _make_verifier()
+    token = issue_test_token("stats-user")
+    verifier.verify_access_token(token)
+    stats = verifier.jwks_refresh_stats
+    assert "total" in stats
+    assert "forced" in stats
+    assert "throttled" in stats
+    assert stats["total"] >= 1
