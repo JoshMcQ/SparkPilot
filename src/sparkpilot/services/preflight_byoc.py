@@ -158,6 +158,7 @@ def _run_byoc_lite_aws_prechecks(
     _add_byoc_lite_pod_identity_readiness_check(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_access_entry_mode_check(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_dispatch_permission_checks(emr=emr, environment=environment, add_check=add_check)
+    _add_byoc_lite_namespace_collision_check(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_spot_capacity_checks(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_spot_executor_placement_check(spark_conf=spark_conf, add_check=add_check)
 
@@ -388,6 +389,62 @@ def _add_byoc_lite_dispatch_permission_checks(
         )
 
 
+def _add_byoc_lite_namespace_collision_check(
+    *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
+) -> None:
+    try:
+        collision = emr.find_namespace_virtual_cluster_collision(environment)
+    except ValueError as exc:
+        add_check(
+            code="byoc_lite.namespace_collision",
+            status_value="warning",
+            message=f"Unable to evaluate namespace collision status: {exc}",
+            remediation="Grant customer_role_arn emr-containers:ListVirtualClusters permission.",
+        )
+        return
+
+    if not collision:
+        add_check(
+            code="byoc_lite.namespace_collision",
+            status_value="pass",
+            message="No active EMR virtual-cluster collision detected for eks_namespace.",
+            details={"eks_namespace": str(environment.eks_namespace or "")},
+        )
+        return
+
+    collision_id = str(collision.get("id") or "")
+    if environment.emr_virtual_cluster_id and collision_id == str(environment.emr_virtual_cluster_id):
+        add_check(
+            code="byoc_lite.namespace_collision",
+            status_value="pass",
+            message="Namespace maps to this environment's configured EMR virtual cluster.",
+            details={
+                "virtual_cluster_id": collision_id,
+                "virtual_cluster_state": str(collision.get("state") or ""),
+            },
+        )
+        return
+
+    add_check(
+        code="byoc_lite.namespace_collision",
+        status_value="fail",
+        message=(
+            f"Namespace collision detected: eks_namespace '{environment.eks_namespace}' already maps to "
+            f"virtual cluster '{collision_id}' (state={collision.get('state')})."
+        ),
+        remediation=(
+            "Use a unique namespace for this environment, or retire the conflicting virtual cluster. "
+            f"Example: aws emr-containers delete-virtual-cluster --id {collision_id} --region {environment.region}"
+        ),
+        details={
+            "collision_virtual_cluster_id": collision_id,
+            "collision_virtual_cluster_name": str(collision.get("name") or ""),
+            "collision_virtual_cluster_state": str(collision.get("state") or ""),
+            "eks_namespace": str(environment.eks_namespace or ""),
+        },
+    )
+
+
 def _add_byoc_lite_spot_capacity_checks(
     *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
 ) -> None:
@@ -551,6 +608,11 @@ def _add_byoc_lite_skipped_aws_prechecks(*, add_check: Callable[..., None]) -> N
         message="Access entry mode check was skipped because base BYOC-Lite prerequisites are not ready.",
     )
     add_check(
+        code="byoc_lite.namespace_collision",
+        status_value="warning",
+        message="Namespace collision check was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+    add_check(
         code="byoc_lite.spot_capacity",
         status_value="warning",
         message="Spot capacity check was skipped because base BYOC-Lite prerequisites are not ready.",
@@ -617,7 +679,10 @@ def _add_byoc_lite_cluster_arn_check(*, environment: Environment, add_check: Cal
 
 
 def _add_byoc_lite_namespace_checks(*, environment: Environment, add_check: Callable[..., None]) -> bool:
-    if environment.eks_namespace:
+    namespace = str(environment.eks_namespace or "")
+    namespace_trimmed = namespace.strip()
+
+    if namespace:
         add_check(
             code="byoc_lite.eks_namespace",
             status_value="pass",
@@ -631,14 +696,31 @@ def _add_byoc_lite_namespace_checks(*, environment: Environment, add_check: Call
             remediation="Set eks_namespace when creating the environment.",
         )
 
-    namespace_format_valid = bool(environment.eks_namespace and K8S_NAMESPACE_PATTERN.match(environment.eks_namespace))
+    namespace_trimmed_valid = True
+    if namespace and namespace != namespace_trimmed:
+        namespace_trimmed_valid = False
+        add_check(
+            code="byoc_lite.eks_namespace_normalized",
+            status_value="fail",
+            message="eks_namespace cannot contain leading or trailing whitespace.",
+            remediation="Trim spaces and use a normalized namespace value such as `sparkpilot-team`.",
+            details={"eks_namespace": namespace, "normalized": namespace_trimmed},
+        )
+    elif namespace:
+        add_check(
+            code="byoc_lite.eks_namespace_normalized",
+            status_value="pass",
+            message="eks_namespace is normalized (no leading/trailing whitespace).",
+        )
+
+    namespace_format_valid = bool(namespace_trimmed and K8S_NAMESPACE_PATTERN.match(namespace_trimmed))
     if namespace_format_valid:
         add_check(
             code="byoc_lite.eks_namespace_format",
             status_value="pass",
             message="eks_namespace matches Kubernetes DNS label format.",
         )
-    elif environment.eks_namespace:
+    elif namespace_trimmed:
         add_check(
             code="byoc_lite.eks_namespace_format",
             status_value="fail",
@@ -647,29 +729,29 @@ def _add_byoc_lite_namespace_checks(*, environment: Environment, add_check: Call
                 "Use a namespace like sparkpilot-team. Allowed regex: "
                 "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ (max 63 chars)."
             ),
-            details={"eks_namespace": environment.eks_namespace},
+            details={"eks_namespace": namespace_trimmed},
         )
 
-    namespace_reserved = environment.eks_namespace in RESERVED_BYOC_LITE_NAMESPACES
+    namespace_reserved = namespace_trimmed in RESERVED_BYOC_LITE_NAMESPACES
     if namespace_reserved:
         add_check(
             code="byoc_lite.namespace_bootstrap",
             status_value="fail",
-            message=f"eks_namespace '{environment.eks_namespace}' is reserved and not allowed for BYOC-Lite.",
+            message=f"eks_namespace '{namespace_trimmed}' is reserved and not allowed for BYOC-Lite.",
             remediation=(
                 "Create and use a dedicated namespace for SparkPilot workloads, for example "
                 "'sparkpilot-team'."
             ),
-            details={"eks_namespace": environment.eks_namespace},
+            details={"eks_namespace": namespace_trimmed},
         )
-    elif environment.eks_namespace:
+    elif namespace_trimmed:
         add_check(
             code="byoc_lite.namespace_bootstrap",
             status_value="pass",
             message="eks_namespace is suitable for BYOC-Lite bootstrap.",
         )
 
-    return namespace_format_valid and not namespace_reserved
+    return namespace_trimmed_valid and namespace_format_valid and not namespace_reserved
 
 
 def _add_byoc_lite_cluster_region_check(*, environment: Environment, add_check: Callable[..., None]) -> bool:

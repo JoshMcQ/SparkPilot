@@ -4,6 +4,7 @@
 |---|---|---|---|---|---|
 | 2026-03-18 18:12 | Issue #3 live preflight integration test (`tests/test_issue3_live_preflight_integration.py`) against existing cluster `sparkpilot-live-1` and role `SparkPilotByocLiteRoleAdmin` | none | none | ~$0.00 (STS/IAM simulation/EKS describe only) | No ephemeral resources created; teardown not required |
 | 2026-03-18 18:58 | Issue #18 live prerequisite integration test (`tests/test_issue18_live_prereq_integration.py`) validating BYOC-Lite matrix checks/remediations against `sparkpilot-live-1` | none | none | ~$0.00 (read-only IAM/EKS/EMR preflight APIs) | No ephemeral resources created; teardown not required |
+| 2026-03-18 19:28 | Issue #19 live namespace integration test (`tests/test_issue19_live_namespace_integration.py`) validating namespace normalization/format/bootstrap/collision checks against `sparkpilot-live-1` | none | none | ~$0.00 (read-only EMR virtual-cluster listing + EKS/IAM preflight calls) | No ephemeral resources created; teardown not required |
 
 ## Notes
 

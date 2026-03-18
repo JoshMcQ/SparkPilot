@@ -4333,6 +4333,60 @@ def test_matrix_namespace_format_invalid_fails() -> None:
     assert "lowercase" in fmt_check["message"].lower() or "regex" in fmt_check["remediation"].lower()
 
 
+def test_matrix_namespace_normalization_whitespace_fails() -> None:
+    """Namespace with leading/trailing spaces fails normalization check (#19)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(
+        client, "ns-space", eks_namespace=" sparkpilot-team "
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    norm_check = checks.get("byoc_lite.eks_namespace_normalized")
+    assert norm_check is not None
+    assert norm_check["status"] == "fail"
+    assert "whitespace" in norm_check["message"].lower()
+
+
+def test_matrix_namespace_collision_fails_with_remediation(monkeypatch) -> None:
+    """Active virtual-cluster collision fails preflight with actionable remediation (#19)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "ns-collision")
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.find_namespace_virtual_cluster_collision",
+        lambda self, env: {"id": "vc-collision", "name": "existing-vc", "state": "RUNNING"},
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    payload = resp.json()
+    checks = {c["code"]: c for c in payload["checks"]}
+    collision_check = checks.get("byoc_lite.namespace_collision")
+    assert collision_check is not None
+    assert collision_check["status"] == "fail"
+    assert "collision" in collision_check["message"].lower()
+    assert "delete-virtual-cluster" in str(collision_check.get("remediation") or "")
+    assert payload["ready"] is False
+
+
+def test_matrix_namespace_collision_ignores_env_bound_virtual_cluster(monkeypatch) -> None:
+    """Collision check passes when detected VC matches environment's configured virtual cluster (#19)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "ns-collision-own")
+    env_payload = client.get(f"/v1/environments/{env_id}").json()
+    own_vc_id = env_payload["emr_virtual_cluster_id"]
+
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.find_namespace_virtual_cluster_collision",
+        lambda self, env: {"id": own_vc_id, "name": "owned-vc", "state": "RUNNING"},
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    collision_check = checks.get("byoc_lite.namespace_collision")
+    assert collision_check is not None
+    assert collision_check["status"] == "pass"
+
+
 def test_matrix_all_checks_pass_flow(monkeypatch) -> None:
     """All BYOC-Lite preflight checks pass with correct config (#66)."""
     client = TestClient(app)
@@ -4375,6 +4429,8 @@ def test_matrix_all_checks_pass_flow(monkeypatch) -> None:
         "byoc_lite.access_entry_mode",
         "byoc_lite.customer_role_dispatch",
         "byoc_lite.iam_pass_role",
+        "byoc_lite.namespace_collision",
+        "byoc_lite.eks_namespace_normalized",
     ]:
         assert code in checks, f"Missing check: {code}"
         assert checks[code]["status"] == "pass", f"{code} not passing: {checks[code]}"
