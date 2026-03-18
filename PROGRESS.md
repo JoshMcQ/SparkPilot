@@ -28,7 +28,7 @@ Last updated: 2026-03-18 18:20 ET
 - [ ] Complete #81 access-page guided workflow polish + validation package.
 
 ### Blocker log
-- None.
+- 2026-03-18 18:26 ET — #3 evidence mapping comment posted, but closure blocked by missing explicit live artifact for reconciler fallback diagnostic (`run.preflight_diagnostic`) and additional IAM/IRSA fail-path artifacts (OIDC-missing, PassRole deny, trust-policy AccessDenied) with runtime IDs.
 
 ## Verification passes
 
