@@ -1,26 +1,45 @@
-# SparkPilot Production Push Progress
+# SparkPilot Production Hardening Progress
 
-_Last updated: 2026-03-18 18:09 ET_
+Last updated: 2026-03-18 18:20 ET
 
-## Phase 0 — Tracker Bootstrap
+## Phase 0 — Tracker bootstrap
 
-- [x] Build Issue #66 acceptance-evidence matrix from live artifacts and identify missing scenarios. <!-- completed 2026-03-18 17:59 ET -->
-- [x] Post Issue #66 evidence mapping comment with explicit artifact links + runtime IDs; keep open if any acceptance criterion lacks proof. <!-- completed 2026-03-18 18:01 ET -->
-- [x] Build evidence-gap action list for #58/#59/#60/#75 and attach to issue threads. <!-- completed 2026-03-18 18:06 ET -->
-
-### Verification pass (after 3 completed tasks) — 2026-03-18 18:07–18:09 ET
-
-- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
-  - Result: **PASS** (`310 passed, 1 skipped`)
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
-  - Result: **WARNINGS ONLY** (unused variable + hook dependency warnings)
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm audit`
-  - Result: **FAIL** (1 moderate vulnerability in `next`; fix requires out-of-range `next@15.5.13`)
-- `cd C:\Users\JoshMcQueary\SparkPilot && git diff --stat`
-  - Result: existing unstaged UI/test deltas remain in working tree (6 tracked files changed; large UI diff)
-- `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
-  - Result: **no secret pattern hits**
+- [x] Initialize PROGRESS.md with live GitHub open-issue baseline and execution phases. <!-- completed 2026-03-18 18:11 ET -->
+- [x] Attach explicit live-AWS evidence mapping comment for #66 (operation_id/environment_id/run_id + artifact links) and close if acceptance criteria are satisfied. <!-- completed 2026-03-18 18:14 ET; left open pending missing trust/PassRole fail artifacts -->
+- [x] Attach explicit live-AWS evidence mapping comments for #18/#19/#20/#21 and close only when each acceptance mapping is complete. <!-- completed 2026-03-18 18:17 ET; all 4 remain open pending additional live fail-path artifacts -->
 
 ### Blocker log
+- 2026-03-18 18:14 ET — #66 remains open: issue thread now has collision/malformed-arn/fake-cluster live fail artifacts, but still missing explicit live fail artifacts for (a) execution-role trust hard-fail and (b) missing iam:PassRole hard-fail within this issue’s acceptance set.
+- 2026-03-18 18:17 ET — #18/#19/#20/#21 evidence comments posted, but closure is blocked on additional live fail-path artifacts (invalid namespace case, AccessDenied trust-policy guidance path, and OIDC-missing detect+instruct fail path with runtime IDs).
 
-- 2026-03-18 17:55 ET — `PROGRESS.md` did not exist at repo root; created tracker file per heartbeat instruction.
+## Phase 1 — Evidence-gated issue integrity
+
+- [ ] Audit closed issues with `status:needs-live-aws-evidence`; reopen any issue missing explicit artifact links and runtime identifiers.
+- [ ] Produce evidence ledger table (issue -> acceptance criteria -> artifacts -> reopen/close decision).
+
+### Blocker log
+- None.
+
+## Phase 2 — Open critical path
+
+- [ ] Complete #3 preflight IAM/IRSA validation evidence and closure package.
+- [ ] Complete #7 UI BYOC vs BYOC-Lite differentiation and validation package.
+- [ ] Complete #75 production IdP login + subject mapping evidence package.
+- [ ] Complete #81 access-page guided workflow polish + validation package.
+
+### Blocker log
+- None.
+
+## Verification passes
+
+### 2026-03-18 18:20 ET (after 3 completed tasks)
+- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
+  - Result: `314 passed, 1 skipped` (35.36s)
+- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
+  - Result: completed with warnings (no hard errors):
+    - `_cookieOptions` unused (`ui/app/api/auth/session/route.ts`)
+    - missing hook deps in `ui/app/costs/page.tsx` and `ui/app/runs/page.tsx`
+- `cd C:\Users\JoshMcQueary\SparkPilot && git diff --stat`
+  - Result: working tree currently includes local modifications in `ui/*` and `PROGRESS.md` (see diff stat output); no destructive ops performed.
+- `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
+  - Result: no credential-like secret strings detected (only generic doc/test text references to the word `secret`).
