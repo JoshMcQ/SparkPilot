@@ -22,13 +22,13 @@ Last updated: 2026-03-18 18:20 ET
 
 ## Phase 2 — Open critical path
 
-- [ ] Complete #3 preflight IAM/IRSA validation evidence and closure package.
+- [x] Complete #3 preflight IAM/IRSA validation evidence and closure package. <!-- completed 2026-03-18 19:03 ET; evidence refresh posted in issue #3 comment with live run.preflight_failed + run.preflight_diagnostic artifacts -->
 - [ ] Complete #7 UI BYOC vs BYOC-Lite differentiation and validation package.
 - [ ] Complete #75 production IdP login + subject mapping evidence package.
 - [ ] Complete #81 access-page guided workflow polish + validation package.
 
 ### Blocker log
-- 2026-03-18 18:26 ET — #3 evidence mapping comment posted, but closure blocked by missing explicit live artifact for reconciler fallback diagnostic (`run.preflight_diagnostic`) and additional IAM/IRSA fail-path artifacts (OIDC-missing, PassRole deny, trust-policy AccessDenied) with runtime IDs.
+- 2026-03-18 19:03 ET — #3 evidence package refreshed: added live run.preflight_failed artifacts for PassRole deny + trust-policy AccessDenied and legacy reconciler `run.preflight_diagnostic` artifact with runtime IDs; posted in issue #3 comment.
 
 ## Verification passes
 
