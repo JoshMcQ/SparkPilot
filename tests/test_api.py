@@ -4127,3 +4127,289 @@ def test_iam_static_credentials_check(monkeypatch) -> None:
     assert result["static_credentials_detected"] is True
     assert result["compliant"] is False
     assert result["remediation"] is not None
+
+
+# ---------------------------------------------------------------------------
+# BYOC-Lite misconfiguration preflight matrix (#66)
+# ---------------------------------------------------------------------------
+
+
+def _create_ready_byoc_lite_matrix(client, suffix: str, **env_overrides):
+    """Create a BYOC-Lite env that reaches ready state for preflight matrix tests."""
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": f"Matrix Tenant {suffix}"},
+        headers={"Idempotency-Key": f"t-matrix-{suffix}", "X-Actor": "test-user"},
+    ).json()
+    env_json = {
+        "tenant_id": tenant["id"],
+        "provisioning_mode": "byoc_lite",
+        "region": "us-east-1",
+        "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        "eks_cluster_arn": "arn:aws:eks:us-east-1:123456789012:cluster/matrix-cluster",
+        "eks_namespace": f"matrix-ns-{suffix}",
+        **env_overrides,
+    }
+    op = client.post(
+        "/v1/environments",
+        json=env_json,
+        headers={"Idempotency-Key": f"e-matrix-{suffix}", "X-Actor": "test-user"},
+    )
+    assert op.status_code == 201, op.text
+    env_id = op.json()["environment_id"]
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+    return env_id
+
+
+def test_matrix_oidc_association_missing_fails(monkeypatch) -> None:
+    """Missing OIDC association fails with actionable remediation (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "oidc-miss")
+    # Patch AFTER provisioning so env is ready, but preflight sees failure
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_oidc_provider_association",
+        lambda self, env: {"associated": False, "cluster_name": "matrix-cluster"},
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    oidc_check = checks.get("byoc_lite.oidc_association")
+    assert oidc_check is not None
+    assert oidc_check["status"] == "fail"
+    assert "not associated" in oidc_check["message"].lower()
+    assert oidc_check["remediation"] is not None
+    assert "eksctl" in oidc_check["remediation"]
+    assert resp.json()["ready"] is False
+
+
+def test_matrix_execution_role_trust_fails(monkeypatch) -> None:
+    """Broken execution role trust fails with remediation (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "trust-fail")
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_execution_role_trust_policy",
+        lambda self, env: (_ for _ in ()).throw(
+            ValueError("Execution role trust policy missing EMR web-identity statement.")
+        ),
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    trust_check = checks.get("byoc_lite.execution_role_trust")
+    assert trust_check is not None
+    assert trust_check["status"] == "fail"
+    assert "trust" in trust_check["message"].lower()
+
+
+def test_matrix_iam_pass_role_missing_fails(monkeypatch) -> None:
+    """Missing iam:PassRole permission fails with remediation (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "passrole-fail")
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_customer_role_dispatch_permissions",
+        lambda self, env: {
+            "dispatch_actions_allowed": True,
+            "pass_role_allowed": False,
+            "denied_dispatch_actions": "",
+            "execution_role_arn": "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+        },
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    pass_role_check = checks.get("byoc_lite.iam_pass_role")
+    assert pass_role_check is not None
+    assert pass_role_check["status"] == "fail"
+    assert pass_role_check["remediation"] is not None
+
+
+def test_matrix_dispatch_permission_missing_fails(monkeypatch) -> None:
+    """Missing dispatch permission fails dispatching (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "dispatch-fail")
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_customer_role_dispatch_permissions",
+        lambda self, env: {
+            "dispatch_actions_allowed": False,
+            "pass_role_allowed": True,
+            "denied_dispatch_actions": "emr-containers:StartJobRun",
+            "execution_role_arn": "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+        },
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    dispatch_check = checks.get("byoc_lite.customer_role_dispatch")
+    assert dispatch_check is not None
+    assert dispatch_check["status"] == "fail"
+    assert "missing" in dispatch_check["message"].lower()
+    assert dispatch_check["remediation"] is not None
+    assert "StartJobRun" in dispatch_check["remediation"]
+
+
+def test_matrix_namespace_reserved_fails() -> None:
+    """Reserved namespace (kube-system) fails prerequisites (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(
+        client, "ns-reserved", eks_namespace="kube-system"
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    ns_check = checks.get("byoc_lite.namespace_bootstrap")
+    assert ns_check is not None
+    assert ns_check["status"] == "fail"
+    assert "reserved" in ns_check["message"].lower()
+
+
+def test_matrix_namespace_format_invalid_fails() -> None:
+    """Invalid namespace format (too long / uppercase) fails (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(
+        client, "ns-fmt", eks_namespace="a" * 64
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    fmt_check = checks.get("byoc_lite.eks_namespace_format")
+    assert fmt_check is not None
+    assert fmt_check["status"] == "fail"
+    assert "lowercase" in fmt_check["message"].lower() or "regex" in fmt_check["remediation"].lower()
+
+
+def test_matrix_all_checks_pass_flow(monkeypatch) -> None:
+    """All BYOC-Lite preflight checks pass with correct config (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "all-pass")
+    # Patch all AWS checks to return passing results
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_oidc_provider_association",
+        lambda self, env: {"associated": True, "cluster_name": "matrix-cluster"},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_execution_role_trust_policy",
+        lambda self, env: {"role_name": "TestRole", "provider_arn": "arn:aws:iam::123456789012:oidc-provider/test"},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_pod_identity_agent",
+        lambda self, env: {"addon_installed": True, "addon_status": "ACTIVE", "addon_version": "v1.3.4"},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_cluster_access_mode",
+        lambda self, env: {"authentication_mode": "API_AND_CONFIG_MAP", "access_entries_supported": True},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_customer_role_dispatch_permissions",
+        lambda self, env: {
+            "dispatch_actions_allowed": True,
+            "pass_role_allowed": True,
+            "denied_dispatch_actions": "",
+        },
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    payload = resp.json()
+    checks = {c["code"]: c for c in payload["checks"]}
+
+    # Verify all key BYOC-Lite checks exist and pass
+    for code in [
+        "byoc_lite.oidc_association",
+        "byoc_lite.execution_role_trust",
+        "byoc_lite.pod_identity_readiness",
+        "byoc_lite.access_entry_mode",
+        "byoc_lite.customer_role_dispatch",
+        "byoc_lite.iam_pass_role",
+    ]:
+        assert code in checks, f"Missing check: {code}"
+        assert checks[code]["status"] == "pass", f"{code} not passing: {checks[code]}"
+
+    # Verify no fail checks
+    fail_checks = [c for c in payload["checks"] if c["status"] == "fail"]
+    assert len(fail_checks) == 0, f"Unexpected failures: {fail_checks}"
+
+
+def test_matrix_scheduler_blocks_on_preflight_fail(monkeypatch) -> None:
+    """Scheduler fails run when preflight fails (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "sched-block")
+    # Patch dispatch to fail AFTER env is provisioned
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_customer_role_dispatch_permissions",
+        lambda self, env: {
+            "dispatch_actions_allowed": False,
+            "pass_role_allowed": False,
+            "denied_dispatch_actions": "emr-containers:StartJobRun",
+            "execution_role_arn": "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+        },
+    )
+
+    # Create job and run
+    job = client.post(
+        "/v1/jobs",
+        json={
+            "environment_id": env_id,
+            "name": "matrix-dispatch-test",
+            "artifact_uri": "s3://bucket/job.jar",
+            "artifact_digest": "sha256:abc123",
+            "entrypoint": "com.acme.Main",
+        },
+        headers={"Idempotency-Key": "job-matrix-dispatch", "X-Actor": "test-user"},
+    ).json()
+    run = client.post(
+        f"/v1/jobs/{job['id']}/runs",
+        json={"requested_resources": {"driver_vcpu": 1, "driver_memory_gb": 4, "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1}},
+        headers={"Idempotency-Key": "run-matrix-dispatch", "X-Actor": "test-user"},
+    ).json()
+
+    # Scheduler should fail the run due to preflight
+    with SessionLocal() as db:
+        process_scheduler_once(db)
+
+    run_status = client.get(f"/v1/runs/{run['id']}").json()
+    assert run_status["state"] == "failed"
+    assert "Preflight failed" in (run_status["error_message"] or "")
+
+
+def test_matrix_account_alignment_mismatch_fails() -> None:
+    """Cross-account mismatch between role and cluster fails (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(
+        client,
+        "acct-mismatch",
+        customer_role_arn="arn:aws:iam::111111111111:role/SparkPilotCustomerRole",
+        eks_cluster_arn="arn:aws:eks:us-east-1:222222222222:cluster/cross-acct",
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    acct_check = checks.get("byoc_lite.account_alignment")
+    assert acct_check is not None
+    assert acct_check["status"] == "fail"
+    assert "does not match" in acct_check["message"]
+    assert acct_check["remediation"] is not None
+
+
+def test_matrix_evidence_artifacts_present(monkeypatch) -> None:
+    """Preflight responses include environment_id and run_id for evidence (#66)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "evidence")
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_oidc_provider_association",
+        lambda self, env: {"associated": False, "cluster_name": "matrix-cluster"},
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    payload = resp.json()
+    # Evidence traceability fields
+    assert payload["environment_id"] == env_id
+    assert "generated_at" in payload
+    # Each check has code + status + message
+    for check in payload["checks"]:
+        assert "code" in check
+        assert "status" in check
+        assert check["status"] in ("pass", "fail", "warning")
+        assert "message" in check
+        # Failed checks must have remediation
+        if check["status"] == "fail":
+            assert check.get("remediation"), f"Missing remediation for {check['code']}"
