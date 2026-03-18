@@ -18,6 +18,7 @@ from sparkpilot.services._helpers import _now, _validate_custom_spark_conf_polic
 from sparkpilot.services.emr_releases import _canonical_release_label
 from sparkpilot.services.finops import _billing_period, _team_key_for_environment, _team_spend_for_period
 from sparkpilot.services.preflight_byoc import _add_byoc_lite_configuration_checks  # noqa: F401
+from sparkpilot.services.preflight_checks import _add_issue3_dispatch_gate_checks
 
 logger = logging.getLogger(__name__)
 
@@ -849,6 +850,11 @@ def _build_preflight(
     )
 
     _check_yunikorn_queue_capacity(environment, _run_obj, add_check)
+
+    _add_issue3_dispatch_gate_checks(
+        environment=environment,
+        add_check=add_check,
+    )
 
     _add_byoc_lite_configuration_checks(
         environment=environment,
