@@ -37,6 +37,7 @@ from sparkpilot.services.crud import (  # noqa: F401
     remove_team_environment_scope,
     cancel_run,
     create_environment,
+    delete_environment,
     create_job,
     create_or_update_user_identity,
     create_run,
@@ -54,6 +55,7 @@ from sparkpilot.services.crud import (  # noqa: F401
     list_team_environment_scopes,
     list_teams,
     list_user_identities,
+    retry_environment_provisioning,
 )
 
 # --- diagnostics ---

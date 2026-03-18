@@ -421,6 +421,39 @@ def _run_byoc_lite_oidc_and_trust_setup(
     environment: Environment,
     emr: EmrEksClient,
 ) -> None:
+    # Detect identity path: Pod Identity or IRSA (#52)
+    identity_mode = "irsa"  # default fallback
+    try:
+        pod_id_result = emr.check_pod_identity_agent(environment)
+        if pod_id_result.get("addon_installed") and pod_id_result.get("addon_status") == "ACTIVE":
+            identity_mode = "pod_identity"
+            _audit_byoc_lite_event(
+                db,
+                actor=actor,
+                environment=environment,
+                action="environment.byoc_lite_identity_detected",
+                details={
+                    "identity_mode": "pod_identity",
+                    "addon_status": pod_id_result.get("addon_status"),
+                    "addon_version": pod_id_result.get("addon_version", ""),
+                },
+            )
+    except (ValueError, Exception):
+        pass  # fall back to IRSA
+
+    if identity_mode == "irsa":
+        _audit_byoc_lite_event(
+            db,
+            actor=actor,
+            environment=environment,
+            action="environment.byoc_lite_identity_detected",
+            details={"identity_mode": "irsa", "reason": "Pod Identity agent not available"},
+        )
+
+    # Record identity mode on the environment
+    environment.identity_mode = identity_mode
+    db.flush()
+
     oidc_result = emr.check_oidc_provider_association(environment)
     _audit_byoc_lite_event(
         db,

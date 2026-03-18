@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     pricing_memory_gb_usd_per_second: float = 0.000001235
     pricing_arm64_discount_pct: float = 20.0
     pricing_mixed_discount_pct: float = 10.0
+    databricks_token: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

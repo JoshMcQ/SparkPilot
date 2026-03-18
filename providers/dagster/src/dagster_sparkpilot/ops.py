@@ -7,7 +7,7 @@ from typing import Any
 
 from dagster_sparkpilot._compat import Field, In, OpExecutionContext, Out, op
 from dagster_sparkpilot.client import SparkPilotClient
-from dagster_sparkpilot.common import TERMINAL_STATES, build_run_metadata
+from dagster_sparkpilot.common import TERMINAL_STATES, build_run_metadata, normalize_op_config
 from dagster_sparkpilot.errors import SparkPilotError, map_sparkpilot_error_to_dagster
 
 
@@ -108,9 +108,17 @@ def _resolve_sparkpilot_client(context: OpExecutionContext) -> SparkPilotClient:
     raise ValueError("Resource 'sparkpilot' must be SparkPilotClient or expose get_client().")
 
 
+_REQUIRED_CLIENT_METHODS = ("submit_run", "get_run", "cancel_run", "wait_for_terminal_state")
+
+
 def _looks_like_sparkpilot_client(candidate: Any) -> bool:
-    known_methods = ("submit_run", "get_run", "cancel_run", "wait_for_terminal_state")
-    return any(callable(getattr(candidate, method_name, None)) for method_name in known_methods)
+    missing = [m for m in _REQUIRED_CLIENT_METHODS if not callable(getattr(candidate, m, None))]
+    if missing:
+        raise ValueError(
+            f"SparkPilot client object is missing required methods: {missing}. "
+            "Ensure the resource exposes a fully-implemented SparkPilotClient."
+        )
+    return True
 
 
 @dataclass(frozen=True)
@@ -364,20 +372,7 @@ CANCEL_RUN_OP_CONFIG_SCHEMA = {
 
 
 def _normalized_op_config(context: OpExecutionContext) -> dict[str, Any]:
-    raw_config = getattr(context, "op_config", {}) or {}
-    normalized = dict(raw_config)
-    if normalized.get("run_timeout_seconds", 0) == 0:
-        normalized.pop("run_timeout_seconds", None)
-    for key in ("golden_path", "idempotency_key", "run_id"):
-        if normalized.get(key, "") == "":
-            normalized.pop(key, None)
-    if normalized.get("args") == []:
-        normalized.pop("args", None)
-    if normalized.get("spark_conf") == {}:
-        normalized.pop("spark_conf", None)
-    if normalized.get("requested_resources") == {}:
-        normalized.pop("requested_resources", None)
-    return normalized
+    return normalize_op_config(getattr(context, "op_config", {}) or {})
 
 
 @op(

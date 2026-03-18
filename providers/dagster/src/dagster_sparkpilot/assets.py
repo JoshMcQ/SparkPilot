@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 from dagster_sparkpilot._compat import AssetExecutionContext, asset
+from dagster_sparkpilot.common import normalize_op_config
 from dagster_sparkpilot.ops import (
     CANCEL_RUN_OP_CONFIG_SCHEMA,
     SUBMIT_RUN_OP_CONFIG_SCHEMA,
@@ -19,22 +19,7 @@ from dagster_sparkpilot.ops import (
 
 
 def _normalized_asset_config(context: AssetExecutionContext) -> dict[str, Any]:
-    raw_config = getattr(context, "op_config", {}) or {}
-    if not isinstance(raw_config, Mapping):
-        raise ValueError("Asset config must be an object mapping.")
-    normalized = dict(raw_config)
-    if normalized.get("run_timeout_seconds", 0) == 0:
-        normalized.pop("run_timeout_seconds", None)
-    for key in ("golden_path", "idempotency_key", "run_id"):
-        if normalized.get(key, "") == "":
-            normalized.pop(key, None)
-    if normalized.get("args") == []:
-        normalized.pop("args", None)
-    if normalized.get("spark_conf") == {}:
-        normalized.pop("spark_conf", None)
-    if normalized.get("requested_resources") == {}:
-        normalized.pop("requested_resources", None)
-    return normalized
+    return normalize_op_config(getattr(context, "op_config", {}) or {})
 
 
 @asset(required_resource_keys={"sparkpilot"}, config_schema=SUBMIT_RUN_OP_CONFIG_SCHEMA)

@@ -3,6 +3,7 @@
 Prerequisite for real AWS runs:
 
 - `docs/setup/aws-auth-quickstart.md`
+- `docs/security/tenant-isolation-boundaries.md`
 
 ## CI/CD Deployment Flow
 

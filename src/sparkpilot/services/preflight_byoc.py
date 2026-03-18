@@ -127,6 +127,8 @@ def _run_byoc_lite_aws_prechecks(
     emr = EmrEksClient()
     _add_byoc_lite_oidc_association_check(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_execution_role_trust_check(emr=emr, environment=environment, add_check=add_check)
+    _add_byoc_lite_pod_identity_readiness_check(emr=emr, environment=environment, add_check=add_check)
+    _add_byoc_lite_access_entry_mode_check(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_dispatch_permission_checks(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_spot_capacity_checks(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_spot_executor_placement_check(spark_conf=spark_conf, add_check=add_check)
@@ -193,6 +195,96 @@ def _add_byoc_lite_execution_role_trust_check(
             status_value="fail",
             message=str(exc),
             remediation="Fix execution role trust policy for EMR on EKS service accounts and retry preflight.",
+        )
+
+
+def _add_byoc_lite_pod_identity_readiness_check(
+    *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
+) -> None:
+    """Check if the EKS Pod Identity agent addon is installed (#52)."""
+    try:
+        result = emr.check_pod_identity_agent(environment)
+        if result.get("addon_installed"):
+            addon_status = result.get("addon_status", "UNKNOWN")
+            if addon_status == "ACTIVE":
+                add_check(
+                    code="byoc_lite.pod_identity_readiness",
+                    status_value="pass",
+                    message="EKS Pod Identity agent is installed and active.",
+                    details={
+                        "addon_status": addon_status,
+                        "addon_version": str(result.get("addon_version", "")),
+                    },
+                )
+            else:
+                add_check(
+                    code="byoc_lite.pod_identity_readiness",
+                    status_value="warning",
+                    message=f"EKS Pod Identity agent addon is installed but status is {addon_status}.",
+                    remediation="Wait for the eks-pod-identity-agent addon to reach ACTIVE status.",
+                    details={"addon_status": addon_status},
+                )
+        else:
+            add_check(
+                code="byoc_lite.pod_identity_readiness",
+                status_value="warning",
+                message=(
+                    "EKS Pod Identity agent is not installed. "
+                    "Using IRSA (IAM Roles for Service Accounts) as fallback."
+                ),
+                remediation=(
+                    "Install the eks-pod-identity-agent addon: "
+                    "aws eks create-addon --cluster-name <name> "
+                    "--addon-name eks-pod-identity-agent --region <region>"
+                ),
+            )
+    except ValueError as exc:
+        add_check(
+            code="byoc_lite.pod_identity_readiness",
+            status_value="warning",
+            message=f"Unable to check Pod Identity readiness: {exc}",
+            remediation="Grant customer_role_arn eks:DescribeAddon permission.",
+        )
+
+
+def _add_byoc_lite_access_entry_mode_check(
+    *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
+) -> None:
+    """Check the EKS cluster authentication mode for access entries support (#52)."""
+    try:
+        result = emr.check_cluster_access_mode(environment)
+        auth_mode = result.get("authentication_mode", "CONFIG_MAP")
+        if result.get("access_entries_supported"):
+            add_check(
+                code="byoc_lite.access_entry_mode",
+                status_value="pass",
+                message=f"EKS cluster authentication mode is {auth_mode}, access entries are supported.",
+                details={
+                    "authentication_mode": auth_mode,
+                    "cluster_name": str(result.get("cluster_name", "")),
+                },
+            )
+        else:
+            add_check(
+                code="byoc_lite.access_entry_mode",
+                status_value="warning",
+                message=(
+                    f"EKS cluster authentication mode is {auth_mode}. "
+                    "Access entries require API or API_AND_CONFIG_MAP mode."
+                ),
+                remediation=(
+                    "Update cluster access configuration: "
+                    "aws eks update-cluster-config --name <name> "
+                    "--access-config authenticationMode=API_AND_CONFIG_MAP"
+                ),
+                details={"authentication_mode": auth_mode},
+            )
+    except ValueError as exc:
+        add_check(
+            code="byoc_lite.access_entry_mode",
+            status_value="warning",
+            message=f"Unable to check EKS access entry mode: {exc}",
+            remediation="Grant customer_role_arn eks:DescribeCluster permission.",
         )
 
 
@@ -405,6 +497,16 @@ def _add_byoc_lite_skipped_aws_prechecks(*, add_check: Callable[..., None]) -> N
         code="byoc_lite.oidc_association",
         status_value="warning",
         message="OIDC association check was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+    add_check(
+        code="byoc_lite.pod_identity_readiness",
+        status_value="warning",
+        message="Pod Identity readiness check was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+    add_check(
+        code="byoc_lite.access_entry_mode",
+        status_value="warning",
+        message="Access entry mode check was skipped because base BYOC-Lite prerequisites are not ready.",
     )
     add_check(
         code="byoc_lite.spot_capacity",

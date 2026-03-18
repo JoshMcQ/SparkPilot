@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { createEnvironment } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { createEnvironment, fetchEnvironment, fetchProvisioningOperation } from "@/lib/api";
 import { shortId } from "@/lib/format";
 
 type CreateValues = {
@@ -39,6 +39,17 @@ export default function EnvironmentCreateForm() {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [result, setResult] = useState<string>("");
+  const [operationId, setOperationId] = useState<string>("");
+  const [operationState, setOperationState] = useState<string>("");
+  const [operationStep, setOperationStep] = useState<string>("");
+  const [operationMessage, setOperationMessage] = useState<string>("");
+  const [environmentId, setEnvironmentId] = useState<string>("");
+  const [environmentStatus, setEnvironmentStatus] = useState<string>("");
+
+  const trackingActive = operationId && operationState !== "ready" && operationState !== "failed";
+  const remediationSnippet = operationMessage.includes("Remediation:")
+    ? operationMessage.slice(operationMessage.indexOf("Remediation:")).trim()
+    : "";
 
   function validate(): string[] {
     const nextErrors: string[] = [];
@@ -110,6 +121,12 @@ export default function EnvironmentCreateForm() {
           max_run_seconds: Number.parseInt(values.maxRunSeconds, 10),
         },
       });
+      setOperationId(op.id);
+      setOperationState(op.state);
+      setOperationStep(op.step);
+      setOperationMessage(op.message ?? "");
+      setEnvironmentId(op.environment_id);
+      setEnvironmentStatus("provisioning");
       setResult(`Environment queued. operation_id=${shortId(op.id)} environment_id=${shortId(op.environment_id)}`);
       router.refresh();
     } catch (err: unknown) {
@@ -118,6 +135,59 @@ export default function EnvironmentCreateForm() {
       setSubmitting(false);
     }
   }
+
+  useEffect(() => {
+    if (!trackingActive) {
+      return;
+    }
+    let mounted = true;
+    let tickCount = 0;
+    const maxTicks = 180; // 15 minutes at 5s interval.
+
+    const poll = async () => {
+      tickCount += 1;
+      if (tickCount > maxTicks) {
+        if (mounted) {
+          setErrors((prev) => [...prev, "Provisioning tracker timed out after 15 minutes."]);
+        }
+        return;
+      }
+      try {
+        const op = await fetchProvisioningOperation(operationId);
+        if (!mounted) {
+          return;
+        }
+        setOperationState(op.state);
+        setOperationStep(op.step);
+        setOperationMessage(op.message ?? "");
+        if (environmentId) {
+          const env = await fetchEnvironment(environmentId);
+          if (!mounted) {
+            return;
+          }
+          setEnvironmentStatus(env.status);
+        }
+        if (op.state === "ready" || op.state === "failed") {
+          router.refresh();
+        }
+      } catch (err: unknown) {
+        if (!mounted) {
+          return;
+        }
+        setErrors((prev) => [...prev, err instanceof Error ? err.message : "Provisioning status refresh failed"]);
+      }
+    };
+
+    void poll();
+    const id = setInterval(() => {
+      void poll();
+    }, 5000);
+
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [environmentId, operationId, router, trackingActive]);
 
   return (
     <div className="card">
@@ -220,6 +290,42 @@ export default function EnvironmentCreateForm() {
         </ul>
       ) : null}
       {result ? <div className="success-text">{result}</div> : null}
+
+      {operationId ? (
+        <div className="card" style={{ marginTop: 12 }}>
+          <h3>Provisioning Progress</h3>
+          <div className="subtle">
+            operation=<code>{shortId(operationId)}</code> environment=<code>{shortId(environmentId)}</code>
+          </div>
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <div>
+              <div className="subtle">Operation State</div>
+              <span className={`badge ${operationState}`}>{operationState || "-"}</span>
+            </div>
+            <div>
+              <div className="subtle">Current Step</div>
+              <div>{operationStep || "-"}</div>
+            </div>
+            <div>
+              <div className="subtle">Environment Status</div>
+              <span className={`badge ${environmentStatus || "muted"}`}>{environmentStatus || "unknown"}</span>
+            </div>
+          </div>
+          <div className="subtle" style={{ marginTop: 8 }}>
+            {operationMessage || "Waiting for worker updates..."}
+          </div>
+          {operationState === "failed" && remediationSnippet ? (
+            <div className="error-text" style={{ marginTop: 8 }}>
+              {remediationSnippet}
+            </div>
+          ) : null}
+          {trackingActive ? (
+            <div className="subtle" style={{ marginTop: 6 }}>
+              Live refresh every 5 seconds.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

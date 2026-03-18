@@ -2,6 +2,9 @@
 
 Use this page first before setup.
 
+Related security boundary document:
+- `docs/security/tenant-isolation-boundaries.md`
+
 ## BYOC-lite
 
 - Uses an existing customer EKS cluster and namespace.

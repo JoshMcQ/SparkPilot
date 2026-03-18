@@ -75,6 +75,11 @@ async function proxy(request: NextRequest, context: RouteContext): Promise<NextR
     if (replayHeader) {
       passthroughHeaders.set("X-Idempotent-Replay", replayHeader);
     }
+    // Forward auth hint so UI can detect key rotation (#84)
+    const authHint = response.headers.get("X-SparkPilot-Auth-Hint");
+    if (authHint) {
+      passthroughHeaders.set("X-SparkPilot-Auth-Hint", authHint);
+    }
 
     return new NextResponse(response.body, {
       status: response.status,
@@ -95,5 +100,9 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
 }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  return proxy(request, context);
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   return proxy(request, context);
 }

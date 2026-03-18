@@ -1,11 +1,14 @@
 """Entity CRUD operations: tenants, teams, users, environments, jobs, runs."""
 
 from datetime import datetime
+import logging
 import uuid
 from typing import Any
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from sparkpilot.config import get_settings
 from sparkpilot.exceptions import ConflictError, EntityNotFoundError, ValidationError
@@ -348,6 +351,9 @@ def create_environment(
         eks_cluster_arn=req.eks_cluster_arn,
         eks_namespace=req.eks_namespace,
         warm_pool_enabled=req.warm_pool_enabled,
+        lake_formation_enabled=req.lake_formation_enabled,
+        lf_catalog_id=req.lf_catalog_id,
+        lf_data_access_scope_json=req.lf_data_access_scope,
         max_concurrent_runs=req.quotas.max_concurrent_runs,
         max_vcpu=req.quotas.max_vcpu,
         max_run_seconds=req.quotas.max_run_seconds,
@@ -414,6 +420,125 @@ def get_provisioning_operation(db: Session, operation_id: str) -> ProvisioningOp
     if not op:
         raise EntityNotFoundError("Provisioning operation not found.")
     return op
+
+
+def retry_environment_provisioning(
+    db: Session,
+    environment_id: str,
+    *,
+    actor: str,
+    source_ip: str | None,
+    idempotency_key: str,
+    commit: bool = True,
+) -> ProvisioningOperation:
+    env = _require_environment(db, environment_id)
+    if env.status == "deleted":
+        raise ConflictError("Environment is deleted and cannot be retried.")
+    active_operation_states = {
+        "queued",
+        "validating_bootstrap",
+        "provisioning_network",
+        "provisioning_eks",
+        "provisioning_emr",
+        "validating_runtime",
+    }
+    existing_active_operation = db.execute(
+        select(ProvisioningOperation.id).where(
+            ProvisioningOperation.environment_id == environment_id,
+            ProvisioningOperation.state.in_(active_operation_states),
+        )
+    ).first()
+    if existing_active_operation:
+        raise ConflictError("An active provisioning operation already exists for this environment.")
+
+    env.status = "provisioning"
+    env.updated_at = _now()
+    op = ProvisioningOperation(
+        environment_id=env.id,
+        idempotency_key=idempotency_key,
+        state="queued",
+        step="queued",
+        message="Queued for provisioning retry.",
+        logs_uri=f"s3://sparkpilot-ops/provisioning/{env.id}/{uuid.uuid4()}.log",
+    )
+    db.add(op)
+    write_audit_event(
+        db,
+        actor=actor,
+        source_ip=source_ip,
+        action="environment.retry_provisioning",
+        entity_type="environment",
+        entity_id=env.id,
+        tenant_id=env.tenant_id,
+        details={"operation_id": op.id},
+    )
+    if commit:
+        db.commit()
+        db.refresh(op)
+    else:
+        db.flush()
+    return op
+
+
+def delete_environment(
+    db: Session,
+    environment_id: str,
+    *,
+    actor: str,
+    source_ip: str | None,
+    commit: bool = True,
+) -> Environment:
+    env = _require_environment(db, environment_id)
+    if env.status == "deleted":
+        return env
+
+    active_run_states = {"queued", "dispatching", "accepted", "running"}
+    active_run = db.execute(
+        select(Run.id).where(
+            Run.environment_id == environment_id,
+            Run.state.in_(active_run_states),
+        )
+    ).first()
+    if active_run:
+        raise ConflictError(
+            "Environment has active or in-flight runs. Cancel/wait for completion before delete."
+        )
+
+    active_operation_states = {
+        "queued",
+        "validating_bootstrap",
+        "provisioning_network",
+        "provisioning_eks",
+        "provisioning_emr",
+        "validating_runtime",
+    }
+    active_operation = db.execute(
+        select(ProvisioningOperation.id).where(
+            ProvisioningOperation.environment_id == environment_id,
+            ProvisioningOperation.state.in_(active_operation_states),
+        )
+    ).first()
+    if active_operation:
+        raise ConflictError("Environment has an active provisioning operation. Retry later.")
+
+    env.status = "deleted"
+    env.updated_at = _now()
+    write_audit_event(
+        db,
+        actor=actor,
+        source_ip=source_ip,
+        action="environment.delete",
+        entity_type="environment",
+        entity_id=env.id,
+        tenant_id=env.tenant_id,
+        details={"status": env.status},
+    )
+    if commit:
+        db.commit()
+        db.refresh(env)
+    else:
+        db.flush()
+    return env
 
 
 # ---------------------------------------------------------------------------
@@ -554,6 +679,23 @@ def create_run(
             + ", ".join(policy_violations)
         )
 
+    # Policy engine evaluation before quota checks (#39)
+    from sparkpilot.policy_engine import evaluate_policies
+    policy_results = evaluate_policies(
+        db,
+        env,
+        timeout_seconds=req.timeout_seconds,
+        requested_resources=requested,
+        spark_conf=run_spark_conf,
+        golden_path=req.golden_path,
+        actor=actor,
+        source_ip=source_ip,
+    )
+    hard_failures = [r for r in policy_results if not r["passed"] and r["enforcement"] == "hard"]
+    if hard_failures:
+        messages = "; ".join(f"[{f['policy_name']}] {f['message']}" for f in hard_failures)
+        raise ValidationError(f"Policy violation(s): {messages}")
+
     enforce_quota_for_run(db, env, requested)
     timeout_seconds = _resolve_timeout_seconds(
         req=req,
@@ -596,6 +738,29 @@ def create_run(
             "golden_path": selected_golden_path.name if selected_golden_path else None,
         },
     )
+
+    # Record LF permission context for audit trail (#38)
+    if getattr(env, "lake_formation_enabled", False):
+        try:
+            from sparkpilot.services.lake_formation import get_lf_permission_context
+            lf_context = get_lf_permission_context(
+                env.region,
+                runtime_settings.emr_execution_role_arn,
+                catalog_id=getattr(env, "lf_catalog_id", None),
+            )
+            write_audit_event(
+                db,
+                actor=actor,
+                source_ip=source_ip,
+                action="run.lf_permission_context",
+                entity_type="run",
+                entity_id=run.id,
+                tenant_id=env.tenant_id,
+                details=lf_context,
+            )
+        except Exception:
+            logger.warning("Failed to record LF permission context for run %s", run.id, exc_info=True)
+
     if commit:
         db.commit()
         db.refresh(run)

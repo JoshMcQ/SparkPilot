@@ -4,15 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CostShowbackResponse,
   Environment,
+  Team,
   UsageResponse,
   fetchCostShowback,
   fetchEnvironments,
+  fetchTeams,
   fetchUsage,
 } from "@/lib/api";
 import { shortId, usd, friendlyError } from "@/lib/format";
 import { CostBarChart } from "@/components/cost-bar-chart";
 import { ShortId } from "@/components/short-id";
 import { PaginationControls, PaginationState, paginate } from "@/components/pagination";
+import { badgeClass } from "@/lib/badge";
 
 function _periodNow(): string {
   const now = new Date();
@@ -21,6 +24,7 @@ function _periodNow(): string {
 
 export default function CostsPage() {
   const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [initializing, setInitializing] = useState<boolean>(true);
   const [team, setTeam] = useState<string>("");
   const [period, setPeriod] = useState<string>(_periodNow());
@@ -32,24 +36,21 @@ export default function CostsPage() {
   const [usagePg, setUsagePg] = useState<PaginationState>({ page: 0, pageSize: 10 });
 
   useEffect(() => {
-    fetchEnvironments()
-      .then((rows) => {
-        setEnvironments(rows);
-        if (!team && rows.length > 0) {
-          setTeam(rows[0].tenant_id);
+    Promise.all([fetchEnvironments(), fetchTeams()])
+      .then(([envRows, teamRows]) => {
+        setEnvironments(envRows);
+        setTeams(teamRows);
+        if (!team && teamRows.length > 0) {
+          setTeam(teamRows[0].name);
         }
       })
       .catch((err: unknown) => {
-        setError(friendlyError(err, "Failed to load environments"));
+        setError(friendlyError(err, "Failed to load teams and environments"));
       })
       .finally(() => {
         setInitializing(false);
       });
   }, []);
-
-  const tenantOptions = useMemo(() => {
-    return Array.from(new Set(environments.map((item) => item.tenant_id)));
-  }, [environments]);
 
   // Build a lookup for environment display
   const envMap = useMemo(() => new Map(environments.map((e) => [e.id, e])), [environments]);
@@ -59,16 +60,46 @@ export default function CostsPage() {
     return `${env.region} / ${env.eks_namespace ?? env.provisioning_mode}`;
   }
 
+  const teamByName = useMemo(() => new Map(teams.map((t) => [t.name, t])), [teams]);
+
+  function costStatus(item: CostShowbackResponse["items"][number]): { code: "reconciled" | "cur_pending" | "estimated_only"; label: string } {
+    if (item.actual_cost_usd_micros != null && item.cur_reconciled_at) {
+      return { code: "reconciled", label: "Reconciled" };
+    }
+    if (item.actual_cost_usd_micros == null) {
+      return { code: "cur_pending", label: "CUR pending" };
+    }
+    return { code: "estimated_only", label: "Estimated only" };
+  }
+
+  const reconciliationSummary = useMemo(() => {
+    if (!showback) return null;
+    const reconciled = showback.items.filter((item) => costStatus(item).code === "reconciled").length;
+    const pending = showback.items.filter((item) => costStatus(item).code === "cur_pending").length;
+    const estimatedOnly = showback.items.filter((item) => costStatus(item).code === "estimated_only").length;
+    const lastReconciledAt = showback.items
+      .map((item) => item.cur_reconciled_at)
+      .filter((item): item is string => typeof item === "string" && item.length > 0)
+      .sort()
+      .at(-1);
+    return { reconciled, pending, estimatedOnly, lastReconciledAt };
+  }, [showback]);
+
   async function loadCostData() {
     if (!team || !period) {
       setError("Select a team and billing period first.");
+      return;
+    }
+    const tenantId = teamByName.get(team)?.tenant_id;
+    if (!tenantId) {
+      setError("Selected team is missing tenant mapping. Verify team configuration in Access.");
       return;
     }
     setBusy(true);
     setError(null);
     try {
       const [usagePayload, showbackPayload] = await Promise.all([
-        fetchUsage(team),
+        fetchUsage(tenantId),
         fetchCostShowback(team, period),
       ]);
       setUsage(usagePayload);
@@ -97,9 +128,9 @@ export default function CostsPage() {
             Team
             <select value={team} onChange={(event) => setTeam(event.target.value)}>
               <option value="">Select team</option>
-              {tenantOptions.map((item) => (
-                <option key={item} value={item}>
-                  {shortId(item)}
+              {teams.map((item) => (
+                <option key={item.id} value={item.name}>
+                  {item.name}
                 </option>
               ))}
             </select>
@@ -110,8 +141,13 @@ export default function CostsPage() {
           </label>
         </div>
         {initializing ? <div className="subtle">Loading team options...</div> : null}
+        {!initializing && teams.length === 0 ? (
+          <div className="subtle">
+            No team entities found yet. Create teams on the Access page before loading showback.
+          </div>
+        ) : null}
         <div className="button-row">
-          <button type="button" className="button" disabled={busy} onClick={loadCostData}>
+          <button type="button" className="button" disabled={busy || teams.length === 0} onClick={loadCostData}>
             {busy ? "Loading..." : "Load cost data"}
           </button>
         </div>
@@ -138,6 +174,37 @@ export default function CostsPage() {
         </div>
       ) : null}
 
+      {showback && reconciliationSummary ? (
+        <div className="card">
+          <h3>Reconciliation Health</h3>
+          <div className="subtle">
+            Team: <strong>{showback.team}</strong>
+            {teamByName.get(showback.team)?.tenant_id ? (
+              <> | tenant: <ShortId value={teamByName.get(showback.team)?.tenant_id ?? ""} /></>
+            ) : null}
+          </div>
+          <div className="card-grid" style={{ marginTop: 8 }}>
+            <article className="card">
+              <h3>Reconciled</h3>
+              <div className="stat-value">{reconciliationSummary.reconciled}</div>
+            </article>
+            <article className="card">
+              <h3>CUR Pending</h3>
+              <div className="stat-value">{reconciliationSummary.pending}</div>
+            </article>
+            <article className="card">
+              <h3>Estimated Only</h3>
+              <div className="stat-value">{reconciliationSummary.estimatedOnly}</div>
+            </article>
+          </div>
+          <div className="subtle" style={{ marginTop: 8 }}>
+            Last CUR reconciliation:
+            {" "}
+            {reconciliationSummary.lastReconciledAt ? new Date(reconciliationSummary.lastReconciledAt).toLocaleString() : "not yet available"}
+          </div>
+        </div>
+      ) : null}
+
       {/* --- Bar chart visualization --- */}
       {showback && showback.items.length > 0 ? (
         <CostBarChart items={showback.items} />
@@ -154,23 +221,32 @@ export default function CostsPage() {
                 <th>Estimated</th>
                 <th>Actual</th>
                 <th>Effective</th>
+                <th>Status</th>
                 <th className="col-hide-mobile">Period</th>
               </tr>
             </thead>
             <tbody>
               {paginate(showback.items, showbackPg).map((item) => (
+                (() => {
+                  const status = costStatus(item);
+                  return (
                 <tr key={item.run_id}>
                   <td><ShortId value={item.run_id} /></td>
                   <td title={item.environment_id}>{envDisplay(item.environment_id)}</td>
                   <td>{usd(item.estimated_cost_usd_micros)}</td>
                   <td>{usd(item.actual_cost_usd_micros)}</td>
                   <td>{usd(item.effective_cost_usd_micros)}</td>
+                  <td>
+                    <span className={badgeClass(status.code)}>{status.label}</span>
+                  </td>
                   <td className="col-hide-mobile">{item.billing_period}</td>
                 </tr>
+                  );
+                })()
               ))}
               {showback.items.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="subtle">
+                  <td colSpan={7} className="subtle">
                     No showback data for this team and period. Run a workload first.
                   </td>
                 </tr>

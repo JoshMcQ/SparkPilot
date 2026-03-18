@@ -72,5 +72,21 @@ Validated flow:
   - `actual_cost_usd_micros=12345`
   - reconciliation audit event persisted.
 
+## Real AWS Athena Edge-Case Reconciliation (March 18, 2026)
+Artifacts:
+- `artifacts/issue67-cur-20260317-231046/summary.json`
+- `artifacts/issue67-cur-20260317-231046/athena_queries.json`
+
+Validated flow:
+- Created live Athena table with CUR-compatible columns on S3.
+- Loaded mixed pricing-term rows for:
+  - `OnDemand`
+  - `Spot`
+  - `SavingsPlanCoveredUsage`
+  - `Reserved`
+- Captured explicit query execution IDs for setup and edge-mix aggregation.
+- Reconciled 4 pending allocations with worker path and captured reconciliation query ID.
+- Verified before/after snapshots and zero-variance threshold (`max_variance_micros=0`).
+
 ## Remaining to close R03
-- Wire billing-managed CUR delivery/catalog and run the same reconciliation path against production CUR tables.
+- Wire billing-managed CUR delivery/catalog and periodically run the same reconciliation path against account CUR partitions.

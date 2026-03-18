@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from sparkpilot.config import get_settings, is_valid_iam_role_arn, validate_runtime_settings
 from sparkpilot.db import SessionLocal
-from sparkpilot.models import AuditEvent, EmrRelease, Environment, TeamBudget
+from sparkpilot.models import AuditEvent, EmrRelease, Environment, Run, TeamBudget
 from sparkpilot.services._helpers import _now, _validate_custom_spark_conf_policy
 from sparkpilot.services.emr_releases import _canonical_release_label
 from sparkpilot.services.finops import _billing_period, _team_key_for_environment, _team_spend_for_period
@@ -475,6 +475,192 @@ def _add_spark_conf_policy_check(
 
 
 # ---------------------------------------------------------------------------
+# Supplemental spark-conf preflight checks (VPA, S3 Express)
+# ---------------------------------------------------------------------------
+
+def _check_vpa_compat(env: Any, spark_conf: dict[str, str] | None) -> dict[str, Any]:
+    """Emit a WARNING if VPA-incompatible spark conf is detected.
+
+    VPA can only resize pods on restart; very low batch sizes combined with
+    VPA admission can cause unexpected resource contention. This is advisory
+    only — it does not block job submission.
+    """
+    spark_conf = spark_conf or {}
+    issues = []
+    batch_size_str = spark_conf.get("spark.kubernetes.allocation.batch.size", "")
+    if batch_size_str:
+        try:
+            batch_size = int(batch_size_str)
+            if batch_size <= 5:
+                issues.append(
+                    f"spark.kubernetes.allocation.batch.size is set to {batch_size}, which is very low. "
+                    "If a VPA admission controller is active in this namespace, executor pods may be "
+                    "rejected or resized on creation, leading to allocation delays. "
+                    "Consider raising batch size or setting VPA mode to 'Off' for Spark workloads."
+                )
+        except ValueError:
+            pass
+    return {
+        "status": "warn" if issues else "pass",
+        "check": "vpa_compat",
+        "issues": issues,
+    }
+
+
+def _check_s3_express_config(spark_conf: dict[str, str]) -> dict[str, Any]:
+    """Warn when S3 Express shuffle is configured without co-location pin."""
+    issues = []
+    uses_s3_express = any(
+        "s3express" in str(v).lower() or "s3express" in str(k).lower()
+        for k, v in spark_conf.items()
+    )
+    if not uses_s3_express:
+        return {"status": "pass", "check": "s3_express_config", "issues": []}
+
+    has_az_affinity = "spark.kubernetes.node.selector.topology.kubernetes.io/zone" in spark_conf
+    if not has_az_affinity:
+        issues.append(
+            "S3 Express shuffle detected but no AZ affinity node selector configured. "
+            "Set spark.kubernetes.node.selector.topology.kubernetes.io/zone to pin pods "
+            "to the same AZ as your S3 Express bucket to avoid cross-AZ charges."
+        )
+    return {
+        "status": "warn" if issues else "pass",
+        "check": "s3_express_config",
+        "issues": issues,
+    }
+
+
+# ---------------------------------------------------------------------------
+# YuniKorn queue capacity check
+# ---------------------------------------------------------------------------
+
+def _check_yunikorn_queue_capacity(
+    environment: Environment,
+    run: Run | None,
+    add_check: Callable[..., None],
+) -> None:
+    """Block run if environment has a YuniKorn queue and run would exceed queue max vCPU."""
+    if not environment.yunikorn_queue or not environment.yunikorn_queue_max_vcpu:
+        add_check(
+            code="yunikorn_queue_capacity",
+            status_value="pass",
+            message="YuniKorn queue capacity check is not applicable.",
+        )
+        return
+
+    if run is None:
+        add_check(
+            code="yunikorn_queue_capacity",
+            status_value="pass",
+            message="YuniKorn queue is configured; per-run capacity check requires a run context.",
+            details={
+                "yunikorn_queue": environment.yunikorn_queue,
+                "queue_max_vcpu": environment.yunikorn_queue_max_vcpu,
+            },
+        )
+        return
+
+    resources = run.requested_resources_json or {}
+    executor_vcpu = resources.get("executor_vcpu", 0)
+    executor_instances = resources.get("executor_instances", 0)
+    driver_vcpu = resources.get("driver_vcpu", 0)
+    requested_vcpu = executor_vcpu * executor_instances + driver_vcpu
+
+    if requested_vcpu > environment.yunikorn_queue_max_vcpu:
+        add_check(
+            code="yunikorn_queue_capacity",
+            status_value="fail",
+            message=(
+                f"Run requests {requested_vcpu} vCPU but YuniKorn queue max is "
+                f"{environment.yunikorn_queue_max_vcpu}."
+            ),
+            remediation=(
+                "Reduce executor_vcpu, executor_instances, or driver_vcpu, "
+                "or increase yunikorn_queue_max_vcpu on the environment."
+            ),
+            details={
+                "requested_vcpu": requested_vcpu,
+                "queue_max_vcpu": environment.yunikorn_queue_max_vcpu,
+                "yunikorn_queue": environment.yunikorn_queue,
+            },
+        )
+        return
+
+    add_check(
+        code="yunikorn_queue_capacity",
+        status_value="pass",
+        message="Run vCPU request is within YuniKorn queue capacity.",
+        details={
+            "requested_vcpu": requested_vcpu,
+            "queue_max_vcpu": environment.yunikorn_queue_max_vcpu,
+            "yunikorn_queue": environment.yunikorn_queue,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Policy engine integration (#39)
+# ---------------------------------------------------------------------------
+
+
+def _add_policy_engine_checks(
+    *,
+    environment: Environment,
+    spark_conf: dict[str, str] | None,
+    run: "Run | None",
+    db: Session | None,
+    add_check: Callable[..., None],
+) -> None:
+    """Evaluate applicable policies and convert results to preflight checks."""
+    from sparkpilot.policy_engine import evaluate_policies
+
+    def _run_eval(session: Session) -> list[dict]:
+        timeout_seconds = None
+        requested_resources = None
+        golden_path = None
+        if run is not None:
+            timeout_seconds = getattr(run, "timeout_seconds", None)
+            rr_json = getattr(run, "requested_resources_json", None)
+            if rr_json and isinstance(rr_json, dict):
+                requested_resources = rr_json
+            golden_path = getattr(run, "golden_path_name", None)
+        return evaluate_policies(
+            session,
+            environment,
+            timeout_seconds=timeout_seconds,
+            requested_resources=requested_resources,
+            spark_conf=spark_conf,
+            golden_path=golden_path,
+        )
+
+    if db is not None:
+        results = _run_eval(db)
+    else:
+        with SessionLocal() as policy_db:
+            results = _run_eval(policy_db)
+            policy_db.commit()  # persist audit events when we own the session
+
+    for r in results:
+        if r["passed"]:
+            add_check(
+                code=f"policy.{r['rule_type']}",
+                status_value="pass",
+                message=r["message"],
+                details={"policy_id": r["policy_id"], "policy_name": r["policy_name"]},
+            )
+        else:
+            status_value = "fail" if r["enforcement"] == "hard" else "warning"
+            add_check(
+                code=f"policy.{r['rule_type']}",
+                status_value=status_value,
+                message=r["message"],
+                remediation=r.get("remediation"),
+                details={"policy_id": r["policy_id"], "policy_name": r["policy_name"]},
+            )
+
+
+# ---------------------------------------------------------------------------
 # Preflight builder
 # ---------------------------------------------------------------------------
 
@@ -486,9 +672,21 @@ def _build_preflight(
     require_environment_ready: bool = True,
     require_virtual_cluster: bool = True,
     db: Session | None = None,
+    run: Run | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
     checks: list[dict[str, Any]] = []
+
+    # Resolve run object for per-run checks (e.g. YuniKorn capacity)
+    _run_obj: Run | None = run
+    if _run_obj is None and run_id is not None:
+        def _load_run(session: Session) -> Run | None:
+            return session.get(Run, run_id)
+        if db is not None:
+            _run_obj = _load_run(db)
+        else:
+            with SessionLocal() as _rdb:
+                _run_obj = _load_run(_rdb)
 
     def add_check(
         *,
@@ -533,9 +731,59 @@ def _build_preflight(
         add_check=add_check,
     )
 
+    _check_yunikorn_queue_capacity(environment, _run_obj, add_check)
+
     _add_byoc_lite_configuration_checks(
         environment=environment,
         spark_conf=spark_conf,
+        add_check=add_check,
+    )
+
+    # Supplemental spark-conf checks (advisory warnings, not blocks)
+    _effective_spark_conf = spark_conf or {}
+
+    vpa_result = _check_vpa_compat(environment, _effective_spark_conf)
+    if vpa_result["issues"]:
+        for _issue in vpa_result["issues"]:
+            add_check(
+                code="run.vpa_compat",
+                status_value="warning",
+                message=_issue,
+                remediation=(
+                    "Review VPA admission controller configuration for this namespace. "
+                    "Set VPA mode to 'Off' or 'Initial' for Spark workloads, or raise "
+                    "spark.kubernetes.allocation.batch.size above 5."
+                ),
+            )
+
+    s3_express_result = _check_s3_express_config(_effective_spark_conf)
+    if s3_express_result["issues"]:
+        for _issue in s3_express_result["issues"]:
+            add_check(
+                code="run.s3_express_config",
+                status_value="warning",
+                message=_issue,
+                remediation=(
+                    "Add spark.kubernetes.node.selector.topology.kubernetes.io/zone=<az> "
+                    "to your spark_conf, where <az> matches the AZ of your S3 Express bucket. "
+                    "See docs/decisions/adr-004-s3-express-guidance.md for the full golden-path preset."
+                ),
+            )
+
+    # Policy engine evaluation (#39)
+    _add_policy_engine_checks(
+        environment=environment,
+        spark_conf=spark_conf,
+        run=_run_obj,
+        db=db,
+        add_check=add_check,
+    )
+
+    # Lake Formation FGAC checks (#38)
+    from sparkpilot.services.lake_formation import _add_lake_formation_fgac_checks
+    _add_lake_formation_fgac_checks(
+        environment=environment,
+        db=db,
         add_check=add_check,
     )
 

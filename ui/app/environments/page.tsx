@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Environment, fetchEnvironments } from "@/lib/api";
+import { Environment, deleteEnvironment, fetchEnvironments, retryEnvironmentProvisioning } from "@/lib/api";
 import { badgeClass } from "@/lib/badge";
 import { friendlyError } from "@/lib/format";
 import { ShortId } from "@/components/short-id";
@@ -22,12 +22,16 @@ export default function EnvironmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pg, setPg] = useState<PaginationState>({ page: 0, pageSize: 10 });
 
   async function loadEnvironments() {
     try {
       const rows = await fetchEnvironments();
-      setEnvironments(rows);
+      setEnvironments(rows.filter((row) => row.status !== "deleted"));
       setError(null);
     } catch (err: unknown) {
       setError(friendlyError(err, "Failed to load environments"));
@@ -39,6 +43,53 @@ export default function EnvironmentsPage() {
   useEffect(() => {
     void loadEnvironments();
   }, []);
+
+  useEffect(() => {
+    const hasActiveProvisioning = environments.some((env) =>
+      ["provisioning", "upgrading", "deleting"].includes(env.status)
+    );
+    if (!hasActiveProvisioning) {
+      return;
+    }
+    const id = setInterval(() => {
+      void loadEnvironments();
+    }, 5000);
+    return () => clearInterval(id);
+  }, [environments]);
+
+  async function handleRetry(environmentId: string) {
+    setRetryingId(environmentId);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const op = await retryEnvironmentProvisioning(environmentId);
+      setActionMessage(`Retry queued for ${environmentId}. operation_id=${op.id}`);
+      await loadEnvironments();
+    } catch (err: unknown) {
+      setActionError(friendlyError(err, "Retry failed"));
+    } finally {
+      setRetryingId(null);
+    }
+  }
+
+  async function handleDelete(environmentId: string) {
+    const confirmed = window.confirm("Delete this environment? This is blocked if runs are active.");
+    if (!confirmed) {
+      return;
+    }
+    setDeletingId(environmentId);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      await deleteEnvironment(environmentId);
+      setActionMessage(`Environment ${environmentId} deleted.`);
+      await loadEnvironments();
+    } catch (err: unknown) {
+      setActionError(friendlyError(err, "Delete failed"));
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const visible = paginate(environments, pg);
 
@@ -57,6 +108,17 @@ export default function EnvironmentsPage() {
         <div className="card error-card">
           <strong>Error</strong>
           <div>{error}</div>
+        </div>
+      ) : null}
+      {actionError ? (
+        <div className="card error-card">
+          <strong>Action Failed</strong>
+          <div>{actionError}</div>
+        </div>
+      ) : null}
+      {actionMessage ? (
+        <div className="card">
+          <div className="success-text">{actionMessage}</div>
         </div>
       ) : null}
 
@@ -148,6 +210,26 @@ export default function EnvironmentsPage() {
                               <span className="detail-label">Updated</span>
                               <span>{formatTimestamp(env.updated_at)}</span>
                             </div>
+                          </div>
+                          <div className="button-row" style={{ marginTop: 10 }}>
+                            {env.status === "failed" ? (
+                              <button
+                                type="button"
+                                className="button button-secondary"
+                                disabled={retryingId === env.id}
+                                onClick={() => void handleRetry(env.id)}
+                              >
+                                {retryingId === env.id ? "Retrying..." : "Retry Provisioning"}
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="button button-danger"
+                              disabled={deletingId === env.id}
+                              onClick={() => void handleDelete(env.id)}
+                            >
+                              {deletingId === env.id ? "Deleting..." : "Delete Environment"}
+                            </button>
                           </div>
                         </td>
                       </tr>

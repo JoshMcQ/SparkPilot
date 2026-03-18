@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { USER_ACCESS_TOKEN_STORAGE_KEY, fetchEnvironments, storeUserAccessToken } from "@/lib/api";
+import {
+  USER_ACCESS_TOKEN_STORAGE_KEY,
+  USER_ACCESS_TOKEN_CHANGED_EVENT,
+  AUTH_KEY_ROTATION_EVENT,
+  fetchEnvironments,
+  storeUserAccessToken,
+  getInMemoryToken,
+  isSessionActive,
+  fetchAuthMe,
+  type AuthMe,
+} from "@/lib/api";
 import { isOidcConfigured, startLoginFlow, decodeJwtForDisplay } from "@/lib/oidc-client";
 
 function _formatExpiry(exp: number | null): string {
@@ -22,12 +32,63 @@ export function UserAuthPanel() {
   const [applyFeedback, setApplyFeedback] = useState<string | null>(null);
   const [loginPending, setLoginPending] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [keyRotationDetected, setKeyRotationDetected] = useState(false);
+  const [authMe, setAuthMe] = useState<AuthMe | null>(null);
   const oidcConfigured = isOidcConfigured();
 
   useEffect(() => {
-    const existing = window.localStorage.getItem(USER_ACCESS_TOKEN_STORAGE_KEY)?.trim() ?? "";
-    setValue(existing);
-    setActive(Boolean(existing));
+    // Initialise from in-memory token first, then check HttpOnly session cookie.
+    const mem = getInMemoryToken();
+    if (mem) {
+      setValue(mem);
+      setActive(true);
+      // Resolve identity context from backend (#75)
+      fetchAuthMe().then(setAuthMe);
+      return;
+    }
+
+    // Non-OIDC dev mode: fall back to localStorage for manual-paste workflow
+    if (!oidcConfigured) {
+      const stored = window.localStorage.getItem(USER_ACCESS_TOKEN_STORAGE_KEY)?.trim() ?? "";
+      setValue(stored);
+      setActive(Boolean(stored));
+      if (stored) fetchAuthMe().then(setAuthMe);
+      return;
+    }
+
+    // OIDC mode + no in-memory token (e.g. page refresh): ask server for cookie state
+    isSessionActive().then((hasSession) => {
+      setActive(hasSession);
+      if (hasSession) fetchAuthMe().then(setAuthMe);
+    });
+  }, [oidcConfigured]);
+
+  // Sync state when token is updated elsewhere (e.g. OIDC callback in same lifecycle)
+  useEffect(() => {
+    function onTokenChanged() {
+      const mem = getInMemoryToken();
+      if (mem) {
+        setValue(mem);
+        setActive(true);
+        setKeyRotationDetected(false);
+        fetchAuthMe().then(setAuthMe);
+      } else {
+        setValue("");
+        setActive(false);
+        setAuthMe(null);
+      }
+    }
+    window.addEventListener(USER_ACCESS_TOKEN_CHANGED_EVENT, onTokenChanged);
+    return () => window.removeEventListener(USER_ACCESS_TOKEN_CHANGED_EVENT, onTokenChanged);
+  }, []);
+
+  // Detect key-rotation 401 and prompt re-authentication (#84)
+  useEffect(() => {
+    function onKeyRotation() {
+      setKeyRotationDetected(true);
+    }
+    window.addEventListener(AUTH_KEY_ROTATION_EVENT, onKeyRotation);
+    return () => window.removeEventListener(AUTH_KEY_ROTATION_EVENT, onKeyRotation);
   }, []);
 
   async function saveToken() {
@@ -58,6 +119,7 @@ export function UserAuthPanel() {
     setValue("");
     storeUserAccessToken("");
     setActive(false);
+    setAuthMe(null);
     setApplyFeedback("Token cleared.");
   }
 
@@ -75,18 +137,50 @@ export function UserAuthPanel() {
 
   // Decode the current token for display (no verification — display only).
   const tokenInfo = active ? decodeJwtForDisplay(value) : null;
-  const displaySubject = tokenInfo?.email ?? tokenInfo?.name ?? tokenInfo?.sub ?? null;
+  // Derive display name: prefer authMe.actor, fall back to JWT decode
+  const displaySubject = authMe?.actor ?? tokenInfo?.email ?? tokenInfo?.name ?? tokenInfo?.sub ?? null;
   const expiryText = tokenInfo ? _formatExpiry(tokenInfo.exp) : "";
+  const roleLabel = authMe ? authMe.role : null;
 
   return (
     <div className="auth-panel">
       {oidcConfigured ? (
         <>
           <label className="auth-label">Authentication</label>
+          {keyRotationDetected ? (
+            <div
+              className="auth-row"
+              style={{
+                background: "var(--color-warning-bg, #fef3cd)",
+                border: "1px solid var(--color-warning-border, #ffc107)",
+                borderRadius: 6,
+                padding: "0.5rem 0.75rem",
+                marginBottom: 8,
+              }}
+            >
+              <span style={{ flex: 1 }}>
+                Signing keys have changed. Please sign in again to get a new token.
+              </span>
+              <button
+                type="button"
+                className="button button-sm"
+                onClick={() => {
+                  setKeyRotationDetected(false);
+                  clearToken();
+                  void handleSignIn();
+                }}
+                disabled={loginPending}
+              >
+                {loginPending ? "Redirecting…" : "Sign in again"}
+              </button>
+            </div>
+          ) : null}
           {active ? (
             <div className="auth-row">
               <span className="subtle" style={{ flex: 1 }}>
-                {displaySubject ? `Signed in as ${displaySubject}${expiryText}` : `Token active${expiryText}`}
+                {displaySubject ? `Signed in as ${displaySubject}` : "Token active"}
+                {roleLabel ? ` (${roleLabel})` : ""}
+                {expiryText}
               </span>
               <button type="button" className="button button-sm button-secondary" onClick={clearToken}>
                 Sign out
@@ -111,7 +205,9 @@ export function UserAuthPanel() {
           ) : null}
           <div className="subtle auth-status">
             {active
-              ? "Requests are sent with your OIDC token."
+              ? authMe
+                ? `${authMe.scoped_environment_ids.length} environment(s) accessible.`
+                : "Requests are sent with your OIDC token."
               : "Sign in to authenticate your requests."}
           </div>
         </>

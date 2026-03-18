@@ -9,6 +9,7 @@ import pytest
 
 from sparkpilot.terraform_orchestrator import (
     ProvisioningStageContext,
+    TerraformApplyResult,
     TerraformOrchestrator,
 )
 
@@ -75,6 +76,18 @@ def test_terraform_orchestrator_dry_run_plan_and_apply(tmp_path: Path) -> None:
     assert apply_result.ok is True
     assert "apply" in apply_result.command
     assert apply_result.outputs == {}
+
+
+def test_terraform_apply_result_outputs_default_is_empty_dict() -> None:
+    """Regression: TerraformApplyResult.outputs must default to {} not None."""
+    result = TerraformApplyResult(
+        ok=True,
+        command=["terraform", "apply"],
+        stdout_excerpt="",
+        stderr_excerpt="",
+    )
+    assert result.outputs == {}, "outputs default must be an empty dict, not None or missing"
+    assert isinstance(result.outputs, dict)
 
 
 def test_terraform_orchestrator_reports_missing_binary(tmp_path: Path) -> None:

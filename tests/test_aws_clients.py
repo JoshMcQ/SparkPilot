@@ -5,13 +5,18 @@ from types import SimpleNamespace
 
 from sparkpilot.aws_clients import (
     CloudWatchLogsProxy,
+    EmrEc2Client,
+    EmrEc2DispatchResult,
     EmrEksClient,
+    EmrServerlessClient,
+    EmrServerlessDispatchResult,
     _consolidate_sparkpilot_web_identity_statements,
     _emr_job_run_name,
     _emr_sa_pattern,
     _is_sparkpilot_emr_web_identity_statement,
 )
 from sparkpilot.config import get_settings
+from sparkpilot.exceptions import SparkPilotError
 
 
 def test_fetch_lines_returns_empty_on_client_error(monkeypatch) -> None:
@@ -63,7 +68,7 @@ def test_fetch_lines_raises_on_non_resource_not_found_client_error(monkeypatch) 
     monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", _raise_client_error)
 
     proxy = CloudWatchLogsProxy()
-    with pytest.raises(ClientError):
+    with pytest.raises(SparkPilotError, match="Access denied"):
         proxy.fetch_lines(
             role_arn="arn:aws:iam::123456789012:role/TestRole",
             region="us-east-1",
@@ -72,6 +77,58 @@ def test_fetch_lines_raises_on_non_resource_not_found_client_error(monkeypatch) 
             limit=20,
         )
 
+    get_settings.cache_clear()
+
+
+def test_fetch_lines_raises_throttle_as_429(monkeypatch) -> None:
+    """Throttling errors should surface as 429 SparkPilotError (#6)."""
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    def _raise_throttle(*_args, **_kwargs):
+        raise ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "FilterLogEvents",
+        )
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", _raise_throttle)
+
+    proxy = CloudWatchLogsProxy()
+    with pytest.raises(SparkPilotError, match="rate limit") as exc_info:
+        proxy.fetch_lines(
+            role_arn="arn:aws:iam::123456789012:role/TestRole",
+            region="us-east-1",
+            log_group="/sparkpilot/runs/test",
+            log_stream_prefix="run/attempt-1",
+            limit=20,
+        )
+    assert exc_info.value.status_code == 429
+    get_settings.cache_clear()
+
+
+def test_fetch_lines_unknown_error_surfaces_as_502(monkeypatch) -> None:
+    """Unknown AWS errors should surface as 502 with error details (#6)."""
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    def _raise_unknown(*_args, **_kwargs):
+        raise ClientError(
+            {"Error": {"Code": "InternalServiceError", "Message": "Something broke"}},
+            "FilterLogEvents",
+        )
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", _raise_unknown)
+
+    proxy = CloudWatchLogsProxy()
+    with pytest.raises(SparkPilotError, match="InternalServiceError") as exc_info:
+        proxy.fetch_lines(
+            role_arn="arn:aws:iam::123456789012:role/TestRole",
+            region="us-east-1",
+            log_group="/sparkpilot/runs/test",
+            log_stream_prefix="run/attempt-1",
+            limit=20,
+        )
+    assert exc_info.value.status_code == 502
     get_settings.cache_clear()
 
 
@@ -1108,4 +1165,193 @@ def test_list_release_labels_uses_pagination(monkeypatch) -> None:
 
     labels = EmrEksClient().list_release_labels("us-east-1")
     assert labels == ["emr-7.10.0-latest", "emr-7.9.0-latest"]
+
+
+# ---------------------------------------------------------------------------
+# EmrServerlessDispatchResult and EmrEc2DispatchResult dataclass field tests
+# ---------------------------------------------------------------------------
+
+
+def test_emr_serverless_dispatch_result_fields() -> None:
+    result = EmrServerlessDispatchResult(
+        application_id="app-12345678",
+        job_run_id="jr-abc123456789",
+        log_group="/sparkpilot/runs/env-1",
+        log_stream_prefix="run-1/attempt-1",
+        driver_log_uri="cloudwatch:///sparkpilot/runs/env-1/run-1/attempt-1/driver",
+        spark_ui_uri=None,
+        aws_request_id="req-abc",
+    )
+    assert result.application_id == "app-12345678"
+    assert result.job_run_id == "jr-abc123456789"
+    assert result.log_group == "/sparkpilot/runs/env-1"
+    assert result.log_stream_prefix == "run-1/attempt-1"
+    assert result.driver_log_uri is not None
+    assert result.spark_ui_uri is None
+    assert result.aws_request_id == "req-abc"
+
+
+def test_emr_ec2_dispatch_result_fields() -> None:
+    result = EmrEc2DispatchResult(
+        cluster_id="j-CLUSTER123",
+        step_id="s-STEP456",
+        log_group="/sparkpilot/runs/env-2",
+        log_stream_prefix="run-2/attempt-1",
+        driver_log_uri="cloudwatch:///sparkpilot/runs/env-2/run-2/attempt-1/driver",
+        spark_ui_uri=None,
+        aws_request_id="req-def",
+    )
+    assert result.cluster_id == "j-CLUSTER123"
+    assert result.step_id == "s-STEP456"
+    assert result.log_group == "/sparkpilot/runs/env-2"
+    assert result.log_stream_prefix == "run-2/attempt-1"
+    assert result.driver_log_uri is not None
+    assert result.spark_ui_uri is None
+    assert result.aws_request_id == "req-def"
+
+
+# ---------------------------------------------------------------------------
+# Scheduler engine routing tests
+# ---------------------------------------------------------------------------
+
+
+def _make_env(engine: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        id="env-test-001",
+        tenant_id="tenant-001",
+        engine=engine,
+        customer_role_arn="arn:aws:iam::123456789012:role/CustomerRole",
+        region="us-east-1",
+        emr_virtual_cluster_id="vc-abc123",
+        emr_serverless_application_id="app-abc123",
+        emr_on_ec2_cluster_id="j-CLUSTER123",
+    )
+
+
+def _make_job() -> SimpleNamespace:
+    return SimpleNamespace(
+        id="job-001",
+        name="my-spark-job",
+        artifact_uri="s3://bucket/main.py",
+        entrypoint="main.py",
+        args_json=[],
+        spark_conf_json={},
+        retry_max_attempts=1,
+        timeout_seconds=3600,
+    )
+
+
+def _make_run(engine_env: SimpleNamespace) -> SimpleNamespace:
+    return SimpleNamespace(
+        id="run-001",
+        job_id="job-001",
+        environment_id="env-test-001",
+        job=_make_job(),
+        environment=engine_env,
+        state="queued",
+        attempt=1,
+        idempotency_key="ikey-001",
+        args_overrides_json=[],
+        spark_conf_overrides_json={},
+        timeout_seconds=3600,
+        emr_job_run_id=None,
+        backend_job_run_id=None,
+        cancellation_requested=False,
+        log_group=None,
+        log_stream_prefix=None,
+        driver_log_uri=None,
+        spark_ui_uri=None,
+        started_at=None,
+        last_heartbeat_at=None,
+        ended_at=None,
+        error_message=None,
+        worker_claim_token=None,
+        worker_claimed_at=None,
+    )
+
+
+def test_scheduler_routes_emr_serverless_engine(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
+    get_settings.cache_clear()
+
+    dispatched: list[tuple] = []
+
+    def _fake_start(self, env, job, run):
+        dispatched.append((env.engine, env.emr_serverless_application_id))
+        return EmrServerlessDispatchResult(
+            application_id=env.emr_serverless_application_id,
+            job_run_id="jr-serverless001",
+            log_group="/sparkpilot/runs/env-test-001",
+            log_stream_prefix="run-001/attempt-1",
+            driver_log_uri=None,
+            spark_ui_uri=None,
+            aws_request_id="req-srv",
+        )
+
+    monkeypatch.setattr(EmrServerlessClient, "start_job_run", _fake_start)
+
+    from sparkpilot.services.workers_scheduling import _dispatch_run
+
+    env = _make_env("emr_serverless")
+    job = _make_job()
+    run = _make_run(env)
+    result = _dispatch_run(env, job, run)
+
+    assert len(dispatched) == 1
+    assert dispatched[0][0] == "emr_serverless"
+    assert isinstance(result, EmrServerlessDispatchResult)
+    assert result.job_run_id == "jr-serverless001"
+
+    get_settings.cache_clear()
+
+
+def test_scheduler_routes_emr_on_ec2_engine(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
+    get_settings.cache_clear()
+
+    dispatched: list[tuple] = []
+
+    def _fake_start(self, env, job, run):
+        dispatched.append((env.engine, env.emr_on_ec2_cluster_id))
+        return EmrEc2DispatchResult(
+            cluster_id=env.emr_on_ec2_cluster_id,
+            step_id="s-STEP001",
+            log_group="/sparkpilot/runs/env-test-001",
+            log_stream_prefix="run-001/attempt-1",
+            driver_log_uri=None,
+            spark_ui_uri=None,
+            aws_request_id="req-ec2",
+        )
+
+    monkeypatch.setattr(EmrEc2Client, "start_job_run", _fake_start)
+
+    from sparkpilot.services.workers_scheduling import _dispatch_run
+
+    env = _make_env("emr_on_ec2")
+    job = _make_job()
+    run = _make_run(env)
+    result = _dispatch_run(env, job, run)
+
+    assert len(dispatched) == 1
+    assert dispatched[0][0] == "emr_on_ec2"
+    assert isinstance(result, EmrEc2DispatchResult)
+    assert result.step_id == "s-STEP001"
+
+    get_settings.cache_clear()
+
+
+def test_scheduler_rejects_unknown_engine(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
+    get_settings.cache_clear()
+
+    from sparkpilot.services.workers_scheduling import _dispatch_run
+
+    env = _make_env("unknown_engine_xyz")
+    job = _make_job()
+    run = _make_run(env)
+
+    with pytest.raises(ValueError, match="Unsupported engine: unknown_engine_xyz"):
+        _dispatch_run(env, job, run)
+
+    get_settings.cache_clear()
     get_settings.cache_clear()

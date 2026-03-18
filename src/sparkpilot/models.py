@@ -101,10 +101,24 @@ class Environment(Base):
     eks_cluster_arn: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     eks_namespace: Mapped[str | None] = mapped_column(String(255), nullable=True)
     emr_virtual_cluster_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    emr_serverless_application_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    emr_on_ec2_cluster_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     warm_pool_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     max_concurrent_runs: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     max_vcpu: Mapped[int] = mapped_column(Integer, default=256, nullable=False)
     max_run_seconds: Mapped[int] = mapped_column(Integer, default=7200, nullable=False)
+    spark_history_server_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    event_log_s3_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    yunikorn_queue: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    yunikorn_queue_guaranteed_vcpu: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    yunikorn_queue_max_vcpu: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    databricks_workspace_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    databricks_cluster_policy_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    databricks_instance_pool_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lake_formation_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    lf_catalog_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lf_data_access_scope_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    identity_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -188,6 +202,7 @@ class GoldenPath(Base):
     max_runtime_minutes: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
     tags_json: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, nullable=False)
     recommended_instance_types_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    data_access_scope_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -218,7 +233,9 @@ class Run(Base):
     args_overrides_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     spark_conf_overrides_json: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, nullable=False)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=7200, nullable=False)
+    job_template_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("job_templates.id"), nullable=True)
     emr_job_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    backend_job_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     cancellation_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     log_group: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     log_stream_prefix: Mapped[str | None] = mapped_column(String(1024), nullable=True)
@@ -352,6 +369,42 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
 
+class JobTemplate(Base):
+    __tablename__ = "job_templates"
+    __table_args__ = (UniqueConstraint("environment_id", "name", name="uq_job_templates_env_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    environment_id: Mapped[str] = mapped_column(String(36), ForeignKey("environments.id"), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    emr_template_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    job_driver_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    configuration_overrides_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    tags_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+
+class InteractiveEndpoint(Base):
+    __tablename__ = "interactive_endpoints"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    environment_id: Mapped[str] = mapped_column(String(36), ForeignKey("environments.id"), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    emr_endpoint_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    execution_role_arn: Mapped[str] = mapped_column(String(1024), nullable=False)
+    release_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="creating", nullable=False)
+    idle_timeout_minutes: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    certificate_arn: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    endpoint_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    created_by_actor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+
 class IdempotencyRecord(Base):
     __tablename__ = "idempotency_records"
     __table_args__ = (UniqueConstraint("scope", "key", name="uq_idempotency_scope_key"),)
@@ -365,3 +418,54 @@ class IdempotencyRecord(Base):
     resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     resource_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Policy Engine (R13 #39)
+# ---------------------------------------------------------------------------
+
+POLICY_RULE_TYPES = {
+    "max_runtime_seconds",
+    "max_vcpu",
+    "max_memory_gb",
+    "required_tags",
+    "allowed_golden_paths",
+    "allowed_release_labels",
+    "allowed_instance_types",
+}
+
+POLICY_ENFORCEMENT_MODES = {"hard", "soft"}
+
+POLICY_SCOPES = {"global", "tenant", "environment"}
+
+
+class Policy(Base):
+    __tablename__ = "policies"
+    __table_args__ = (
+        Index("ix_policies_scope", "scope", "scope_id"),
+        CheckConstraint(
+            "scope IN ('global', 'tenant', 'environment')",
+            name="ck_policies_scope",
+        ),
+        CheckConstraint(
+            "enforcement IN ('hard', 'soft')",
+            name="ck_policies_enforcement",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, default="global")
+    scope_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    rule_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    enforcement: Mapped[str] = mapped_column(String(16), default="hard", nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_actor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        onupdate=_utc_now,
+        nullable=False,
+    )

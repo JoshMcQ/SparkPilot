@@ -80,6 +80,16 @@ Notes:
 3. Validate CloudWatch log group and stream prefix.
 4. If cancellation requested, ensure cancel dispatch audit event exists.
 
+## Costs Page Team Selector Semantics
+
+1. The Costs page selector is team-entity based (`/v1/teams`), not tenant-id derived.
+2. Team names are passed to `/v1/costs?team=<team-name>&period=<yyyy-mm>`.
+3. If no teams exist, create teams in Access first; Costs should not infer pseudo-teams from environment tenant IDs.
+4. Reconciliation status per run:
+   - `Reconciled`: actual cost + `cur_reconciled_at` present
+   - `CUR pending`: actual cost not yet available
+   - `Estimated only`: fallback estimate with no reconciled actual
+
 ## DLQ Growth
 
 1. Alert threshold: any DLQ depth > 0 for 5m.

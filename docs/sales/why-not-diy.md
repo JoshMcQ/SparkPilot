@@ -17,6 +17,17 @@ AWS gives strong primitives for Spark on EKS, but it does not give you an opinio
 - Golden-path standardization surface (tracked roadmap) to replace ad-hoc Spark config support.
 - Productized FinOps path (tracked roadmap) for CUR-aligned showback and budget guardrails.
 
+## Feature callouts often missing in DIY plans
+
+- Preflight checks before dispatch (IAM, OIDC, trust, namespace, policy).
+- Cost and job tracking with CUR-aligned reconciliation path.
+- Control-plane auditability for critical API mutations.
+- Golden-path templates and guardrails for repeatable submissions.
+- Spot readiness and capacity troubleshooting guidance.
+- Interactive endpoint management surface (tracked roadmap item R08).
+- Lake Formation FGAC integration path (tracked roadmap item R09).
+- Karpenter/queue-aware scaling alignment (tracked roadmap item R10 + R11).
+
 ## Build vs buy (realistic estimate)
 If you build a Spark control plane in-house, typical effort is 6+ months of platform engineering:
 - 4-8 weeks: provisioning orchestration + IAM/OIDC/trust hardening.

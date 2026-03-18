@@ -20,6 +20,14 @@ class OIDCValidationError(ValueError):
     """Token is invalid for SparkPilot authentication."""
 
 
+class OIDCKeyRotationError(OIDCValidationError):
+    """Signature verification failed after JWKS refresh — indicates key rotation.
+
+    The UI should detect this and prompt the user to re-authenticate rather than
+    showing a confusing generic "signature verification failed" error.
+    """
+
+
 @dataclass(frozen=True)
 class OIDCIdentity:
     subject: str
@@ -51,8 +59,21 @@ def _read_uri_json(uri: str, *, timeout_seconds: float) -> dict[str, Any]:
     return payload
 
 
+import logging
+import threading
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# JWKS refresh throttle defaults
+# ---------------------------------------------------------------------------
+_DEFAULT_JWKS_MIN_REFRESH_INTERVAL_SECONDS = 10  # min seconds between forced refreshes
+_DEFAULT_JWKS_THROTTLE_WINDOW_SECONDS = 60  # sliding window for counting forced refreshes
+_DEFAULT_JWKS_THROTTLE_MAX_REFRESHES = 5  # max forced refreshes per sliding window
+
+
 class OIDCTokenVerifier:
-    """JWT verification backed by OIDC JWKS."""
+    """JWT verification backed by OIDC JWKS with throttled refresh."""
 
     def __init__(
         self,
@@ -62,6 +83,9 @@ class OIDCTokenVerifier:
         jwks_uri: str,
         jwks_cache_ttl_seconds: int = 300,
         http_timeout_seconds: float = 5.0,
+        jwks_min_refresh_interval_seconds: float = _DEFAULT_JWKS_MIN_REFRESH_INTERVAL_SECONDS,
+        jwks_throttle_window_seconds: float = _DEFAULT_JWKS_THROTTLE_WINDOW_SECONDS,
+        jwks_throttle_max_refreshes: int = _DEFAULT_JWKS_THROTTLE_MAX_REFRESHES,
     ) -> None:
         self.issuer = issuer.strip()
         self.audience = audience.strip()
@@ -71,31 +95,98 @@ class OIDCTokenVerifier:
         self._cached_jwks: dict[str, jwt.PyJWK] = {}
         self._cached_at_monotonic: float = 0.0
 
+        # Throttle state for forced JWKS refreshes
+        self._jwks_min_refresh_interval = max(1.0, jwks_min_refresh_interval_seconds)
+        self._jwks_throttle_window = max(10.0, jwks_throttle_window_seconds)
+        self._jwks_throttle_max = max(1, jwks_throttle_max_refreshes)
+        self._last_forced_refresh_monotonic: float = 0.0
+        self._forced_refresh_timestamps: list[float] = []
+        self._refresh_lock = threading.Lock()
+
+        # Telemetry counters
+        self.jwks_refresh_total: int = 0
+        self.jwks_refresh_forced: int = 0
+        self.jwks_refresh_throttled: int = 0
+
     def _jwks_stale(self) -> bool:
         if not self._cached_jwks:
             return True
         return (time.monotonic() - self._cached_at_monotonic) >= self.jwks_cache_ttl_seconds
 
-    def _refresh_jwks(self) -> None:
-        payload = _read_uri_json(self.jwks_uri, timeout_seconds=self.http_timeout_seconds)
-        keys = payload.get("keys")
-        if not isinstance(keys, list) or not keys:
-            raise OIDCValidationError("OIDC_JWKS_URI did not return a non-empty 'keys' array.")
+    def _is_forced_refresh_allowed(self) -> bool:
+        """Check whether a forced JWKS refresh is allowed by throttle policy.
 
-        parsed: dict[str, jwt.PyJWK] = {}
-        fallback_index = 0
-        for item in keys:
-            if not isinstance(item, dict):
-                continue
-            kid = str(item.get("kid") or "")
-            if not kid:
-                kid = f"__anon_{fallback_index}"
-                fallback_index += 1
-            parsed[kid] = jwt.PyJWK.from_dict(item)
-        if not parsed:
-            raise OIDCValidationError("OIDC_JWKS_URI did not include usable JWK keys.")
-        self._cached_jwks = parsed
-        self._cached_at_monotonic = time.monotonic()
+        Returns True if the minimum interval has elapsed since the last forced
+        refresh AND the sliding-window limit has not been reached.
+        """
+        now = time.monotonic()
+        # Minimum interval check
+        if (now - self._last_forced_refresh_monotonic) < self._jwks_min_refresh_interval:
+            return False
+        # Sliding window check — prune old timestamps first
+        cutoff = now - self._jwks_throttle_window
+        self._forced_refresh_timestamps = [
+            ts for ts in self._forced_refresh_timestamps if ts > cutoff
+        ]
+        if len(self._forced_refresh_timestamps) >= self._jwks_throttle_max:
+            return False
+        return True
+
+    def _record_forced_refresh(self) -> None:
+        now = time.monotonic()
+        self._last_forced_refresh_monotonic = now
+        self._forced_refresh_timestamps.append(now)
+        self.jwks_refresh_forced += 1
+
+    def _refresh_jwks(self, *, forced: bool = False) -> bool:
+        """Refresh cached JWKS keys.
+
+        When ``forced`` is True the throttle policy is checked first.
+        Returns True if a refresh was actually performed, False if throttled.
+        """
+        with self._refresh_lock:
+            if forced:
+                if not self._is_forced_refresh_allowed():
+                    self.jwks_refresh_throttled += 1
+                    logger.warning(
+                        "JWKS forced refresh throttled (interval=%.1fs, window=%ds, max=%d, "
+                        "recent=%d)",
+                        self._jwks_min_refresh_interval,
+                        int(self._jwks_throttle_window),
+                        self._jwks_throttle_max,
+                        len(self._forced_refresh_timestamps),
+                    )
+                    return False
+                self._record_forced_refresh()
+
+            payload = _read_uri_json(self.jwks_uri, timeout_seconds=self.http_timeout_seconds)
+            keys = payload.get("keys")
+            if not isinstance(keys, list) or not keys:
+                raise OIDCValidationError("OIDC_JWKS_URI did not return a non-empty 'keys' array.")
+
+            parsed: dict[str, jwt.PyJWK] = {}
+            fallback_index = 0
+            for item in keys:
+                if not isinstance(item, dict):
+                    continue
+                kid = str(item.get("kid") or "")
+                if not kid:
+                    kid = f"__anon_{fallback_index}"
+                    fallback_index += 1
+                parsed[kid] = jwt.PyJWK.from_dict(item)
+            if not parsed:
+                raise OIDCValidationError("OIDC_JWKS_URI did not include usable JWK keys.")
+            self._cached_jwks = parsed
+            self._cached_at_monotonic = time.monotonic()
+            self.jwks_refresh_total += 1
+            logger.info(
+                "JWKS refreshed (forced=%s, total=%d, forced_count=%d, throttled=%d)",
+                forced,
+                self.jwks_refresh_total,
+                self.jwks_refresh_forced,
+                self.jwks_refresh_throttled,
+            )
+            return True
 
     def _resolve_signing_key(self, token: str) -> tuple[str, jwt.PyJWK]:
         try:
@@ -114,8 +205,9 @@ class OIDCTokenVerifier:
             return algorithm, self._cached_jwks[kid]
 
         # Refresh once in case key rotation happened between cache updates.
-        self._refresh_jwks()
-        if kid and kid in self._cached_jwks:
+        # This is a forced refresh subject to throttle policy.
+        refreshed = self._refresh_jwks(forced=True)
+        if refreshed and kid and kid in self._cached_jwks:
             return algorithm, self._cached_jwks[kid]
 
         if not kid and len(self._cached_jwks) == 1:
@@ -137,20 +229,31 @@ class OIDCTokenVerifier:
             )
         except jwt.InvalidSignatureError:
             # Support key rotation where an issuer reuses the same kid for a new key.
-            # Refresh JWKS and retry once before failing the request.
-            self._refresh_jwks()
-            try:
-                algorithm, signing_key = self._resolve_signing_key(token)
-                claims = jwt.decode(
-                    token,
-                    signing_key.key,
-                    algorithms=[algorithm],
-                    audience=self.audience,
-                    issuer=self.issuer,
-                    options={"require": ["sub", "iss", "aud", "exp"]},
+            # Forced refresh is subject to throttle policy to prevent refresh storms.
+            refreshed = self._refresh_jwks(forced=True)
+            if refreshed:
+                try:
+                    algorithm, signing_key = self._resolve_signing_key(token)
+                    claims = jwt.decode(
+                        token,
+                        signing_key.key,
+                        algorithms=[algorithm],
+                        audience=self.audience,
+                        issuer=self.issuer,
+                        options={"require": ["sub", "iss", "aud", "exp"]},
+                    )
+                except jwt.InvalidSignatureError as exc:
+                    # Key rotation confirmed: new JWKS loaded but token still fails
+                    raise OIDCKeyRotationError(
+                        "Signing keys have changed. Please sign in again to get a new token."
+                    ) from exc
+                except jwt.PyJWTError as exc:
+                    raise OIDCValidationError(f"OIDC JWT validation failed: {exc}") from exc
+            else:
+                raise OIDCKeyRotationError(
+                    "OIDC JWT signature verification failed. "
+                    "JWKS refresh was throttled — please sign in again."
                 )
-            except jwt.PyJWTError as exc:
-                raise OIDCValidationError(f"OIDC JWT validation failed: {exc}") from exc
         except jwt.PyJWTError as exc:
             raise OIDCValidationError(f"OIDC JWT validation failed: {exc}") from exc
         if not isinstance(claims, dict):
@@ -159,6 +262,15 @@ class OIDCTokenVerifier:
         if not subject:
             raise OIDCValidationError("OIDC JWT is missing required subject claim.")
         return OIDCIdentity(subject=subject, claims=claims)
+
+    @property
+    def jwks_refresh_stats(self) -> dict[str, int]:
+        """Return telemetry counters for JWKS refresh activity."""
+        return {
+            "total": self.jwks_refresh_total,
+            "forced": self.jwks_refresh_forced,
+            "throttled": self.jwks_refresh_throttled,
+        }
 
 
 def discover_token_endpoint(*, issuer: str, timeout_seconds: float = 10.0) -> str:

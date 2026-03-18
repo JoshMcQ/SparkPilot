@@ -1,11 +1,34 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
 TERMINAL_STATES = {"succeeded", "failed", "cancelled", "timed_out"}
 SUCCESS_STATES = {"succeeded"}
 FAILURE_STATES = {"failed", "cancelled", "timed_out"}
+
+
+def normalize_op_config(raw_config: Any) -> dict[str, Any]:
+    """Strip sentinel/empty default values produced by Dagster's config_schema defaults.
+
+    Ops and assets share this single implementation to prevent drift.
+    """
+    if not isinstance(raw_config, Mapping):
+        return {}
+    normalized = dict(raw_config)
+    if normalized.get("run_timeout_seconds", 0) == 0:
+        normalized.pop("run_timeout_seconds", None)
+    for key in ("golden_path", "idempotency_key", "run_id"):
+        if normalized.get(key, "") == "":
+            normalized.pop(key, None)
+    if normalized.get("args") == []:
+        normalized.pop("args", None)
+    if normalized.get("spark_conf") == {}:
+        normalized.pop("spark_conf", None)
+    if normalized.get("requested_resources") == {}:
+        normalized.pop("requested_resources", None)
+    return normalized
 
 
 def parse_iso8601(value: str | None) -> datetime | None:

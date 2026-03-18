@@ -1,0 +1,1779 @@
+[
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7sjTqk",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Child tracking issue for design spike: #17. Full BYOC implementation children remain blocked until design review is approved.",
+                             "createdAt":  "2026-02-26T19:16:57Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/1#issuecomment-3968678564",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7ttN1G",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Design spike completion update:\n\n- #17 design/decision record is approved and closed.\n- Full BYOC child execution issues created from approved design:\n- #25 Full BYOC 1B: Terraform orchestrator and operation checkpointing\n- #26 Full BYOC 1C: Implement provisioning_network stage\n- #27 Full BYOC 1D: Implement provisioning_eks and provisioning_emr stages\n- #28 Full BYOC 1E: Failure classification, compensation, and cleanup workflow\n- #29 Full BYOC 1F: Security hardening and full-BYOC permission baseline\n- #30 Full BYOC 1G: Real-AWS full-BYOC validation matrix and reproducible smoke flow\n\nWith approved design and child issues now in place, this parent spike can be closed.",
+                             "createdAt":  "2026-03-03T01:36:42Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/1#issuecomment-3988053318",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPu6X",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Reopening under repository-wide enforcement (March 15, 2026): closure requires explicit live-AWS evidence.\n\nThis issue currently lacks concrete live-AWS proof in-thread (artifact links and/or runtime identifiers).\n\nRequired before re-close:\n1. Link evidence artifacts from non-prod live-AWS execution.\n2. Include concrete IDs where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual-cluster identifiers).\n3. Note any observed failures/gaps and linked follow-up issues.\n4. Include current test results after evidence capture.\n\nIf this is genuinely a non-runtime documentation/meta issue, explicitly document why live-AWS evidence is not applicable and reference the runtime issue(s) that provide the proof chain.",
+                             "createdAt":  "2026-03-15T23:53:07Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/1#issuecomment-4064210583",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPwQn",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:56:21Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/1#issuecomment-4064216103",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0usg",
+                           "name":  "priority:P0",
+                           "description":  "Critical path",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0v4w",
+                           "name":  "area:byoc-full",
+                           "description":  "Full BYOC provisioning",
+                           "color":  "5319E7"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0xcA",
+                           "name":  "type:epic",
+                           "description":  "Cross-cutting initiative",
+                           "color":  "3E4B9E"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  1,
+        "state":  "OPEN",
+        "title":  "Full BYOC design spike: architecture, tool selection, and failure model",
+        "updatedAt":  "2026-03-15T23:56:21Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/1"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t8grO",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Rescoped to roadmap ID R10 as part of the backlog expansion plan. Acceptance criteria, dependencies, and phase labels were updated.",
+                             "createdAt":  "2026-03-03T16:10:04Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/10#issuecomment-3992062670",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7t8heN",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Rescoped to roadmap ID R10 as part of the backlog expansion plan. Acceptance criteria, dependencies, and phase labels were updated.",
+                             "createdAt":  "2026-03-03T16:10:36Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/10#issuecomment-3992065933",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPwL1",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:56:09Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/10#issuecomment-4064215797",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0u5A",
+                           "name":  "priority:P1",
+                           "description":  "High priority",
+                           "color":  "D93F0B"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vpA",
+                           "name":  "area:byoc-lite",
+                           "description":  "BYOC-Lite provisioning and runtime",
+                           "color":  "0E8A16"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wuA",
+                           "name":  "area:testing",
+                           "description":  "Testing and validation",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNfuA",
+                           "name":  "phase:4-expansion",
+                           "description":  "Phase 4 product expansion",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  10,
+        "state":  "OPEN",
+        "title":  "[R10] Karpenter Integration for Dynamic Spot Node Provisioning",
+        "updatedAt":  "2026-03-15T23:56:09Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/10"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7yPwLC",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:56:06Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/11#issuecomment-4064215746",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0u5A",
+                           "name":  "priority:P1",
+                           "description":  "High priority",
+                           "color":  "D93F0B"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vpA",
+                           "name":  "area:byoc-lite",
+                           "description":  "BYOC-Lite provisioning and runtime",
+                           "color":  "0E8A16"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wuA",
+                           "name":  "area:testing",
+                           "description":  "Testing and validation",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  11,
+        "state":  "OPEN",
+        "title":  "Validate private EKS networking scenarios (private endpoint, private subnets, NAT)",
+        "updatedAt":  "2026-03-15T23:56:06Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/11"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7yPwKC",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:56:03Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/12#issuecomment-4064215682",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0u5A",
+                           "name":  "priority:P1",
+                           "description":  "High priority",
+                           "color":  "D93F0B"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vpA",
+                           "name":  "area:byoc-lite",
+                           "description":  "BYOC-Lite provisioning and runtime",
+                           "color":  "0E8A16"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wgA",
+                           "name":  "area:reliability",
+                           "description":  "Reliability and error handling",
+                           "color":  "E99695"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wuA",
+                           "name":  "area:testing",
+                           "description":  "Testing and validation",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  12,
+        "state":  "OPEN",
+        "title":  "Add support and validation for long-running Structured Streaming jobs",
+        "updatedAt":  "2026-03-15T23:56:03Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/12"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7tsFOZ",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Implemented and validated on March 2, 2026.\n\nWhat changed for transient retry and cancellation reliability:\n\n1) Deterministic transient dispatch retry behavior\n- Scheduler now classifies transient dispatch errors (AWS throttling/service unavailable/timeouts and network timeout classes).\n- If error is transient and `run.attempt \u003c job.retry_max_attempts`, run is re-queued with incremented attempt.\n- Scheduler emits `run.dispatch_retry_scheduled` audit event with attempt metadata.\n- If retries are exhausted (or error is non-transient), scheduler fails run with `run.dispatch_failed`.\n\n2) Cancellation behavior validated across lifecycle states\n- `queued`: cancellation remains immediate (`cancelled` terminal state).\n- `accepted` and `running`: cancellation request is persisted, reconciler dispatches `CancelJobRun`, and converges run state to `cancelled`.\n- Reconciler emits `run.cancel.dispatched` audit event when cancellation is sent to EMR.\n\n3) Documentation added\n- `docs/validation/byoc-lite-cancel-retry-behavior.md` records behavior and test evidence for issue #13.\n\nFiles updated:\n- `src/sparkpilot/services.py`\n- `tests/test_api.py`\n- `docs/validation/byoc-lite-cancel-retry-behavior.md`\n\nTest coverage added:\n- `tests/test_api.py::test_scheduler_retries_transient_dispatch_failure`\n- `tests/test_api.py::test_scheduler_fails_non_transient_dispatch_without_retry`\n- `tests/test_api.py::test_scheduler_exhausts_transient_dispatch_retries`\n- `tests/test_api.py::test_cancel_run_from_queued_is_immediate`\n- `tests/test_api.py::test_cancel_run_from_accepted_transitions_to_cancelled`\n- `tests/test_api.py::test_cancel_run_from_running_transitions_to_cancelled`\n\nValidation run output:\n- `python -m pytest -q tests/test_api.py -k \"scheduler_retries_transient_dispatch_failure or scheduler_fails_non_transient_dispatch_without_retry or scheduler_exhausts_transient_dispatch_retries or cancel_run_from_queued_is_immediate or cancel_run_from_accepted_transitions_to_cancelled or cancel_run_from_running_transitions_to_cancelled\" -p no:cacheprovider` -\u003e 6 passed\n- `python -m pytest -q tests/test_api.py -p no:cacheprovider` -\u003e 24 passed\n- `python -m pytest -q tests -p no:cacheprovider` -\u003e 37 passed\n",
+                             "createdAt":  "2026-03-03T00:05:55Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/13#issuecomment-3987755929",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPekJ",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Reopening to align with enforcement policy as of March 15, 2026: AWS/BYOC issues are closed only with explicit real-AWS validation evidence.\n\nCurrent thread shows implementation and local/unit validation, but it does not include a linked real-AWS evidence set (non-prod account) that proves this issue\u0027s acceptance criteria in live AWS.\n\nRequired to close:\n1. Link evidence artifacts from real-AWS execution for this issue.\n2. Include concrete runtime identifiers where applicable (cluster, virtual cluster, operation, run, or EMR JobRun IDs).\n3. Document any observed gaps/failures and link follow-up issues.\n4. Confirm current test suite results after evidence capture.\n\nKeeping this issue open until the live-AWS evidence is attached.",
+                             "createdAt":  "2026-03-15T23:17:24Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/13#issuecomment-4064143625",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPwJB",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:56:01Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/13#issuecomment-4064215617",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0u5A",
+                           "name":  "priority:P1",
+                           "description":  "High priority",
+                           "color":  "D93F0B"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vpA",
+                           "name":  "area:byoc-lite",
+                           "description":  "BYOC-Lite provisioning and runtime",
+                           "color":  "0E8A16"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wgA",
+                           "name":  "area:reliability",
+                           "description":  "Reliability and error handling",
+                           "color":  "E99695"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wuA",
+                           "name":  "area:testing",
+                           "description":  "Testing and validation",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  13,
+        "state":  "OPEN",
+        "title":  "Test and harden cancellation and retry behavior under transient AWS failures",
+        "updatedAt":  "2026-03-15T23:56:01Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/13"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7yPwHv",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:58Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/15#issuecomment-4064215535",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yP0Ll",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Production baseline security/reliability backlog added from latest review:\\n\\n- #58 localStorage token + CSP hardening\\n- #59 external OIDC CSP connect-src allowlist\\n- #60 JWKS forced-refresh throttling\\n\\nThese are now tracked as explicit deliverables with live-AWS evidence required for close.",
+                             "createdAt":  "2026-03-16T00:04:23Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/15#issuecomment-4064232165",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yQq_q",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Converted business-plan immediate actions into tracked issues:\\n- #65 second-operator real-AWS pilot\\n- #66 misconfiguration preflight matrix\\n- #67 real CUR reconciliation validation\\n- #68 real Airflow scheduler validation\\n- #69 real IdP interoperability\\n- #70 isolation boundary docs\\n- #71 baseline metrics\\n\\nExpansion roadmap tracks added:\\n- #72 EMR Serverless backend\\n- #73 EMR on EC2 backend\\n- #74 Databricks-on-AWS backend",
+                             "createdAt":  "2026-03-16T01:16:20Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/15#issuecomment-4064456682",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yhFwF",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Published repo issue-map artifact for business-plan execution sequencing:\\n\\n- docs/process/business-overview-issue-map.md\\n\\nMap includes:\\n- Immediate trust gaps (#65-#71)\\n- Security/auth hardening (#58-#60)\\n- Dagster hardening (#61-#63)\\n- Productization and policy-core (#39, #64)\\n- Backend expansion (#72-#74)\\n\\nRecommended order in map: trust proof -\u003e security hardening -\u003e policy engine -\u003e metrics/package -\u003e expansion.",
+                             "createdAt":  "2026-03-16T16:00:21Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/15#issuecomment-4068760581",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yng0s",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Added explicit runtime-identity validation issue: #76 (task role -\u003e STS AssumeRole customer role with live evidence). This closes a specific production credential-chain gap under this epic.",
+                             "createdAt":  "2026-03-16T20:35:54Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/15#issuecomment-4070444332",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vHw",
+                           "name":  "priority:P2",
+                           "description":  "Medium priority",
+                           "color":  "FBCA04"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0w8Q",
+                           "name":  "area:ops",
+                           "description":  "Operations and deployment",
+                           "color":  "006B75"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0xcA",
+                           "name":  "type:epic",
+                           "description":  "Cross-cutting initiative",
+                           "color":  "3E4B9E"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  15,
+        "state":  "OPEN",
+        "title":  "Establish production deployment baseline for API/workers/database/observability",
+        "updatedAt":  "2026-03-16T20:35:54Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/15"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7sjTu9",
+                             "author":  {
+                                            "login":  "coderabbitai"
+                                        },
+                             "authorAssociation":  "NONE",
+                             "body":  "\u003c!-- This is an auto-generated issue plan by CodeRabbit --\u003e\n\n\u003cdetails\u003e\n\u003csummary\u003e?? Possible Duplicate Issue(s)\u003c/summary\u003e\n\n- https://github.com/JoshMcQ/SparkPilot/issues/1\n\u003c/details\u003e\n\n---\n\u003cdetails\u003e\n\u003csummary\u003e?? Issue Planner\u003c/summary\u003e\n\n\u003csub\u003eCheck the box below or use the `@coderabbitai plan` command to generate an implementation plan and prompts that you can use with your favorite coding assistant.\u003c/sub\u003e\n\n- [ ] \u003c!-- {\"checkboxId\": \"8d4f2b9c-3e1a-4f7c-a9b2-d5e8f1c4a7b9\"} --\u003e Create Plan\n\u003c/details\u003e\n\n\n---\n\u003cdetails\u003e\n\u003csummary\u003e ?? Issue enrichment is currently in open beta.\u003c/summary\u003e\n\n\nYou can configure auto-planning by selecting labels in the issue_enrichment configuration.\n\nTo disable automatic issue enrichment, add the following to your `.coderabbit.yaml`:\n```yaml\nissue_enrichment:\n  auto_enrich:\n    enabled: false\n```\n\u003c/details\u003e\n\n?? Have feedback or questions? Drop into our [discord](https://discord.gg/coderabbit)!",
+                             "createdAt":  "2026-02-26T19:17:00Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/17#issuecomment-3968678845",
+                             "viewerDidAuthor":  false
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7tsG9k",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Prepared on March 2, 2026 (pending review/approval).\n\nDeliverables completed for Full BYOC design spike:\n\n1) Full BYOC design and decision record\n- `docs/design/full-byoc-design.md`\n- Includes orchestrator decision (Terraform vs CloudFormation/CDK tradeoffs), state model, rollback model, security boundary, phased plan, and test strategy.\n\n2) Child implementation backlog spec\n- `docs/design/full-byoc-implementation-backlog.md`\n- Defines post-approval child slices with explicit interfaces, failure modes, and test expectations:\n  - 1B Terraform orchestrator + checkpoints\n  - 1C network stage\n  - 1D EKS/EMR stages\n  - 1E failure compensation + cleanup\n  - 1F security hardening\n  - 1G real-AWS validation matrix\n\n3) Discoverability links\n- `docs/architecture.md`\n- `docs/deployment.md`\n- `docs/execution-tracker.md` (status row for #1/#17)\n\nAcceptance status:\n- Design doc produced: complete.\n- Review and approval by lead: pending.\n- Child GitHub issues creation from approved design: pending (specs are prepared in repo).\n",
+                             "createdAt":  "2026-03-03T00:08:06Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/17#issuecomment-3987763044",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7ttNyg",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Design decision is approved for implementation planning.\n\nCompleted deliverables are in repo:\n- docs/design/full-byoc-design.md\n- docs/design/full-byoc-implementation-backlog.md\n\nThis closes #17 as the design doc/decision-record milestone.\nImplementation sequencing remains tracked under #1 and child execution issues.",
+                             "createdAt":  "2026-03-03T01:36:39Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/17#issuecomment-3988053152",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPu8m",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Reopening under repository-wide enforcement (March 15, 2026): closure requires explicit live-AWS evidence.\n\nThis issue currently lacks concrete live-AWS proof in-thread (artifact links and/or runtime identifiers).\n\nRequired before re-close:\n1. Link evidence artifacts from non-prod live-AWS execution.\n2. Include concrete IDs where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual-cluster identifiers).\n3. Note any observed failures/gaps and linked follow-up issues.\n4. Include current test results after evidence capture.\n\nIf this is genuinely a non-runtime documentation/meta issue, explicitly document why live-AWS evidence is not applicable and reference the runtime issue(s) that provide the proof chain.",
+                             "createdAt":  "2026-03-15T23:53:10Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/17#issuecomment-4064210726",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPwGc",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:55Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/17#issuecomment-4064215452",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0usg",
+                           "name":  "priority:P0",
+                           "description":  "Critical path",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0v4w",
+                           "name":  "area:byoc-full",
+                           "description":  "Full BYOC provisioning",
+                           "color":  "5319E7"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  17,
+        "state":  "OPEN",
+        "title":  "Full BYOC design doc and decision record (Issue #1A)",
+        "updatedAt":  "2026-03-15T23:55:55Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/17"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7ttwJO",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Implemented and validated on March 3, 2026.\n\n## What changed\n\n1) Added Terraform orchestration module and types\n- New file: `src/sparkpilot/terraform_orchestrator.py`\n- New interfaces:\n  - `ProvisioningStageContext`\n  - `TerraformPlanResult`\n  - `TerraformApplyResult`\n  - `TerraformOrchestrator` with `build_stage_context`, `plan`, and `apply`\n\n2) Integrated full-mode provisioning with staged Terraform plan/apply path\n- Updated `process_provisioning_once` in `src/sparkpilot/services.py`\n- Full-mode (`provisioning_mode=full`) now:\n  - resumes from current stage (`op.state/op.step`) using `PROVISIONING_STEPS`\n  - executes Terraform stages for:\n    - `provisioning_network`\n    - `provisioning_eks`\n    - `provisioning_emr`\n  - records per-stage checkpoint artifacts and attempt counters\n  - preserves existing terminal behavior (`ready` / `failed`) and environment output fields\n\n3) Added audit-backed checkpoint persistence (no schema migration risk)\n- Checkpoints persisted via audit action:\n  - `environment.full_byoc_checkpoint`\n- Stored checkpoint fields:\n  - `terraform_workspace`\n  - `terraform_state_key`\n  - `last_successful_stage`\n  - `attempt_count_by_stage`\n  - bounded `artifacts` list (plan/apply command + excerpts)\n\n## Tests added\n\n1) `tests/test_terraform_orchestrator.py`\n- `test_terraform_orchestrator_dry_run_plan_and_apply`\n- `test_terraform_orchestrator_reports_missing_binary`\n\n2) `tests/test_api.py`\n- `test_full_byoc_provisioning_records_checkpoint_audit`\n  - verifies full-mode path uses Terraform stage hooks\n  - verifies checkpoint audit entries and stage attempt counts\n\n## Validation\n\n- `python -m pytest -q tests/test_terraform_orchestrator.py -p no:cacheprovider` -\u003e `2 passed`\n- `python -m pytest -q tests -p no:cacheprovider` -\u003e `41 passed`\n",
+                             "createdAt":  "2026-03-03T02:17:20Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/25#issuecomment-3988193870",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPu_Q",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Reopening under repository-wide enforcement (March 15, 2026): closure requires explicit live-AWS evidence.\n\nThis issue currently lacks concrete live-AWS proof in-thread (artifact links and/or runtime identifiers).\n\nRequired before re-close:\n1. Link evidence artifacts from non-prod live-AWS execution.\n2. Include concrete IDs where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual-cluster identifiers).\n3. Note any observed failures/gaps and linked follow-up issues.\n4. Include current test results after evidence capture.\n\nIf this is genuinely a non-runtime documentation/meta issue, explicitly document why live-AWS evidence is not applicable and reference the runtime issue(s) that provide the proof chain.",
+                             "createdAt":  "2026-03-15T23:53:16Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/25#issuecomment-4064210896",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPv9G",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:36Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/25#issuecomment-4064214854",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  25,
+        "state":  "OPEN",
+        "title":  "Full BYOC 1B: Terraform orchestrator and operation checkpointing",
+        "updatedAt":  "2026-03-15T23:55:37Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/25"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t8gv0",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Paused pending completion of Phase 0-2 roadmap (R18, R01/R03/R05/R12, R06/R19).\n\nResume criteria: Phase 2 complete and roadmap re-prioritization checkpoint.",
+                             "createdAt":  "2026-03-03T16:10:07Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/26#issuecomment-3992062964",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPv7y",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:34Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/26#issuecomment-4064214770",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vHw",
+                           "name":  "priority:P2",
+                           "description":  "Medium priority",
+                           "color":  "FBCA04"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0v4w",
+                           "name":  "area:byoc-full",
+                           "description":  "Full BYOC provisioning",
+                           "color":  "5319E7"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNgxA",
+                           "name":  "status:paused",
+                           "description":  "Deliberately deferred",
+                           "color":  "CCCCCC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  26,
+        "state":  "OPEN",
+        "title":  "Full BYOC 1C: Implement provisioning_network stage",
+        "updatedAt":  "2026-03-15T23:55:34Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/26"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t8g0w",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Paused pending completion of Phase 0-2 roadmap (R18, R01/R03/R05/R12, R06/R19).\n\nResume criteria: Phase 2 complete and roadmap re-prioritization checkpoint.",
+                             "createdAt":  "2026-03-03T16:10:10Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/27#issuecomment-3992063280",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPv6i",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:31Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/27#issuecomment-4064214690",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vHw",
+                           "name":  "priority:P2",
+                           "description":  "Medium priority",
+                           "color":  "FBCA04"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0v4w",
+                           "name":  "area:byoc-full",
+                           "description":  "Full BYOC provisioning",
+                           "color":  "5319E7"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNgxA",
+                           "name":  "status:paused",
+                           "description":  "Deliberately deferred",
+                           "color":  "CCCCCC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  27,
+        "state":  "OPEN",
+        "title":  "Full BYOC 1D: Implement provisioning_eks and provisioning_emr stages",
+        "updatedAt":  "2026-03-15T23:55:31Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/27"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t8g40",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Paused pending completion of Phase 0-2 roadmap (R18, R01/R03/R05/R12, R06/R19).\n\nResume criteria: Phase 2 complete and roadmap re-prioritization checkpoint.",
+                             "createdAt":  "2026-03-03T16:10:13Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/28#issuecomment-3992063540",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPv5q",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:29Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/28#issuecomment-4064214634",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vHw",
+                           "name":  "priority:P2",
+                           "description":  "Medium priority",
+                           "color":  "FBCA04"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0v4w",
+                           "name":  "area:byoc-full",
+                           "description":  "Full BYOC provisioning",
+                           "color":  "5319E7"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNgxA",
+                           "name":  "status:paused",
+                           "description":  "Deliberately deferred",
+                           "color":  "CCCCCC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  28,
+        "state":  "OPEN",
+        "title":  "Full BYOC 1E: Failure classification, compensation, and cleanup workflow",
+        "updatedAt":  "2026-03-15T23:55:29Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/28"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t8g-s",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Paused pending completion of Phase 0-2 roadmap (R18, R01/R03/R05/R12, R06/R19).\n\nResume criteria: Phase 2 complete and roadmap re-prioritization checkpoint.",
+                             "createdAt":  "2026-03-03T16:10:15Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/29#issuecomment-3992063916",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPv4q",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:26Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/29#issuecomment-4064214570",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vHw",
+                           "name":  "priority:P2",
+                           "description":  "Medium priority",
+                           "color":  "FBCA04"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0v4w",
+                           "name":  "area:byoc-full",
+                           "description":  "Full BYOC provisioning",
+                           "color":  "5319E7"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNgxA",
+                           "name":  "status:paused",
+                           "description":  "Deliberately deferred",
+                           "color":  "CCCCCC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  29,
+        "state":  "OPEN",
+        "title":  "Full BYOC 1F: Security hardening and full-BYOC permission baseline",
+        "updatedAt":  "2026-03-15T23:55:26Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/29"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t8hDQ",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Paused pending completion of Phase 0-2 roadmap (R18, R01/R03/R05/R12, R06/R19).\n\nResume criteria: Phase 2 complete and roadmap re-prioritization checkpoint.",
+                             "createdAt":  "2026-03-03T16:10:18Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/30#issuecomment-3992064208",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPv3g",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:24Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/30#issuecomment-4064214496",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vHw",
+                           "name":  "priority:P2",
+                           "description":  "Medium priority",
+                           "color":  "FBCA04"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0v4w",
+                           "name":  "area:byoc-full",
+                           "description":  "Full BYOC provisioning",
+                           "color":  "5319E7"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNgxA",
+                           "name":  "status:paused",
+                           "description":  "Deliberately deferred",
+                           "color":  "CCCCCC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  30,
+        "state":  "OPEN",
+        "title":  "Full BYOC 1G: Real-AWS full-BYOC validation matrix and reproducible smoke flow",
+        "updatedAt":  "2026-03-15T23:55:24Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/30"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t-Th2",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Implemented a substantial R03 slice (issue remains open pending full CUR-in-Athena account wiring).\n\nDelivered now:\n- `CostAllocation` and `TeamBudget` persistence models.\n- Team budget APIs:\n  - `POST /v1/team-budgets`\n  - `GET /v1/team-budgets/{team}`\n- Showback API:\n  - `GET /v1/costs?team=\u003cteam\u003e\u0026period=YYYY-MM`\n- Budget preflight check integrated (`team_budget` pass/warning/fail).\n- Estimated allocation write path integrated with run usage recording.\n- CUR reconciliation worker path:\n  - service: `process_cur_reconciliation_once`\n  - worker mode: `python -m sparkpilot.workers cur-reconciliation --once`\n- EMR run tag propagation for attribution keys (`run_id`, `environment_id`, `team`, namespace, virtual cluster).\n\nValidation:\n- New tests in `tests/test_finops.py` for budget endpoints/preflight, showback, and Athena reconciliation update behavior.\n- Diagnostics ordering regression hardened with additional tests (`tests/test_diagnostics.py`) and timeout-path diagnostic capture.\n- Full suite: `69 passed`.\n\nReal AWS artifacts:\n- `artifacts/r03-realaws-20260303-122036/athena-workgroups.json`\n- `artifacts/r03-realaws-20260303-122036/glue-databases.json`\n- `artifacts/r03-realaws-20260303-122036/summary.json`\n- `artifacts/r03-realaws-20260303-122036/showback-backfill-summary.json`\n- `docs/validation/cur-chargeback-progress.md`\n\nCurrent blocker to close R03:\n- This account has Athena workgroup `primary` but no Glue CUR database/table yet, so full real CUR query reconciliation cannot complete until CUR catalog prerequisites are configured.",
+                             "createdAt":  "2026-03-03T17:31:04Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/33#issuecomment-3992533110",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7t-0xs",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Applied follow-up fixes from correctness review:\n\nImplemented now:\n- High: Athena SQL hardening in CUR reconciliation\n  - strict identifier validation for database/table/column settings\n  - UUID validation for run IDs before SQL interpolation\n- Medium: budget preflight now uses caller-provided DB session when available (no second session)\n- Medium: spend aggregation moved to SQL (`_team_spend_for_period`) instead of Python row summation\n- Medium: added composite index on `(team, billing_period)` for `cost_allocations`\n- Low: changed budget validation status constant to `HTTP_422_UNPROCESSABLE_ENTITY`\n- Low: EMR tag value guard (truncate to 256 chars)\n- Low: autouse settings cache fixture for tests\n\nCoverage additions:\n- `test_cur_reconciliation_rejects_invalid_identifier`\n- `test_cur_reconciliation_rejects_invalid_run_ids`\n- `test_build_preflight_uses_passed_db_session_for_budget`\n\nValidation:\n- `python -m pytest -q tests -p no:cacheprovider` -\u003e `72 passed`",
+                             "createdAt":  "2026-03-03T17:56:01Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/33#issuecomment-3992669292",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7t_Q7B",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Additional R03 real-AWS progress completed on March 3, 2026.\n\n## New real integration evidence\n\nI ran an end-to-end Athena/S3 reconciliation against a live AWS dataset (CUR-compatible schema):\n\n- Evidence directory:\n  - `artifacts/r03-realaws-cur-int-20260303-131710/athena-setup.json`\n  - `artifacts/r03-realaws-cur-int-20260303-131710/reconciliation-summary.json`\n\n## What was validated\n\n1. Athena external table over S3 data with columns:\n- `resource_tags_user_sparkpilot_run_id`\n- `line_item_unblended_cost`\n\n2. SparkPilot reconciliation worker against real Athena:\n- `process_cur_reconciliation_once` executed successfully.\n- `changed=1`\n- `actual_cost_usd_micros=12345` persisted for pending allocation.\n- `cost.cur_reconciliation` audit event written.\n\n3. Full regression suite:\n- `python -m pytest -q tests -p no:cacheprovider` -\u003e `75 passed`.\n\n## Status\n\nR03 remains open for final production-CUR wiring (billing-managed CUR delivery/catalog) and EC2-level attribution expansion, but the live Athena/S3 reconciliation path is now proven end-to-end.\n",
+                             "createdAt":  "2026-03-03T18:18:11Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/33#issuecomment-3992784577",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPv2N",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:21Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/33#issuecomment-4064214413",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yQqz5",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Added explicit real-CUR validation and baseline metric tracks from business plan:\\n- #67 validate CUR reconciliation against real CUR tables\\n- #71 baseline workload-contract metrics from real runs",
+                             "createdAt":  "2026-03-16T01:16:05Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/33#issuecomment-4064455929",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yhGML",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "FinOps validation mapping published in repo:\\n- docs/process/business-overview-issue-map.md\\n\\nPrimary linked tracks:\\n- #67 real CUR reconciliation validation\\n- #71 baseline workload-contract metrics from real runs",
+                             "createdAt":  "2026-03-16T16:00:34Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/33#issuecomment-4068762379",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0usg",
+                           "name":  "priority:P0",
+                           "description":  "Critical path",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wuA",
+                           "name":  "area:testing",
+                           "description":  "Testing and validation",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0w8Q",
+                           "name":  "area:ops",
+                           "description":  "Operations and deployment",
+                           "color":  "006B75"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNfGQ",
+                           "name":  "phase:1-core",
+                           "description":  "Phase 1 core hardening",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNhUQ",
+                           "name":  "area:finops",
+                           "description":  "FinOps, chargeback, and budgets",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  33,
+        "state":  "OPEN",
+        "title":  "[R03] Upgrade Cost Tracking to CUR-Aligned Chargeback",
+        "updatedAt":  "2026-03-16T16:00:34Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/33"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t9Tkc",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Implemented in this batch.\n\nDelivered:\n- New `GoldenPath` model with environment-scoped customization and default global seed profiles.\n- Default golden paths seeded on init: `small`, `medium`, `large`, `gpu`.\n- New API endpoints:\n  - `GET /v1/golden-paths`\n  - `POST /v1/golden-paths`\n  - `GET /v1/golden-paths/{id}`\n- Run submission now supports `golden_path` in `RunCreateRequest`.\n  - Golden path resource profile and Spark config are applied to the run.\n  - Timeout is bounded by golden path `max_runtime_minutes`.\n- Policy guardrail for custom Spark config:\n  - blocked Kubernetes auth/service-account override keys are rejected.\n  - surfaced in preflight as `run.spark_conf_policy`.\n- Documentation:\n  - `docs/sales/why-not-diy.md`\n  - `docs/sales/why-not-emr-serverless.md`\n\nValidation:\n- `python -m pytest -q tests -p no:cacheprovider` -\u003e `52 passed`.\n- Added/updated API tests covering:\n  - seeded default golden paths\n  - custom golden path creation + run submission\n  - blocked Spark config policy enforcement\n\nPrimary files:\n- `src/sparkpilot/models.py`\n- `src/sparkpilot/schemas.py`\n- `src/sparkpilot/services.py`\n- `src/sparkpilot/api.py`\n- `src/sparkpilot/db.py`\n- `tests/test_api.py`",
+                             "createdAt":  "2026-03-03T16:45:37Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/34#issuecomment-3992271132",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPu_9",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Reopening under repository-wide enforcement (March 15, 2026): closure requires explicit live-AWS evidence.\n\nThis issue currently lacks concrete live-AWS proof in-thread (artifact links and/or runtime identifiers).\n\nRequired before re-close:\n1. Link evidence artifacts from non-prod live-AWS execution.\n2. Include concrete IDs where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual-cluster identifiers).\n3. Note any observed failures/gaps and linked follow-up issues.\n4. Include current test results after evidence capture.\n\nIf this is genuinely a non-runtime documentation/meta issue, explicitly document why live-AWS evidence is not applicable and reference the runtime issue(s) that provide the proof chain.",
+                             "createdAt":  "2026-03-15T23:53:18Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/34#issuecomment-4064210941",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPv1C",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:19Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/34#issuecomment-4064214338",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0usg",
+                           "name":  "priority:P0",
+                           "description":  "Critical path",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vpA",
+                           "name":  "area:byoc-lite",
+                           "description":  "BYOC-Lite provisioning and runtime",
+                           "color":  "0E8A16"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wgA",
+                           "name":  "area:reliability",
+                           "description":  "Reliability and error handling",
+                           "color":  "E99695"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0xNQ",
+                           "name":  "area:docs",
+                           "description":  "Documentation",
+                           "color":  "207245"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNfGQ",
+                           "name":  "phase:1-core",
+                           "description":  "Phase 1 core hardening",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  34,
+        "state":  "OPEN",
+        "title":  "[R05] Pod Template and Spark Config Golden Paths",
+        "updatedAt":  "2026-03-15T23:55:19Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/34"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7yPvwX",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:55:10Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/37#issuecomment-4064214039",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yQqz2",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Business-plan validation gaps split into executable child issues:\\n- #65 second-operator real-AWS end-to-end pilot\\n- #66 real-AWS BYOC-Lite misconfiguration preflight matrix\\n- #71 baseline workload-contract metrics from real runs\\n\\nThese are now explicit blockers for closing e2e readiness.",
+                             "createdAt":  "2026-03-16T01:16:05Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/37#issuecomment-4064455926",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yhFwK",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Execution map reference added in repo: docs/process/business-overview-issue-map.md\\n\\nFor this e2e environment track, the mapped blocker set is:\\n- #65 second-operator real-AWS pilot\\n- #66 misconfiguration preflight matrix\\n- #71 baseline workload-contract metrics",
+                             "createdAt":  "2026-03-16T16:00:21Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/37#issuecomment-4068760586",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7ynhA-",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Linked explicit runtime IAM credential-chain validation: #76. E2E environment should include proof that runtime creds come from task role (no static keys) and successfully AssumeRole into customer role.",
+                             "createdAt":  "2026-03-16T20:36:04Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/37#issuecomment-4070445118",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0usg",
+                           "name":  "priority:P0",
+                           "description":  "Critical path",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wuA",
+                           "name":  "area:testing",
+                           "description":  "Testing and validation",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0w8Q",
+                           "name":  "area:ops",
+                           "description":  "Operations and deployment",
+                           "color":  "006B75"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNfXA",
+                           "name":  "phase:2-integration",
+                           "description":  "Phase 2 integration",
+                           "color":  "D93F0B"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  37,
+        "state":  "OPEN",
+        "title":  "[R19] End-to-End Test Environment",
+        "updatedAt":  "2026-03-16T20:36:04Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/37"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7t9OfL",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Implemented and documented.\n\nArtifacts:\n- `docs/sales/why-not-emr-serverless.md`\n\nCoverage against acceptance criteria:\n- One-page workload-fit comparison (Serverless vs EKS+SparkPilot).\n- Balanced guidance with explicit \"Serverless wins\" section.\n- Clear \"choose X if...\" decision rubric.\n- No adversarial positioning language.",
+                             "createdAt":  "2026-03-03T16:41:50Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/45#issuecomment-3992250315",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPvCg",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Reopening under repository-wide enforcement (March 15, 2026): closure requires explicit live-AWS evidence.\n\nThis issue currently lacks concrete live-AWS proof in-thread (artifact links and/or runtime identifiers).\n\nRequired before re-close:\n1. Link evidence artifacts from non-prod live-AWS execution.\n2. Include concrete IDs where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual-cluster identifiers).\n3. Note any observed failures/gaps and linked follow-up issues.\n4. Include current test results after evidence capture.\n\nIf this is genuinely a non-runtime documentation/meta issue, explicitly document why live-AWS evidence is not applicable and reference the runtime issue(s) that provide the proof chain.",
+                             "createdAt":  "2026-03-15T23:53:23Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/45#issuecomment-4064211104",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yPvpK",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Enforcement update (March 15, 2026): this issue cannot be closed without explicit live-AWS evidence.\n\nRequired closure evidence:\n1. Non-prod live-AWS artifact links.\n2. Concrete runtime identifiers where applicable (operation_id, environment_id, run_id, EMR JobRun ID, cluster/virtual cluster IDs).\n3. Any observed gaps/failures and linked follow-up issues.\n4. Current test/build results after evidence capture.",
+                             "createdAt":  "2026-03-15T23:54:55Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/45#issuecomment-4064213578",
+                             "viewerDidAuthor":  true
+                         },
+                         {
+                             "id":  "IC_kwDORZosjM7yQq_u",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Created implementation track from business roadmap for actual EMR Serverless backend delivery: #72 (separate from this objection/sales doc thread).",
+                             "createdAt":  "2026-03-16T01:16:20Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/45#issuecomment-4064456686",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0usg",
+                           "name":  "priority:P0",
+                           "description":  "Critical path",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0xNQ",
+                           "name":  "area:docs",
+                           "description":  "Documentation",
+                           "color":  "207245"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNgBQ",
+                           "name":  "phase:5-sales",
+                           "description":  "Phase 5 sales enablement",
+                           "color":  "FBCA04"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  45,
+        "state":  "OPEN",
+        "title":  "[R17] Objection Doc: Why Not EMR Serverless",
+        "updatedAt":  "2026-03-16T01:16:20Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/45"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+                         {
+                             "id":  "IC_kwDORZosjM7ynhOM",
+                             "author":  {
+                                            "login":  "JoshMcQ"
+                                        },
+                             "authorAssociation":  "OWNER",
+                             "body":  "Additional required evidence item linked: #76 (runtime IAM principal and AssumeRole chain proof from deployed control plane services).",
+                             "createdAt":  "2026-03-16T20:36:16Z",
+                             "includesCreatedEdit":  false,
+                             "isMinimized":  false,
+                             "minimizedReason":  "",
+                             "reactionGroups":  [
+
+                                                ],
+                             "url":  "https://github.com/JoshMcQ/SparkPilot/issues/65#issuecomment-4070445964",
+                             "viewerDidAuthor":  true
+                         }
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0usg",
+                           "name":  "priority:P0",
+                           "description":  "Critical path",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wuA",
+                           "name":  "area:testing",
+                           "description":  "Testing and validation",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0w8Q",
+                           "name":  "area:ops",
+                           "description":  "Operations and deployment",
+                           "color":  "006B75"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNfXA",
+                           "name":  "phase:2-integration",
+                           "description":  "Phase 2 integration",
+                           "color":  "D93F0B"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  65,
+        "state":  "OPEN",
+        "title":  "[Validation] Second-operator real-AWS end-to-end pilot",
+        "updatedAt":  "2026-03-16T20:36:16Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/65"
+    },
+    {
+        "author":  {
+                       "id":  "U_kgDOBxAgww",
+                       "is_bot":  false,
+                       "login":  "JoshMcQ",
+                       "name":  ""
+                   },
+        "comments":  [
+
+                     ],
+        "labels":  [
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0usg",
+                           "name":  "priority:P0",
+                           "description":  "Critical path",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0vWQ",
+                           "name":  "area:aws",
+                           "description":  "AWS integration",
+                           "color":  "1D76DB"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wgA",
+                           "name":  "area:reliability",
+                           "description":  "Reliability and error handling",
+                           "color":  "E99695"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACZd0wuA",
+                           "name":  "area:testing",
+                           "description":  "Testing and validation",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNfGQ",
+                           "name":  "phase:1-core",
+                           "description":  "Phase 1 core hardening",
+                           "color":  "B60205"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACaBNhUQ",
+                           "name":  "area:finops",
+                           "description":  "FinOps, chargeback, and budgets",
+                           "color":  "0052CC"
+                       },
+                       {
+                           "id":  "LA_kwDORZosjM8AAAACbhO9_w",
+                           "name":  "status:needs-live-aws-evidence",
+                           "description":  "Do not close until explicit live-AWS proof is linked",
+                           "color":  "BFD4F2"
+                       }
+                   ],
+        "number":  67,
+        "state":  "OPEN",
+        "title":  "[FinOps] Validate CUR reconciliation against real CUR tables",
+        "updatedAt":  "2026-03-16T01:14:24Z",
+        "url":  "https://github.com/JoshMcQ/SparkPilot/issues/67"
+    }
+]

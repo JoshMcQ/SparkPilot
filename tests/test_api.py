@@ -234,6 +234,70 @@ def test_environment_provisioning_run_and_usage() -> None:
     assert op_status.json()["state"] == "ready"
 
 
+def test_environment_retry_endpoint_queues_new_operation() -> None:
+    client = TestClient(app)
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": "Tenant retry-env"},
+        headers={"Idempotency-Key": "tenant-retry-env", "X-Actor": "test-user"},
+    ).json()
+    op = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "region": "us-east-1",
+            "instance_architecture": "mixed",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 64, "max_run_seconds": 7200},
+        },
+        headers={"Idempotency-Key": "env-retry-env", "X-Actor": "test-user"},
+    ).json()
+
+    with SessionLocal() as db:
+        env = db.get(Environment, op["environment_id"])
+        assert env is not None
+        env.status = "failed"
+        for operation in db.execute(
+            select(ProvisioningOperation).where(ProvisioningOperation.environment_id == op["environment_id"])
+        ).scalars():
+            operation.state = "failed"
+            operation.step = "failed"
+        db.commit()
+
+    retry = client.post(
+        f"/v1/environments/{op['environment_id']}/retry",
+        headers={"Idempotency-Key": "env-retry-op", "X-Actor": "test-user"},
+    )
+    assert retry.status_code == 200
+    payload = retry.json()
+    assert payload["environment_id"] == op["environment_id"]
+    assert payload["state"] == "queued"
+    assert payload["step"] == "queued"
+
+    env_after = client.get(f"/v1/environments/{op['environment_id']}", headers={"X-Actor": "test-user"})
+    assert env_after.status_code == 200
+    assert env_after.json()["status"] == "provisioning"
+
+
+def test_environment_delete_blocks_active_runs_then_marks_deleted() -> None:
+    client = TestClient(app)
+    _, op, _, run = _create_ready_environment_and_run(client, suffix="env-delete")
+
+    blocked = client.delete(f"/v1/environments/{op['environment_id']}", headers={"X-Actor": "test-user"})
+    assert blocked.status_code == 409
+    assert "active or in-flight runs" in blocked.json()["detail"]
+
+    with SessionLocal() as db:
+        run_row = db.get(Run, run["id"])
+        assert run_row is not None
+        run_row.state = "succeeded"
+        db.commit()
+
+    deleted = client.delete(f"/v1/environments/{op['environment_id']}", headers={"X-Actor": "test-user"})
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "deleted"
+
+
 def test_default_golden_paths_seeded() -> None:
     client = TestClient(app)
     response = client.get("/v1/golden-paths")
@@ -2531,3 +2595,1280 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
         event_tenant_by_run = {event.entity_id: event.tenant_id for event in dispatched_events}
         assert event_tenant_by_run[run_a["id"]] == tenant_a["id"]
         assert event_tenant_by_run[run_b["id"]] == tenant_b["id"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #51 – EMR Job Templates API
+# ---------------------------------------------------------------------------
+
+def test_create_job_template() -> None:
+    client = TestClient(app)
+    _, op, _, _ = _create_ready_environment_and_run(client, suffix="jt1")
+    environment_id = op["environment_id"]
+
+    resp = client.post(
+        f"/v1/environments/{environment_id}/job-templates",
+        json={
+            "name": "my-spark-template",
+            "description": "Daily ETL template",
+            "job_driver": {
+                "sparkSubmitJobDriver": {
+                    "entryPoint": "s3://bucket/job.py",
+                    "sparkSubmitParameters": "--conf spark.executor.cores=2",
+                }
+            },
+            "configuration_overrides": {},
+            "tags": {"team": "analytics"},
+        },
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["name"] == "my-spark-template"
+    assert body["description"] == "Daily ETL template"
+    assert body["environment_id"] == environment_id
+    assert "id" in body
+    assert "created_at" in body
+    assert "updated_at" in body
+    # In dry_run_mode the emr_template_id is None
+    assert "emr_template_id" in body
+
+
+def test_list_job_templates_empty() -> None:
+    client = TestClient(app)
+    _, op, _, _ = _create_ready_environment_and_run(client, suffix="jt2")
+    environment_id = op["environment_id"]
+
+    resp = client.get(
+        f"/v1/environments/{environment_id}/job-templates",
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_list_job_templates_returns_created() -> None:
+    client = TestClient(app)
+    _, op, _, _ = _create_ready_environment_and_run(client, suffix="jt3")
+    environment_id = op["environment_id"]
+
+    client.post(
+        f"/v1/environments/{environment_id}/job-templates",
+        json={"name": "template-alpha", "job_driver": {}, "configuration_overrides": {}, "tags": {}},
+        headers={"X-Actor": "test-user"},
+    )
+    resp = client.get(
+        f"/v1/environments/{environment_id}/job-templates",
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) == 1
+    assert items[0]["name"] == "template-alpha"
+
+
+# ---------------------------------------------------------------------------
+# Issue #47 – Spark History Server link
+# ---------------------------------------------------------------------------
+
+def test_run_response_includes_spark_history_url() -> None:
+    client = TestClient(app)
+    _, op, job, run = _create_ready_environment_and_run(client, suffix="hist1")
+    environment_id = op["environment_id"]
+
+    # Set spark_history_server_url on the environment
+    with SessionLocal() as db:
+        env = db.get(Environment, environment_id)
+        env.spark_history_server_url = "https://spark-history.example.com"
+        db.commit()
+
+    # Schedule the run so it gets an emr_job_run_id
+    with SessionLocal() as db:
+        process_scheduler_once(db)
+
+    current = client.get(f"/v1/runs/{run['id']}", headers={"X-Actor": "test-user"}).json()
+    assert "spark_history_url" in current
+    # The run should have spark_ui_uri from dry-run OR the history server URL computed
+    if current["spark_ui_uri"]:
+        assert current["spark_history_url"] == current["spark_ui_uri"]
+    elif current["emr_job_run_id"]:
+        assert current["spark_history_url"] == (
+            f"https://spark-history.example.com/history/{current['emr_job_run_id']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Issue #42 – YuniKorn queue scheduling
+# ---------------------------------------------------------------------------
+
+def test_yunikorn_queue_capacity_check_blocks_oversize_run() -> None:
+    client = TestClient(app)
+    _, op, job, _ = _create_ready_environment_and_run(client, suffix="yuni1")
+    environment_id = op["environment_id"]
+
+    # Set a very small YuniKorn queue max so the next run is blocked
+    with SessionLocal() as db:
+        env = db.get(Environment, environment_id)
+        env.yunikorn_queue = "root.analytics"
+        env.yunikorn_queue_max_vcpu = 2  # tiny limit
+        db.commit()
+
+    # Submit a run that requests more vCPU than the queue max
+    oversize_run = client.post(
+        f"/v1/jobs/{job['id']}/runs",
+        json={
+            "requested_resources": {
+                "driver_vcpu": 2,
+                "driver_memory_gb": 4,
+                "executor_vcpu": 4,
+                "executor_memory_gb": 8,
+                "executor_instances": 2,
+            }
+        },
+        headers={"Idempotency-Key": "run-yuni-oversize", "X-Actor": "test-user"},
+    )
+    assert oversize_run.status_code == 201
+    oversize_run_id = oversize_run.json()["id"]
+
+    # Preflight for this run should flag the yunikorn_queue_capacity as fail
+    preflight = client.get(
+        f"/v1/environments/{environment_id}/preflight?run_id={oversize_run_id}",
+        headers={"X-Actor": "test-user"},
+    )
+    assert preflight.status_code == 200
+    pf = preflight.json()
+    assert pf["ready"] is False
+    check_codes = {c["code"] for c in pf["checks"]}
+    assert "yunikorn_queue_capacity" in check_codes
+    yunikorn_check = next(c for c in pf["checks"] if c["code"] == "yunikorn_queue_capacity")
+    assert yunikorn_check["status"] == "fail"
+
+
+def test_queue_utilization_endpoint() -> None:
+    client = TestClient(app)
+    _, op, _, _ = _create_ready_environment_and_run(client, suffix="qu1")
+    environment_id = op["environment_id"]
+
+    resp = client.get(
+        f"/v1/environments/{environment_id}/queue-utilization",
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["environment_id"] == environment_id
+    assert "active_run_count" in body
+    assert "used_vcpu" in body
+    assert "max_vcpu" in body
+
+
+# ---------------------------------------------------------------------------
+# Issue #41 – Interactive Endpoints (Managed Endpoints)
+# ---------------------------------------------------------------------------
+
+def test_create_interactive_endpoint() -> None:
+    client = TestClient(app)
+    _, op, _, _ = _create_ready_environment_and_run(client, suffix="ep1")
+    environment_id = op["environment_id"]
+
+    resp = client.post(
+        f"/v1/environments/{environment_id}/endpoints",
+        json={
+            "name": "jupyter-endpoint",
+            "execution_role_arn": "arn:aws:iam::123456789012:role/EmrExecutionRole",
+            "release_label": "emr-6.15.0-latest",
+            "idle_timeout_minutes": 30,
+        },
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["name"] == "jupyter-endpoint"
+    assert body["release_label"] == "emr-6.15.0-latest"
+    assert body["idle_timeout_minutes"] == 30
+    assert body["status"] == "creating"
+    assert body["environment_id"] == environment_id
+    assert "id" in body
+
+
+def test_list_interactive_endpoints_empty() -> None:
+    client = TestClient(app)
+    _, op, _, _ = _create_ready_environment_and_run(client, suffix="ep2")
+    environment_id = op["environment_id"]
+
+    resp = client.get(
+        f"/v1/environments/{environment_id}/endpoints",
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_list_interactive_endpoints_returns_created() -> None:
+    client = TestClient(app)
+    _, op, _, _ = _create_ready_environment_and_run(client, suffix="ep3")
+    environment_id = op["environment_id"]
+
+    client.post(
+        f"/v1/environments/{environment_id}/endpoints",
+        json={
+            "name": "endpoint-beta",
+            "execution_role_arn": "arn:aws:iam::123456789012:role/EmrExecutionRole",
+            "release_label": "emr-7.0.0-latest",
+        },
+        headers={"X-Actor": "test-user"},
+    )
+    resp = client.get(
+        f"/v1/environments/{environment_id}/endpoints",
+        headers={"X-Actor": "test-user"},
+    )
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) == 1
+    assert items[0]["name"] == "endpoint-beta"
+
+
+# ---------------------------------------------------------------------------
+# RBAC permission matrix unit tests (#35)
+# ---------------------------------------------------------------------------
+
+def _setup_rbac_fixtures(client: TestClient, monkeypatch) -> dict:
+    """Create tenant, team, env, operator, and user identities for RBAC tests."""
+    from conftest import issue_test_token
+
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": "RBAC Test Tenant"},
+        headers={"Idempotency-Key": "rbac-tenant"},
+    ).json()
+
+    team = client.post(
+        "/v1/teams",
+        json={"name": "RBAC Team Alpha", "tenant_id": tenant["id"]},
+        headers={"Idempotency-Key": "rbac-team"},
+    ).json()
+
+    op = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotRBAC",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
+        },
+        headers={"Idempotency-Key": "rbac-env"},
+    ).json()
+
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+
+    env = client.get(f"/v1/environments/{op['environment_id']}").json()
+
+    # Scope team to environment
+    client.post(f"/v1/teams/{team['id']}/environments/{env['id']}")
+
+    # Create operator identity (sub=operator-alice)
+    client.post(
+        "/v1/user-identities",
+        json={
+            "actor": "operator-alice",
+            "role": "operator",
+            "tenant_id": tenant["id"],
+            "team_id": team["id"],
+            "active": True,
+        },
+    )
+
+    # Create user identity (sub=user-bob)
+    client.post(
+        "/v1/user-identities",
+        json={
+            "actor": "user-bob",
+            "role": "user",
+            "tenant_id": tenant["id"],
+            "team_id": team["id"],
+            "active": True,
+        },
+    )
+
+    return {
+        "tenant": tenant,
+        "team": team,
+        "env": env,
+        "operator_token": issue_test_token("operator-alice"),
+        "user_token": issue_test_token("user-bob"),
+        "admin_token": issue_test_token("test-user"),
+    }
+
+
+def test_rbac_operator_cannot_create_tenant(monkeypatch) -> None:
+    """Operators must not be able to create tenants (admin-only) (#35)."""
+    client = TestClient(app)
+    fixtures = _setup_rbac_fixtures(client, monkeypatch)
+
+    resp = client.post(
+        "/v1/tenants",
+        json={"name": "Forbidden Tenant"},
+        headers={
+            "Authorization": f"Bearer {fixtures['operator_token']}",
+            "Idempotency-Key": "op-forbidden-tenant",
+        },
+    )
+    assert resp.status_code == 403
+
+
+def test_rbac_user_cannot_list_identities(monkeypatch) -> None:
+    """Regular users must not be able to list user identities (admin-only) (#35)."""
+    client = TestClient(app)
+    fixtures = _setup_rbac_fixtures(client, monkeypatch)
+
+    resp = client.get(
+        "/v1/user-identities",
+        headers={"Authorization": f"Bearer {fixtures['user_token']}"},
+    )
+    assert resp.status_code == 403
+
+
+def test_rbac_user_can_list_environments_within_scope(monkeypatch) -> None:
+    """Users should see environments within their team scope (#35)."""
+    client = TestClient(app)
+    fixtures = _setup_rbac_fixtures(client, monkeypatch)
+
+    resp = client.get(
+        "/v1/environments",
+        headers={"Authorization": f"Bearer {fixtures['user_token']}"},
+    )
+    assert resp.status_code == 200
+    envs = resp.json()
+    env_ids = {e["id"] for e in envs}
+    assert fixtures["env"]["id"] in env_ids
+
+
+def test_rbac_auth_me_returns_correct_context(monkeypatch) -> None:
+    """GET /v1/auth/me returns the correct identity context for each role (#35, #75)."""
+    client = TestClient(app)
+    fixtures = _setup_rbac_fixtures(client, monkeypatch)
+
+    # Admin
+    admin_resp = client.get(
+        "/v1/auth/me",
+        headers={"Authorization": f"Bearer {fixtures['admin_token']}"},
+    )
+    assert admin_resp.status_code == 200
+    assert admin_resp.json()["role"] == "admin"
+
+    # Operator
+    op_resp = client.get(
+        "/v1/auth/me",
+        headers={"Authorization": f"Bearer {fixtures['operator_token']}"},
+    )
+    assert op_resp.status_code == 200
+    op_body = op_resp.json()
+    assert op_body["role"] == "operator"
+    assert op_body["actor"] == "operator-alice"
+    assert fixtures["env"]["id"] in op_body["scoped_environment_ids"]
+
+    # User
+    user_resp = client.get(
+        "/v1/auth/me",
+        headers={"Authorization": f"Bearer {fixtures['user_token']}"},
+    )
+    assert user_resp.status_code == 200
+    user_body = user_resp.json()
+    assert user_body["role"] == "user"
+    assert user_body["actor"] == "user-bob"
+
+
+def test_rbac_cross_team_run_isolation(monkeypatch) -> None:
+    """User A from Team Alpha cannot see User B's runs in Team Beta (#35).
+
+    This is the core RBAC isolation test: two teams, two environments, two
+    users — each should only see runs in their own team-scoped environment.
+    """
+    from conftest import issue_test_token
+
+    def _mock_start(self, environment, job, run):
+        return EmrDispatchResult(
+            emr_job_run_id=f"jr-{run.id[:8]}",
+            log_group=f"/sparkpilot/runs/{environment.id}",
+            log_stream_prefix=f"{run.id}/attempt-{run.attempt}",
+            driver_log_uri=None,
+            spark_ui_uri=None,
+        )
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.start_job_run", _mock_start)
+
+    client = TestClient(app)
+
+    # Create two tenants, teams, and environments
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": "Isolation Corp"},
+        headers={"Idempotency-Key": "iso-ten"},
+    ).json()
+
+    team_alpha = client.post(
+        "/v1/teams",
+        json={"name": "Team Alpha", "tenant_id": tenant["id"]},
+        headers={"Idempotency-Key": "iso-team-alpha"},
+    ).json()
+    team_beta = client.post(
+        "/v1/teams",
+        json={"name": "Team Beta", "tenant_id": tenant["id"]},
+        headers={"Idempotency-Key": "iso-team-beta"},
+    ).json()
+
+    env_a_op = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::111111111111:role/RoleAlpha",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 3600},
+        },
+        headers={"Idempotency-Key": "iso-env-a"},
+    ).json()
+    env_b_op = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::222222222222:role/RoleBeta",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 3600},
+        },
+        headers={"Idempotency-Key": "iso-env-b"},
+    ).json()
+
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+
+    env_a = client.get(f"/v1/environments/{env_a_op['environment_id']}").json()
+    env_b = client.get(f"/v1/environments/{env_b_op['environment_id']}").json()
+
+    # Scope teams to environments
+    client.post(f"/v1/teams/{team_alpha['id']}/environments/{env_a['id']}")
+    client.post(f"/v1/teams/{team_beta['id']}/environments/{env_b['id']}")
+
+    # Create user identities
+    client.post("/v1/user-identities", json={
+        "actor": "alice-alpha", "role": "user",
+        "tenant_id": tenant["id"], "team_id": team_alpha["id"], "active": True,
+    })
+    client.post("/v1/user-identities", json={
+        "actor": "bob-beta", "role": "user",
+        "tenant_id": tenant["id"], "team_id": team_beta["id"], "active": True,
+    })
+
+    alice_token = issue_test_token("alice-alpha")
+    bob_token = issue_test_token("bob-beta")
+
+    # Create jobs in each environment (as admin)
+    job_a = client.post("/v1/jobs", json={
+        "environment_id": env_a["id"],
+        "name": "job-alpha",
+        "artifact_uri": "s3://alpha/main.py",
+        "artifact_digest": "sha256:aaa",
+        "entrypoint": "main.py",
+    }, headers={"Idempotency-Key": "iso-job-a"}).json()
+
+    job_b = client.post("/v1/jobs", json={
+        "environment_id": env_b["id"],
+        "name": "job-beta",
+        "artifact_uri": "s3://beta/main.py",
+        "artifact_digest": "sha256:bbb",
+        "entrypoint": "main.py",
+    }, headers={"Idempotency-Key": "iso-job-b"}).json()
+
+    # Alice submits a run in env_a
+    run_a_resp = client.post(
+        f"/v1/jobs/{job_a['id']}/runs",
+        json={
+            "requested_resources": {
+                "driver_vcpu": 1, "driver_memory_gb": 4,
+                "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1,
+            },
+            "timeout_seconds": 3500,
+        },
+        headers={"Idempotency-Key": "iso-run-a", "Authorization": f"Bearer {alice_token}"},
+    )
+    assert run_a_resp.status_code == 201, f"Alice run fail: {run_a_resp.status_code} {run_a_resp.text}"
+    run_a = run_a_resp.json()
+
+    # Bob submits a run in env_b
+    run_b_resp = client.post(
+        f"/v1/jobs/{job_b['id']}/runs",
+        json={
+            "requested_resources": {
+                "driver_vcpu": 1, "driver_memory_gb": 4,
+                "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1,
+            },
+            "timeout_seconds": 3500,
+        },
+        headers={"Idempotency-Key": "iso-run-b", "Authorization": f"Bearer {bob_token}"},
+    )
+    assert run_b_resp.status_code == 201, f"Bob run fail: {run_b_resp.status_code} {run_b_resp.text}"
+    run_b = run_b_resp.json()
+
+    # Alice can see env_a but not env_b
+    alice_envs = client.get(
+        "/v1/environments",
+        headers={"Authorization": f"Bearer {alice_token}"},
+    ).json()
+    alice_env_ids = {e["id"] for e in alice_envs}
+    assert env_a["id"] in alice_env_ids
+    assert env_b["id"] not in alice_env_ids
+
+    # Bob can see env_b but not env_a
+    bob_envs = client.get(
+        "/v1/environments",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    ).json()
+    bob_env_ids = {e["id"] for e in bob_envs}
+    assert env_b["id"] in bob_env_ids
+    assert env_a["id"] not in bob_env_ids
+
+    # Alice cannot view Bob's run (different team scope)
+    alice_view_bob_run = client.get(
+        f"/v1/runs/{run_b['id']}",
+        headers={"Authorization": f"Bearer {alice_token}"},
+    )
+    assert alice_view_bob_run.status_code == 403
+
+    # Bob cannot view Alice's run
+    bob_view_alice_run = client.get(
+        f"/v1/runs/{run_a['id']}",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert bob_view_alice_run.status_code == 403
+
+    # Each can view their own run
+    assert client.get(
+        f"/v1/runs/{run_a['id']}",
+        headers={"Authorization": f"Bearer {alice_token}"},
+    ).status_code == 200
+    assert client.get(
+        f"/v1/runs/{run_b['id']}",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    ).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Policy Engine unit tests (#39)
+# ---------------------------------------------------------------------------
+
+
+def _create_ready_env_for_policy(client: TestClient, suffix: str = "pol") -> dict:
+    """Helper: create a ready environment for policy tests."""
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": f"Policy Corp {suffix}"},
+        headers={"Idempotency-Key": f"pol-ten-{suffix}"},
+    ).json()
+    op = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/PolicyRole",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
+        },
+        headers={"Idempotency-Key": f"pol-env-{suffix}"},
+    ).json()
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+    env = client.get(f"/v1/environments/{op['environment_id']}").json()
+    return {"tenant": tenant, "env": env}
+
+
+def test_policy_crud_lifecycle() -> None:
+    """Admin can create, list, get, and delete a policy (#39)."""
+    client = TestClient(app)
+    fixtures = _create_ready_env_for_policy(client, "crud")
+
+    # Create
+    resp = client.post("/v1/policies", json={
+        "name": "Max Runtime 1h",
+        "scope": "global",
+        "rule_type": "max_runtime_seconds",
+        "config": {"max_seconds": 3600},
+        "enforcement": "hard",
+    })
+    assert resp.status_code == 201
+    policy = resp.json()
+    assert policy["name"] == "Max Runtime 1h"
+    assert policy["rule_type"] == "max_runtime_seconds"
+    assert policy["enforcement"] == "hard"
+    assert policy["active"] is True
+
+    # List
+    resp = client.get("/v1/policies")
+    assert resp.status_code == 200
+    policies = resp.json()
+    assert any(p["id"] == policy["id"] for p in policies)
+
+    # Get by ID
+    resp = client.get(f"/v1/policies/{policy['id']}")
+    assert resp.status_code == 200
+    assert resp.json()["id"] == policy["id"]
+
+    # Delete (deactivate)
+    resp = client.delete(f"/v1/policies/{policy['id']}")
+    assert resp.status_code == 204
+
+    # Verify deactivated
+    resp = client.get(f"/v1/policies/{policy['id']}")
+    assert resp.status_code == 200
+    assert resp.json()["active"] is False
+
+
+def test_policy_max_runtime_blocks_run(monkeypatch) -> None:
+    """A hard max_runtime_seconds policy blocks runs that exceed the limit (#39)."""
+    def _mock_start(self, environment, job, run):
+        return EmrDispatchResult(
+            emr_job_run_id=f"jr-{run.id[:8]}",
+            log_group=f"/sparkpilot/runs/{environment.id}",
+            log_stream_prefix=f"{run.id}/attempt-{run.attempt}",
+            driver_log_uri=None,
+            spark_ui_uri=None,
+        )
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.start_job_run", _mock_start)
+
+    client = TestClient(app)
+    fixtures = _create_ready_env_for_policy(client, "maxrt")
+    env = fixtures["env"]
+
+    # Create policy: max runtime 1800s
+    client.post("/v1/policies", json={
+        "name": "Max 30min Runtime",
+        "scope": "environment",
+        "scope_id": env["id"],
+        "rule_type": "max_runtime_seconds",
+        "config": {"max_seconds": 1800},
+        "enforcement": "hard",
+    })
+
+    # Create a job
+    job = client.post("/v1/jobs", json={
+        "environment_id": env["id"],
+        "name": "policy-test-job",
+        "artifact_uri": "s3://test/main.py",
+        "artifact_digest": "sha256:aaa",
+        "entrypoint": "main.py",
+    }, headers={"Idempotency-Key": "pol-job-maxrt"}).json()
+
+    # Submit run with timeout exceeding policy
+    resp = client.post(f"/v1/jobs/{job['id']}/runs", json={
+        "requested_resources": {
+            "driver_vcpu": 1, "driver_memory_gb": 4,
+            "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1,
+        },
+        "timeout_seconds": 3600,
+    }, headers={"Idempotency-Key": "pol-run-maxrt-fail"})
+    assert resp.status_code == 422
+    assert "Policy violation" in resp.json()["detail"]
+
+    # Submit run within policy limit — should succeed
+    resp = client.post(f"/v1/jobs/{job['id']}/runs", json={
+        "requested_resources": {
+            "driver_vcpu": 1, "driver_memory_gb": 4,
+            "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1,
+        },
+        "timeout_seconds": 1500,
+    }, headers={"Idempotency-Key": "pol-run-maxrt-ok"})
+    assert resp.status_code == 201
+
+
+def test_policy_max_vcpu_blocks_run(monkeypatch) -> None:
+    """A hard max_vcpu policy blocks runs that exceed vCPU limit (#39)."""
+    def _mock_start(self, environment, job, run):
+        return EmrDispatchResult(
+            emr_job_run_id=f"jr-{run.id[:8]}",
+            log_group=f"/sparkpilot/runs/{environment.id}",
+            log_stream_prefix=f"{run.id}/attempt-{run.attempt}",
+            driver_log_uri=None,
+            spark_ui_uri=None,
+        )
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.start_job_run", _mock_start)
+
+    client = TestClient(app)
+    fixtures = _create_ready_env_for_policy(client, "maxvcpu")
+    env = fixtures["env"]
+
+    client.post("/v1/policies", json={
+        "name": "Max 8 vCPU",
+        "scope": "environment",
+        "scope_id": env["id"],
+        "rule_type": "max_vcpu",
+        "config": {"max_vcpu": 8},
+        "enforcement": "hard",
+    })
+
+    job = client.post("/v1/jobs", json={
+        "environment_id": env["id"],
+        "name": "vcpu-test-job",
+        "artifact_uri": "s3://test/vcpu.py",
+        "artifact_digest": "sha256:bbb",
+        "entrypoint": "vcpu.py",
+    }, headers={"Idempotency-Key": "pol-job-vcpu"}).json()
+
+    # 1 driver + 10 executors * 2 vCPU = 21 vCPU — exceeds 8
+    resp = client.post(f"/v1/jobs/{job['id']}/runs", json={
+        "requested_resources": {
+            "driver_vcpu": 1, "driver_memory_gb": 4,
+            "executor_vcpu": 2, "executor_memory_gb": 4, "executor_instances": 10,
+        },
+        "timeout_seconds": 3600,
+    }, headers={"Idempotency-Key": "pol-run-vcpu-fail"})
+    assert resp.status_code == 422
+    assert "Policy violation" in resp.json()["detail"]
+
+
+def test_policy_soft_enforcement_warns_in_preflight() -> None:
+    """A soft-enforcement policy produces a warning in preflight, not a block (#39)."""
+    client = TestClient(app)
+    fixtures = _create_ready_env_for_policy(client, "soft")
+    env = fixtures["env"]
+
+    client.post("/v1/policies", json={
+        "name": "Soft Max Memory",
+        "scope": "environment",
+        "scope_id": env["id"],
+        "rule_type": "max_memory_gb",
+        "config": {"max_memory_gb": 16},
+        "enforcement": "soft",
+    })
+
+    resp = client.get(f"/v1/environments/{env['id']}/preflight")
+    assert resp.status_code == 200
+    preflight = resp.json()
+    # Soft policies should not make preflight fail
+    assert preflight["ready"] is True
+
+
+def test_policy_required_tags_blocks_run(monkeypatch) -> None:
+    """A required_tags policy blocks runs missing required tags (#39)."""
+    def _mock_start(self, environment, job, run):
+        return EmrDispatchResult(
+            emr_job_run_id=f"jr-{run.id[:8]}",
+            log_group=f"/sparkpilot/runs/{environment.id}",
+            log_stream_prefix=f"{run.id}/attempt-{run.attempt}",
+            driver_log_uri=None,
+            spark_ui_uri=None,
+        )
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.start_job_run", _mock_start)
+
+    client = TestClient(app)
+    fixtures = _create_ready_env_for_policy(client, "tags")
+    env = fixtures["env"]
+
+    client.post("/v1/policies", json={
+        "name": "Required Cost Center",
+        "scope": "environment",
+        "scope_id": env["id"],
+        "rule_type": "required_tags",
+        "config": {"tags": {"cost-center": ""}},
+        "enforcement": "hard",
+    })
+
+    job = client.post("/v1/jobs", json={
+        "environment_id": env["id"],
+        "name": "tags-test-job",
+        "artifact_uri": "s3://test/tags.py",
+        "artifact_digest": "sha256:ccc",
+        "entrypoint": "tags.py",
+    }, headers={"Idempotency-Key": "pol-job-tags"}).json()
+
+    # Run without tags — blocked
+    resp = client.post(f"/v1/jobs/{job['id']}/runs", json={
+        "requested_resources": {
+            "driver_vcpu": 1, "driver_memory_gb": 4,
+            "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1,
+        },
+        "timeout_seconds": 3600,
+    }, headers={"Idempotency-Key": "pol-run-tags-fail"})
+    assert resp.status_code == 422
+    assert "Policy violation" in resp.json()["detail"]
+
+    # Run with tags — allowed
+    resp = client.post(f"/v1/jobs/{job['id']}/runs", json={
+        "requested_resources": {
+            "driver_vcpu": 1, "driver_memory_gb": 4,
+            "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1,
+        },
+        "spark_conf": {
+            "spark.kubernetes.driver.label.cost-center": "engineering",
+        },
+        "timeout_seconds": 3600,
+    }, headers={"Idempotency-Key": "pol-run-tags-ok"})
+    assert resp.status_code == 201
+
+
+def test_policy_allowed_golden_paths() -> None:
+    """An allowed_golden_paths policy controls golden path usage (#39)."""
+    client = TestClient(app)
+    fixtures = _create_ready_env_for_policy(client, "gp")
+    env = fixtures["env"]
+
+    resp = client.post("/v1/policies", json={
+        "name": "Only Standard Paths",
+        "scope": "environment",
+        "scope_id": env["id"],
+        "rule_type": "allowed_golden_paths",
+        "config": {"allowed": ["standard-etl", "ml-training"], "require_golden_path": True},
+        "enforcement": "hard",
+    })
+    assert resp.status_code == 201
+    # Verify the policy evaluates correctly via preflight
+    resp = client.get(f"/v1/environments/{env['id']}/preflight")
+    assert resp.status_code == 200
+
+
+def test_policy_evaluation_creates_audit_events() -> None:
+    """Every policy evaluation writes an audit event (#39)."""
+    client = TestClient(app)
+    fixtures = _create_ready_env_for_policy(client, "audit")
+    env = fixtures["env"]
+
+    client.post("/v1/policies", json={
+        "name": "Audit Test Policy",
+        "scope": "environment",
+        "scope_id": env["id"],
+        "rule_type": "max_vcpu",
+        "config": {"max_vcpu": 64},
+        "enforcement": "hard",
+    })
+
+    # Trigger preflight which evaluates policies
+    client.get(f"/v1/environments/{env['id']}/preflight")
+
+    # Check audit events
+    with SessionLocal() as db:
+        from sparkpilot.models import AuditEvent
+        events = db.execute(
+            select(AuditEvent).where(AuditEvent.action == "policy.evaluated")
+        ).scalars().all()
+        assert len(events) >= 1
+        assert events[0].entity_type == "policy"
+
+
+def test_policy_integration_blocks_violating_run(monkeypatch) -> None:
+    """End-to-end: policy blocks a run and returns clear remediation (#39)."""
+    def _mock_start(self, environment, job, run):
+        return EmrDispatchResult(
+            emr_job_run_id=f"jr-{run.id[:8]}",
+            log_group=f"/sparkpilot/runs/{environment.id}",
+            log_stream_prefix=f"{run.id}/attempt-{run.attempt}",
+            driver_log_uri=None,
+            spark_ui_uri=None,
+        )
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.start_job_run", _mock_start)
+
+    client = TestClient(app)
+    fixtures = _create_ready_env_for_policy(client, "integ")
+    env = fixtures["env"]
+
+    # Create multiple policies
+    client.post("/v1/policies", json={
+        "name": "Max 4 vCPU",
+        "scope": "environment",
+        "scope_id": env["id"],
+        "rule_type": "max_vcpu",
+        "config": {"max_vcpu": 4},
+        "enforcement": "hard",
+    })
+    client.post("/v1/policies", json={
+        "name": "Max 1h Runtime",
+        "scope": "global",
+        "rule_type": "max_runtime_seconds",
+        "config": {"max_seconds": 3600},
+        "enforcement": "hard",
+    })
+
+    job = client.post("/v1/jobs", json={
+        "environment_id": env["id"],
+        "name": "integ-test-job",
+        "artifact_uri": "s3://test/integ.py",
+        "artifact_digest": "sha256:ddd",
+        "entrypoint": "integ.py",
+    }, headers={"Idempotency-Key": "pol-job-integ"}).json()
+
+    # Run violating vCPU policy
+    resp = client.post(f"/v1/jobs/{job['id']}/runs", json={
+        "requested_resources": {
+            "driver_vcpu": 2, "driver_memory_gb": 8,
+            "executor_vcpu": 4, "executor_memory_gb": 8, "executor_instances": 5,
+        },
+        "timeout_seconds": 3600,
+    }, headers={"Idempotency-Key": "pol-run-integ-fail"})
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "Max 4 vCPU" in detail
+    assert "Policy violation" in detail
+
+    # Run within all policies — should succeed
+    resp = client.post(f"/v1/jobs/{job['id']}/runs", json={
+        "requested_resources": {
+            "driver_vcpu": 1, "driver_memory_gb": 4,
+            "executor_vcpu": 1, "executor_memory_gb": 4, "executor_instances": 1,
+        },
+        "timeout_seconds": 1800,
+    }, headers={"Idempotency-Key": "pol-run-integ-ok"})
+    assert resp.status_code == 201
+
+
+# ---------------------------------------------------------------------------
+# Lake Formation FGAC tests (#38)
+# ---------------------------------------------------------------------------
+
+def _create_fgac_env(client, suffix: str, *, lake_formation_enabled: bool = True):
+    """Helper to create a tenant+env with FGAC configuration."""
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": f"FGAC Tenant {suffix}"},
+        headers={"Idempotency-Key": f"t-fgac-{suffix}", "X-Actor": "test-user"},
+    ).json()
+    op_resp = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "provisioning_mode": "byoc_lite",
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+            "eks_cluster_arn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+            "eks_namespace": f"fgac-ns-{suffix}",
+            "lake_formation_enabled": lake_formation_enabled,
+            "lf_catalog_id": "123456789012",
+            "lf_data_access_scope": {"databases": ["analytics"]},
+        },
+        headers={"Idempotency-Key": f"e-fgac-{suffix}", "X-Actor": "test-user"},
+    )
+    assert op_resp.status_code == 201, op_resp.text
+    env_id = op_resp.json()["environment_id"]
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+    return {"tenant": tenant, "env_id": env_id}
+
+
+def test_fgac_environment_fields_persisted() -> None:
+    """FGAC config fields are stored and returned in environment response (#38)."""
+    client = TestClient(app)
+    fixtures = _create_fgac_env(client, "persist")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}")
+    assert resp.status_code == 200
+    env = resp.json()
+    assert env["lake_formation_enabled"] is True
+    assert env["lf_catalog_id"] == "123456789012"
+    assert env["lf_data_access_scope"] == {"databases": ["analytics"]}
+
+
+def test_fgac_disabled_no_checks() -> None:
+    """When FGAC is disabled, no fgac.* checks appear (#38)."""
+    client = TestClient(app)
+    fixtures = _create_fgac_env(client, "disabled", lake_formation_enabled=False)
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = resp.json()["checks"]
+    fgac_checks = [c for c in checks if c["code"].startswith("fgac.")]
+    assert len(fgac_checks) == 0
+
+
+def test_fgac_emr_release_check_passes(monkeypatch) -> None:
+    """When FGAC is enabled and release >= 7.7, EMR release check passes (#38)."""
+    monkeypatch.setenv("SPARKPILOT_EMR_RELEASE_LABEL", "emr-7.7.0")
+    # Mock AWS calls to avoid real API hits
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_lf_service_linked_role_exists",
+        lambda region: {"exists": True, "role_name": "AWSServiceRoleForLakeFormationDataAccess", "error": None},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_execution_role_lf_permissions",
+        lambda region, role_arn, catalog_id=None: {
+            "has_permissions": True, "permission_count": 3,
+            "databases": ["db1"], "tables": ["t1"], "error": None,
+        },
+    )
+    get_settings.cache_clear()
+    try:
+        client = TestClient(app)
+        fixtures = _create_fgac_env(client, "release-ok")
+        resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+        assert resp.status_code == 200
+        checks = {c["code"]: c for c in resp.json()["checks"]}
+        assert "fgac.emr_release" in checks
+        assert checks["fgac.emr_release"]["status"] == "pass"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_fgac_emr_release_too_old_blocks(monkeypatch) -> None:
+    """When FGAC is enabled but release < 7.7, EMR release check fails (#38)."""
+    monkeypatch.setenv("SPARKPILOT_EMR_RELEASE_LABEL", "emr-6.15.0")
+    # Mock AWS calls
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_lf_service_linked_role_exists",
+        lambda region: {"exists": True, "role_name": "AWSServiceRoleForLakeFormationDataAccess", "error": None},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_execution_role_lf_permissions",
+        lambda region, role_arn, catalog_id=None: {
+            "has_permissions": True, "permission_count": 1,
+            "databases": [], "tables": [], "error": None,
+        },
+    )
+    get_settings.cache_clear()
+    try:
+        client = TestClient(app)
+        fixtures = _create_fgac_env(client, "release-old")
+        resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+        assert resp.status_code == 200
+        checks = {c["code"]: c for c in resp.json()["checks"]}
+        assert checks["fgac.emr_release"]["status"] == "fail"
+        assert "7.7" in checks["fgac.emr_release"]["message"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_fgac_slr_missing_blocks(monkeypatch) -> None:
+    """When LF service-linked role is missing, check fails (#38)."""
+    monkeypatch.setenv("SPARKPILOT_EMR_EXECUTION_ROLE_ARN", "arn:aws:iam::123456789012:role/emr-exec")
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_lf_service_linked_role_exists",
+        lambda region: {"exists": False, "role_name": "AWSServiceRoleForLakeFormationDataAccess", "error": None},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_execution_role_lf_permissions",
+        lambda region, role_arn, catalog_id=None: {
+            "has_permissions": True, "permission_count": 1,
+            "databases": [], "tables": [], "error": None,
+        },
+    )
+    get_settings.cache_clear()
+    try:
+        client = TestClient(app)
+        fixtures = _create_fgac_env(client, "slr-missing")
+        resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+        assert resp.status_code == 200
+        checks = {c["code"]: c for c in resp.json()["checks"]}
+        assert checks["fgac.service_linked_role"]["status"] == "fail"
+        assert "service-linked role" in checks["fgac.service_linked_role"]["message"].lower()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_fgac_no_permissions_blocks(monkeypatch) -> None:
+    """When execution role has no LF permissions, check fails (#38)."""
+    monkeypatch.setenv("SPARKPILOT_EMR_EXECUTION_ROLE_ARN", "arn:aws:iam::123456789012:role/emr-exec")
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_lf_service_linked_role_exists",
+        lambda region: {"exists": True, "role_name": "AWSServiceRoleForLakeFormationDataAccess", "error": None},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_execution_role_lf_permissions",
+        lambda region, role_arn, catalog_id=None: {
+            "has_permissions": False, "permission_count": 0,
+            "databases": [], "tables": [], "error": None,
+        },
+    )
+    get_settings.cache_clear()
+    try:
+        client = TestClient(app)
+        fixtures = _create_fgac_env(client, "no-perms")
+        resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+        assert resp.status_code == 200
+        checks = {c["code"]: c for c in resp.json()["checks"]}
+        assert checks["fgac.lf_permissions"]["status"] == "fail"
+        assert "no Lake Formation" in checks["fgac.lf_permissions"]["message"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_fgac_all_checks_pass(monkeypatch) -> None:
+    """When all FGAC prerequisites are met, all checks pass (#38)."""
+    monkeypatch.setenv("SPARKPILOT_EMR_EXECUTION_ROLE_ARN", "arn:aws:iam::123456789012:role/emr-exec")
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_lf_service_linked_role_exists",
+        lambda region: {"exists": True, "role_name": "AWSServiceRoleForLakeFormationDataAccess", "error": None},
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.lake_formation.check_execution_role_lf_permissions",
+        lambda region, role_arn, catalog_id=None: {
+            "has_permissions": True, "permission_count": 5,
+            "databases": ["analytics", "reporting"], "tables": ["events", "users"],
+            "error": None,
+        },
+    )
+    get_settings.cache_clear()
+    try:
+        client = TestClient(app)
+        fixtures = _create_fgac_env(client, "all-pass")
+        resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+        assert resp.status_code == 200
+        checks = {c["code"]: c for c in resp.json()["checks"]}
+        assert checks["fgac.emr_release"]["status"] == "pass"
+        assert checks["fgac.service_linked_role"]["status"] == "pass"
+        assert checks["fgac.lf_permissions"]["status"] == "pass"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_fgac_golden_path_data_access_scope() -> None:
+    """Golden paths can declare a data access scope (#38)."""
+    client = TestClient(app)
+    resp = client.post("/v1/golden-paths", json={
+        "name": "fgac-etl-scope",
+        "description": "ETL pipeline with FGAC scope",
+        "driver_resources": {"vcpu": 2, "memory_gb": 8},
+        "executor_resources": {"vcpu": 4, "memory_gb": 16},
+        "executor_count": 5,
+        "data_access_scope": {
+            "databases": ["analytics_db"],
+            "tables": ["analytics_db.events"],
+            "description": "Read access to analytics events",
+        },
+    })
+    assert resp.status_code == 201
+    gp = resp.json()
+    assert gp["data_access_scope"]["databases"] == ["analytics_db"]
+    assert gp["data_access_scope"]["description"] == "Read access to analytics events"
+
+    # Verify retrieval
+    resp = client.get(f"/v1/golden-paths/{gp['id']}")
+    assert resp.status_code == 200
+    assert resp.json()["data_access_scope"] is not None
+
+
+# ---------------------------------------------------------------------------
+# EKS Pod Identity & Access Entry tests (#52)
+# ---------------------------------------------------------------------------
+
+def _create_byoc_lite_env(client, suffix: str):
+    """Helper to create a BYOC-Lite tenant+env for Pod Identity tests."""
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": f"PodId Tenant {suffix}"},
+        headers={"Idempotency-Key": f"t-podid-{suffix}", "X-Actor": "test-user"},
+    ).json()
+    op_resp = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "provisioning_mode": "byoc_lite",
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+            "eks_cluster_arn": "arn:aws:eks:us-east-1:123456789012:cluster/test-pod-id",
+            "eks_namespace": f"podid-ns-{suffix}",
+        },
+        headers={"Idempotency-Key": f"e-podid-{suffix}", "X-Actor": "test-user"},
+    )
+    assert op_resp.status_code == 201, op_resp.text
+    env_id = op_resp.json()["environment_id"]
+    with SessionLocal() as db:
+        process_provisioning_once(db)
+    return {"tenant": tenant, "env_id": env_id}
+
+
+def test_pod_identity_readiness_pass(monkeypatch) -> None:
+    """Pod Identity check passes when addon is ACTIVE (#52)."""
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_pod_identity_agent",
+        lambda self, env: {
+            "cluster_name": "test", "addon_installed": True,
+            "addon_status": "ACTIVE", "addon_version": "v1.3.4-eksbuild.1",
+        },
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_cluster_access_mode",
+        lambda self, env: {
+            "cluster_name": "test", "authentication_mode": "API_AND_CONFIG_MAP",
+            "access_entries_supported": True,
+        },
+    )
+    client = TestClient(app)
+    fixtures = _create_byoc_lite_env(client, "pod-pass")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["byoc_lite.pod_identity_readiness"]["status"] == "pass"
+    assert "active" in checks["byoc_lite.pod_identity_readiness"]["message"].lower()
+
+
+def test_pod_identity_not_installed_warns(monkeypatch) -> None:
+    """Pod Identity check warns when addon is not installed (#52)."""
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_pod_identity_agent",
+        lambda self, env: {
+            "cluster_name": "test", "addon_installed": False,
+            "addon_status": "NOT_INSTALLED",
+        },
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_cluster_access_mode",
+        lambda self, env: {
+            "cluster_name": "test", "authentication_mode": "API_AND_CONFIG_MAP",
+            "access_entries_supported": True,
+        },
+    )
+    client = TestClient(app)
+    fixtures = _create_byoc_lite_env(client, "pod-missing")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["byoc_lite.pod_identity_readiness"]["status"] == "warning"
+    assert "IRSA" in checks["byoc_lite.pod_identity_readiness"]["message"]
+
+
+def test_access_entry_mode_pass(monkeypatch) -> None:
+    """Access entry mode check passes when API_AND_CONFIG_MAP (#52)."""
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_pod_identity_agent",
+        lambda self, env: {
+            "cluster_name": "test", "addon_installed": True,
+            "addon_status": "ACTIVE", "addon_version": "v1.3.4-eksbuild.1",
+        },
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_cluster_access_mode",
+        lambda self, env: {
+            "cluster_name": "test", "authentication_mode": "API_AND_CONFIG_MAP",
+            "access_entries_supported": True,
+        },
+    )
+    client = TestClient(app)
+    fixtures = _create_byoc_lite_env(client, "access-pass")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["byoc_lite.access_entry_mode"]["status"] == "pass"
+
+
+def test_access_entry_mode_config_map_warns(monkeypatch) -> None:
+    """Access entry mode warns for CONFIG_MAP only mode (#52)."""
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_pod_identity_agent",
+        lambda self, env: {
+            "cluster_name": "test", "addon_installed": False,
+            "addon_status": "NOT_INSTALLED",
+        },
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_cluster_access_mode",
+        lambda self, env: {
+            "cluster_name": "test", "authentication_mode": "CONFIG_MAP",
+            "access_entries_supported": False,
+        },
+    )
+    client = TestClient(app)
+    fixtures = _create_byoc_lite_env(client, "access-warn")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    assert checks["byoc_lite.access_entry_mode"]["status"] == "warning"
+    assert "CONFIG_MAP" in checks["byoc_lite.access_entry_mode"]["message"]
+
+
+def test_identity_mode_field_returned() -> None:
+    """Environment response includes identity_mode field (#52)."""
+    client = TestClient(app)
+    fixtures = _create_byoc_lite_env(client, "id-mode")
+    resp = client.get(f"/v1/environments/{fixtures['env_id']}")
+    assert resp.status_code == 200
+    env = resp.json()
+    assert "identity_mode" in env

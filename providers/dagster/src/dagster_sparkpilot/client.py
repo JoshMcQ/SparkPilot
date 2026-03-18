@@ -95,8 +95,20 @@ class SparkPilotClient:
 
     def _discover_token_endpoint(self) -> str:
         metadata_url = f"{self.config.oidc_issuer.rstrip('/')}/.well-known/openid-configuration"
-        response = httpx.get(metadata_url, timeout=self.config.timeout_seconds)
-        response.raise_for_status()
+        try:
+            response = httpx.get(metadata_url, timeout=self.config.timeout_seconds)
+        except httpx.RequestError as exc:
+            raise SparkPilotTransientError(
+                f"OIDC discovery request failed (transport): {exc}"
+            ) from exc
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            message = f"OIDC discovery returned HTTP {status}."
+            if is_transient_status_code(status):
+                raise SparkPilotTransientError(message) from exc
+            raise SparkPilotPermanentError(message) from exc
         payload = response.json()
         if not isinstance(payload, dict):
             raise SparkPilotPermanentError("OIDC discovery response must be a JSON object.")
@@ -122,14 +134,28 @@ class SparkPilotClient:
         if self.config.oidc_scope:
             body["scope"] = self.config.oidc_scope
 
-        response = httpx.post(
-            token_endpoint,
-            data=body,
-            auth=(self.config.oidc_client_id, self.config.oidc_client_secret),
-            headers={"Accept": "application/json"},
-            timeout=self.config.timeout_seconds,
-        )
-        response.raise_for_status()
+        try:
+            response = httpx.post(
+                token_endpoint,
+                data=body,
+                auth=(self.config.oidc_client_id, self.config.oidc_client_secret),
+                headers={"Accept": "application/json"},
+                timeout=self.config.timeout_seconds,
+            )
+        except httpx.RequestError as exc:
+            raise SparkPilotTransientError(
+                f"OIDC token request failed (transport): {exc}"
+            ) from exc
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            message = f"OIDC token endpoint returned HTTP {status}."
+            if status in (401, 403):
+                raise SparkPilotPermanentError(message) from exc
+            if is_transient_status_code(status):
+                raise SparkPilotTransientError(message) from exc
+            raise SparkPilotPermanentError(message) from exc
         payload = response.json()
         if not isinstance(payload, dict):
             raise SparkPilotPermanentError("OIDC token response must be a JSON object.")

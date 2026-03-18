@@ -883,6 +883,124 @@ class EmrEksClient:
             "execution_role_arn": self.settings.emr_execution_role_arn,
         }
 
+    # -----------------------------------------------------------------------
+    # EKS Pod Identity and Access Entry detection (#52)
+    # -----------------------------------------------------------------------
+
+    def check_cluster_access_mode(self, environment: Environment) -> dict[str, str | bool]:
+        """Detect the EKS cluster authentication mode (API, API_AND_CONFIG_MAP, CONFIG_MAP).
+
+        Clusters using API or API_AND_CONFIG_MAP support access entries.
+        Pod Identity requires the eks-pod-identity-agent addon.
+        """
+        if not environment.eks_cluster_arn:
+            raise ValueError("Missing EKS cluster ARN.")
+        cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
+
+        if self.settings.dry_run_mode:
+            return {
+                "cluster_name": cluster_name,
+                "authentication_mode": "API_AND_CONFIG_MAP",
+                "access_entries_supported": True,
+                "mode": "dry_run",
+            }
+
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        eks_client = session.client("eks", region_name=environment.region)
+        try:
+            cluster = eks_client.describe_cluster(name=cluster_name).get("cluster", {})
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                raise ValueError(
+                    "Access denied while checking EKS cluster access mode. "
+                    "Remediation: grant customer_role_arn eks:DescribeCluster permission."
+                ) from None
+            raise
+
+        access_config = cluster.get("accessConfig", {})
+        auth_mode = access_config.get("authenticationMode", "CONFIG_MAP")
+        access_entries_supported = auth_mode in ("API", "API_AND_CONFIG_MAP")
+        return {
+            "cluster_name": cluster_name,
+            "authentication_mode": auth_mode,
+            "access_entries_supported": access_entries_supported,
+        }
+
+    def check_pod_identity_agent(self, environment: Environment) -> dict[str, str | bool]:
+        """Check whether the eks-pod-identity-agent addon is installed."""
+        if not environment.eks_cluster_arn:
+            raise ValueError("Missing EKS cluster ARN.")
+        cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
+
+        if self.settings.dry_run_mode:
+            return {
+                "cluster_name": cluster_name,
+                "addon_installed": True,
+                "addon_status": "ACTIVE",
+                "mode": "dry_run",
+            }
+
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        eks_client = session.client("eks", region_name=environment.region)
+        try:
+            addon = eks_client.describe_addon(
+                clusterName=cluster_name,
+                addonName="eks-pod-identity-agent",
+            ).get("addon", {})
+            return {
+                "cluster_name": cluster_name,
+                "addon_installed": True,
+                "addon_status": addon.get("status", "UNKNOWN"),
+                "addon_version": addon.get("addonVersion", ""),
+            }
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code == "ResourceNotFoundException":
+                return {
+                    "cluster_name": cluster_name,
+                    "addon_installed": False,
+                    "addon_status": "NOT_INSTALLED",
+                }
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                raise ValueError(
+                    "Access denied while checking eks-pod-identity-agent addon. "
+                    "Remediation: grant customer_role_arn eks:DescribeAddon permission."
+                ) from None
+            raise
+
+    def list_pod_identity_associations(self, environment: Environment) -> list[dict]:
+        """List EKS Pod Identity associations for the cluster namespace."""
+        if not environment.eks_cluster_arn:
+            raise ValueError("Missing EKS cluster ARN.")
+        if not environment.eks_namespace:
+            raise ValueError("Missing EKS namespace.")
+        cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
+
+        if self.settings.dry_run_mode:
+            return []
+
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        eks_client = session.client("eks", region_name=environment.region)
+        try:
+            associations = []
+            paginator = eks_client.get_paginator("list_pod_identity_associations")
+            for page in paginator.paginate(
+                clusterName=cluster_name,
+                namespace=environment.eks_namespace,
+            ):
+                associations.extend(page.get("associations", []))
+            return associations
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+                raise ValueError(
+                    "Access denied while listing EKS Pod Identity associations. "
+                    "Remediation: grant customer_role_arn "
+                    "eks:ListPodIdentityAssociations permission."
+                ) from None
+            raise
+
     def validate_virtual_cluster_reference(
         self,
         environment: Environment,
@@ -1019,6 +1137,11 @@ class EmrEksClient:
             spark_conf.setdefault(f"spark.kubernetes.driver.label.{label_key}", safe_value)
             spark_conf.setdefault(f"spark.kubernetes.executor.label.{label_key}", safe_value)
 
+        _yunikorn_queue = getattr(environment, "yunikorn_queue", None)
+        if _yunikorn_queue:
+            spark_conf["spark.kubernetes.driver.annotation.yunikorn.apache.org/queue-name"] = _yunikorn_queue
+            spark_conf["spark.kubernetes.executor.annotation.yunikorn.apache.org/queue-name"] = _yunikorn_queue
+
         spark_submit_driver: dict[str, Any] = {
             "entryPoint": job.artifact_uri,
             "entryPointArguments": run.args_overrides_json or job.args_json,
@@ -1111,6 +1234,371 @@ class EmrEksClient:
         metadata = result.get("ResponseMetadata", {})
         return metadata.get("RequestId")
 
+    def create_job_template(
+        self,
+        env: Environment,
+        *,
+        name: str,
+        job_driver: dict,
+        configuration_overrides: dict,
+        tags: dict,
+    ) -> str:
+        """Create EMR on EKS job template, returns EMR template ID."""
+        session = assume_role_session(env.customer_role_arn, env.region)
+        client = session.client("emr-containers", region_name=env.region)
+        response = client.create_job_template(
+            name=name,
+            jobTemplateData={
+                "executionRoleArn": self.settings.emr_execution_role_arn,
+                "releaseLabel": self.settings.emr_release_label or "emr-6.15.0-latest",
+                "jobDriver": job_driver,
+                "configurationOverrides": configuration_overrides,
+            },
+            tags=tags,
+        )
+        return response["id"]
+
+    def describe_job_template(self, env: Environment, template_id: str) -> dict:
+        session = assume_role_session(env.customer_role_arn, env.region)
+        client = session.client("emr-containers", region_name=env.region)
+        return client.describe_job_template(id=template_id)["jobTemplate"]
+
+    def delete_job_template(self, env: Environment, template_id: str) -> None:
+        session = assume_role_session(env.customer_role_arn, env.region)
+        client = session.client("emr-containers", region_name=env.region)
+        client.delete_job_template(id=template_id)
+
+    def list_job_templates(self, env: Environment) -> list[dict]:
+        session = assume_role_session(env.customer_role_arn, env.region)
+        client = session.client("emr-containers", region_name=env.region)
+        paginator = client.get_paginator("list_job_templates")
+        templates: list[dict] = []
+        for page in paginator.paginate():
+            templates.extend(page.get("templates", []))
+        return templates
+
+    def create_managed_endpoint(
+        self,
+        env: Environment,
+        *,
+        name: str,
+        execution_role_arn: str,
+        release_label: str,
+        certificate_arn: str | None = None,
+    ) -> str:
+        """Create EMR on EKS managed endpoint, returns endpoint ID."""
+        session = assume_role_session(env.customer_role_arn, env.region)
+        client = session.client("emr-containers", region_name=env.region)
+        kwargs: dict = {
+            "name": name,
+            "virtualClusterId": env.emr_virtual_cluster_id,
+            "type": "JUPYTER_ENTERPRISE_GATEWAY",
+            "releaseLabel": release_label,
+            "executionRoleArn": execution_role_arn,
+        }
+        if certificate_arn:
+            kwargs["certificateArn"] = certificate_arn
+        response = client.create_managed_endpoint(**kwargs)
+        return response["id"]
+
+    def describe_managed_endpoint(self, env: Environment, endpoint_id: str) -> dict:
+        session = assume_role_session(env.customer_role_arn, env.region)
+        client = session.client("emr-containers", region_name=env.region)
+        return client.describe_managed_endpoint(
+            id=endpoint_id, virtualClusterId=env.emr_virtual_cluster_id
+        )["endpoint"]
+
+    def delete_managed_endpoint(self, env: Environment, endpoint_id: str) -> None:
+        session = assume_role_session(env.customer_role_arn, env.region)
+        client = session.client("emr-containers", region_name=env.region)
+        client.delete_managed_endpoint(id=endpoint_id, virtualClusterId=env.emr_virtual_cluster_id)
+
+
+def detect_yunikorn(env: Environment) -> bool:
+    """Return True if YuniKorn scheduler is detected on the EKS cluster."""
+    cluster_arn = env.eks_cluster_arn or ""
+    if not cluster_arn:
+        return False
+    try:
+        cluster_name = EmrEksClient._eks_cluster_name_from_arn(cluster_arn)
+    except ValueError:
+        return False
+    session = assume_role_session(env.customer_role_arn, env.region)
+    eks_client = session.client("eks", region_name=env.region)
+    try:
+        response = eks_client.describe_addon(
+            clusterName=cluster_name,
+            addonName="yunikorn",
+        )
+        return response["addon"]["status"] == "ACTIVE"
+    except ClientError as e:
+        if e.response["Error"]["Code"] in ("ResourceNotFoundException", "InvalidParameterException"):
+            return False
+        raise
+
+
+@dataclass(slots=True)
+class EmrServerlessDispatchResult:
+    application_id: str
+    job_run_id: str
+    log_group: str
+    log_stream_prefix: str
+    driver_log_uri: str | None
+    spark_ui_uri: str | None
+    aws_request_id: str | None = None
+
+
+@dataclass(slots=True)
+class EmrEc2DispatchResult:
+    cluster_id: str
+    step_id: str
+    log_group: str
+    log_stream_prefix: str
+    driver_log_uri: str | None
+    spark_ui_uri: str | None
+    aws_request_id: str | None = None
+
+
+class EmrServerlessClient:
+    def __init__(self) -> None:
+        self.settings = get_settings()
+
+    def _preflight_application(self, client: Any, application_id: str) -> None:
+        """Verify the EMR Serverless application exists and is in STARTED state."""
+        try:
+            result = client.get_application(applicationId=application_id)
+        except ClientError as exc:
+            error = exc.response.get("Error", {})
+            code = error.get("Code", "")
+            if code in ("ResourceNotFoundException",):
+                raise ValueError(
+                    f"EMR Serverless application '{application_id}' not found. "
+                    "Ensure the application exists in the target account and region."
+                ) from exc
+            raise
+        application = result.get("application", {})
+        state = application.get("state", "UNKNOWN")
+        if state != "STARTED":
+            raise ValueError(
+                f"EMR Serverless application '{application_id}' is in state '{state}', expected 'STARTED'. "
+                "Start the application before dispatching runs."
+            )
+
+    def start_job_run(self, environment: Environment, job: Job, run: Run) -> EmrServerlessDispatchResult:
+        application_id = environment.emr_serverless_application_id
+        if not application_id:
+            raise ValueError(
+                f"Environment '{environment.id}' has no emr_serverless_application_id configured."
+            )
+
+        log_group = f"{self.settings.log_group_prefix}/{environment.id}"
+        stream_prefix = f"{run.id}/attempt-{run.attempt}"
+
+        if self.settings.dry_run_mode:
+            job_run_id = f"jr-{uuid.uuid4().hex[:12]}"
+            return EmrServerlessDispatchResult(
+                application_id=application_id,
+                job_run_id=job_run_id,
+                log_group=log_group,
+                log_stream_prefix=stream_prefix,
+                driver_log_uri=f"cloudwatch://{log_group}/{stream_prefix}/driver",
+                spark_ui_uri=None,
+            )
+
+        validate_runtime_settings(self.settings)
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        client = session.client("emr-serverless", region_name=environment.region)
+        self._preflight_application(client, application_id)
+
+        spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
+        args = run.args_overrides_json or job.args_json or []
+        spark_params = " ".join(f"--conf {k}={v}" for k, v in spark_conf.items()) if spark_conf else ""
+
+        spark_submit: dict[str, Any] = {
+            "entryPoint": job.artifact_uri,
+            "entryPointArguments": [str(a) for a in args],
+        }
+        if spark_params:
+            spark_submit["sparkSubmitParameters"] = spark_params
+
+        start_kwargs: dict[str, Any] = {
+            "applicationId": application_id,
+            "executionRoleArn": self.settings.emr_execution_role_arn,
+            "jobDriver": {"sparkSubmit": spark_submit},
+            "name": _emr_job_run_name(job.name, run.id),
+            "configurationOverrides": {
+                "monitoringConfiguration": {
+                    "cloudWatchLoggingConfiguration": {
+                        "enabled": True,
+                        "logGroupName": log_group,
+                        "logStreamNamePrefix": stream_prefix,
+                    }
+                }
+            },
+            "tags": {
+                "sparkpilot:run_id": run.id[:256],
+                "sparkpilot:environment_id": environment.id[:256],
+                "sparkpilot:team": (environment.tenant_id or "")[:256],
+            },
+        }
+
+        result = client.start_job_run(**start_kwargs)
+        metadata = result.get("ResponseMetadata", {})
+        job_run_id = result["jobRunId"]
+        return EmrServerlessDispatchResult(
+            application_id=application_id,
+            job_run_id=job_run_id,
+            log_group=log_group,
+            log_stream_prefix=stream_prefix,
+            driver_log_uri=f"cloudwatch://{log_group}/{stream_prefix}/driver",
+            spark_ui_uri=None,
+            aws_request_id=metadata.get("RequestId"),
+        )
+
+    def describe_job_run(self, application_id: str, job_run_id: str) -> tuple[str, str | None]:
+        if self.settings.dry_run_mode:
+            return "RUNNING", None
+        session_key = f"{application_id}/{job_run_id}"
+        try:
+            # We need the environment's role ARN to get the session; callers pass pre-created sessions.
+            # This method is intended to be called via the reconciliation path which constructs its
+            # own session. We expose it here as a direct boto3 call using the platform's default
+            # credentials (non-assumed-role) for describe calls originating from the control plane.
+            client = boto3.client("emr-serverless")
+            result = client.get_job_run(applicationId=application_id, jobRunId=job_run_id)
+        except ClientError as exc:
+            return "FAILED", str(exc)
+        job_run = result.get("jobRun", {})
+        state = job_run.get("state", "FAILED")
+        failure = job_run.get("stateDetails")
+        return state, failure
+
+    def cancel_job_run(self, application_id: str, job_run_id: str) -> str | None:
+        if self.settings.dry_run_mode:
+            return None
+        client = boto3.client("emr-serverless")
+        result = client.cancel_job_run(applicationId=application_id, jobRunId=job_run_id)
+        metadata = result.get("ResponseMetadata", {})
+        return metadata.get("RequestId")
+
+
+class EmrEc2Client:
+    def __init__(self) -> None:
+        self.settings = get_settings()
+
+    def _preflight_cluster(self, client: Any, cluster_id: str) -> None:
+        """Verify the EMR cluster exists and is in WAITING or RUNNING state."""
+        try:
+            result = client.describe_cluster(ClusterId=cluster_id)
+        except ClientError as exc:
+            error = exc.response.get("Error", {})
+            code = error.get("Code", "")
+            if code in ("InvalidRequestException",):
+                raise ValueError(
+                    f"EMR cluster '{cluster_id}' not found. "
+                    "Ensure the cluster exists in the target account and region."
+                ) from exc
+            raise
+        cluster = result.get("Cluster", {})
+        status = cluster.get("Status", {})
+        state = status.get("State", "UNKNOWN")
+        if state not in ("WAITING", "RUNNING"):
+            raise ValueError(
+                f"EMR cluster '{cluster_id}' is in state '{state}', expected 'WAITING' or 'RUNNING'. "
+                "The cluster must be active before dispatching runs."
+            )
+
+    def start_job_run(self, environment: Environment, job: Job, run: Run) -> EmrEc2DispatchResult:
+        cluster_id = environment.emr_on_ec2_cluster_id
+        if not cluster_id:
+            raise ValueError(
+                f"Environment '{environment.id}' has no emr_on_ec2_cluster_id configured."
+            )
+
+        log_group = f"{self.settings.log_group_prefix}/{environment.id}"
+        stream_prefix = f"{run.id}/attempt-{run.attempt}"
+
+        if self.settings.dry_run_mode:
+            step_id = f"s-{uuid.uuid4().hex[:12].upper()}"
+            return EmrEc2DispatchResult(
+                cluster_id=cluster_id,
+                step_id=step_id,
+                log_group=log_group,
+                log_stream_prefix=stream_prefix,
+                driver_log_uri=f"cloudwatch://{log_group}/{stream_prefix}/driver",
+                spark_ui_uri=None,
+            )
+
+        validate_runtime_settings(self.settings)
+        session = assume_role_session(environment.customer_role_arn, environment.region)
+        client = session.client("emr", region_name=environment.region)
+        self._preflight_cluster(client, cluster_id)
+
+        spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
+        args = run.args_overrides_json or job.args_json or []
+        conf_flags: list[str] = []
+        for k, v in spark_conf.items():
+            conf_flags.extend(["--conf", f"{k}={v}"])
+
+        step_args = ["spark-submit", "--deploy-mode", "cluster"]
+        step_args.extend(conf_flags)
+        step_args.append(job.artifact_uri)
+        step_args.extend(str(a) for a in args)
+
+        result = client.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": _emr_job_run_name(job.name, run.id),
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {
+                        "Jar": "command-runner.jar",
+                        "Args": step_args,
+                    },
+                }
+            ],
+        )
+        metadata = result.get("ResponseMetadata", {})
+        step_ids: list[str] = result.get("StepIds", [])
+        if not step_ids:
+            raise ValueError("EMR AddJobFlowSteps returned no StepIds.")
+        step_id = step_ids[0]
+        return EmrEc2DispatchResult(
+            cluster_id=cluster_id,
+            step_id=step_id,
+            log_group=log_group,
+            log_stream_prefix=stream_prefix,
+            driver_log_uri=f"cloudwatch://{log_group}/{stream_prefix}/driver",
+            spark_ui_uri=None,
+            aws_request_id=metadata.get("RequestId"),
+        )
+
+    def describe_step(self, cluster_id: str, step_id: str) -> tuple[str, str | None]:
+        if self.settings.dry_run_mode:
+            return "RUNNING", None
+        client = boto3.client("emr")
+        try:
+            result = client.describe_step(ClusterId=cluster_id, StepId=step_id)
+        except ClientError as exc:
+            return "FAILED", str(exc)
+        step = result.get("Step", {})
+        status = step.get("Status", {})
+        state = status.get("State", "FAILED")
+        failure_details = status.get("FailureDetails", {})
+        reason = failure_details.get("Reason") if failure_details else None
+        return state, reason
+
+    def cancel_step(self, cluster_id: str, step_id: str) -> str | None:
+        if self.settings.dry_run_mode:
+            return None
+        client = boto3.client("emr")
+        result = client.cancel_steps(
+            ClusterId=cluster_id,
+            StepIds=[step_id],
+        )
+        metadata = result.get("ResponseMetadata", {})
+        return metadata.get("RequestId")
+
 
 class CloudWatchLogsProxy:
     def __init__(self) -> None:
@@ -1176,15 +1664,62 @@ class CloudWatchLogsProxy:
                 events = events[-limit:]
             return [str(event.get("message", "")) for event in events]
         except ClientError as exc:
-            error_code = exc.response.get("Error", {}).get("Code")
+            error_code = exc.response.get("Error", {}).get("Code", "Unknown")
+            error_message = exc.response.get("Error", {}).get("Message", str(exc))
+
+            # ResourceNotFound → empty logs (expected when log group/stream doesn't exist yet)
             if error_code == "ResourceNotFoundException":
                 return []
+
             logger.warning(
-                "CloudWatch log fetch failed for group=%s prefix=%s region=%s role=%s error_code=%s",
+                "CloudWatch log fetch failed for group=%s prefix=%s region=%s role=%s error_code=%s message=%s",
                 log_group,
                 log_stream_prefix,
                 region,
                 role_arn,
                 error_code,
+                error_message,
             )
-            raise
+
+            # Map common AWS errors to domain-specific exceptions with actionable messages
+            _MAPPED_LOG_ERRORS: dict[str, tuple[int, str]] = {
+                "AccessDeniedException": (
+                    403,
+                    f"Access denied reading CloudWatch logs (group={log_group}). "
+                    f"Ensure customer_role_arn has logs:FilterLogEvents and logs:GetLogEvents permissions.",
+                ),
+                "AccessDenied": (
+                    403,
+                    f"Access denied reading CloudWatch logs (group={log_group}). "
+                    f"Ensure customer_role_arn has logs:FilterLogEvents and logs:GetLogEvents permissions.",
+                ),
+                "ThrottlingException": (
+                    429,
+                    "CloudWatch Logs API rate limit exceeded. Retry after a short delay.",
+                ),
+                "Throttling": (
+                    429,
+                    "CloudWatch Logs API rate limit exceeded. Retry after a short delay.",
+                ),
+                "ServiceUnavailableException": (
+                    503,
+                    "CloudWatch Logs service is temporarily unavailable. Retry shortly.",
+                ),
+                "InvalidParameterException": (
+                    400,
+                    f"Invalid CloudWatch Logs parameters (group={log_group}, prefix={log_stream_prefix}). "
+                    f"Check log group and stream prefix configuration.",
+                ),
+            }
+
+            if error_code in _MAPPED_LOG_ERRORS:
+                status_code, detail = _MAPPED_LOG_ERRORS[error_code]
+                from sparkpilot.exceptions import SparkPilotError
+                raise SparkPilotError(detail=detail, status_code=status_code) from exc
+
+            # Unknown ClientError — re-raise with AWS error context visible
+            from sparkpilot.exceptions import SparkPilotError
+            raise SparkPilotError(
+                detail=f"AWS CloudWatch Logs error ({error_code}): {error_message}",
+                status_code=502,
+            ) from exc

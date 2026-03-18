@@ -156,6 +156,7 @@ def _golden_path_to_response_payload(path: GoldenPath) -> dict[str, Any]:
         "max_runtime_minutes": path.max_runtime_minutes,
         "tags": dict(path.tags_json or {}),
         "recommended_instance_types": list(path.recommended_instance_types_json or []),
+        "data_access_scope": path.data_access_scope_json,
         "created_at": path.created_at,
         "updated_at": path.updated_at,
     }
@@ -195,6 +196,7 @@ def create_golden_path(db: Session, req: GoldenPathCreate) -> GoldenPath:
         max_runtime_minutes=req.max_runtime_minutes,
         tags_json=req.tags,
         recommended_instance_types_json=req.recommended_instance_types,
+        data_access_scope_json=req.data_access_scope,
     )
     db.add(record)
     db.commit()

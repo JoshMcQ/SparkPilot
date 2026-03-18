@@ -4,10 +4,12 @@ import base64
 import json
 import os
 import time
+from pathlib import Path
 from typing import Final
 from urllib.parse import parse_qs
 
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 import jwt
@@ -37,8 +39,40 @@ MOCK_KID: Final[str] = os.getenv("MOCK_OIDC_KID", "sparkpilot-local-dev-kid")
 MOCK_ALLOW_SUBJECT_OVERRIDE: Final[bool] = (
     os.getenv("MOCK_OIDC_ALLOW_SUBJECT_OVERRIDE", "true").strip().lower() == "true"
 )
+MOCK_STABLE_KEY_PATH: Final[str] = os.getenv("MOCK_OIDC_STABLE_KEY_PATH", "").strip()
 
-_PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+def _load_or_generate_key() -> rsa.RSAPrivateKey:
+    """Load a stable PEM key from file, or generate an ephemeral key.
+
+    When MOCK_OIDC_STABLE_KEY_PATH is set, the key is loaded from (or written
+    to) that path on first startup so it survives container restarts (#84).
+    """
+    if not MOCK_STABLE_KEY_PATH:
+        return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    key_path = Path(MOCK_STABLE_KEY_PATH)
+    if key_path.exists():
+        pem_data = key_path.read_bytes()
+        loaded = serialization.load_pem_private_key(pem_data, password=None)
+        if not isinstance(loaded, rsa.RSAPrivateKey):
+            raise TypeError(f"Expected RSA key at {key_path}, got {type(loaded).__name__}")
+        return loaded
+
+    # Generate and persist
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    key_path.write_bytes(
+        private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    return private_key
+
+
+_PRIVATE_KEY = _load_or_generate_key()
 _PUBLIC_JWK = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(_PRIVATE_KEY.public_key()))
 _PUBLIC_JWK["kid"] = MOCK_KID
 _PUBLIC_JWK["use"] = "sig"

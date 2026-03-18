@@ -1,4 +1,5 @@
 import "server-only";
+import { cookies } from "next/headers";
 
 export class ProxyAuthError extends Error {
   readonly statusCode: number;
@@ -10,6 +11,7 @@ export class ProxyAuthError extends Error {
 }
 
 const API_BASE = (process.env.SPARKPILOT_API ?? "").trim();
+const SESSION_COOKIE_NAME = "sparkpilot.session";
 
 function requireApiBase(): string {
   if (!API_BASE) {
@@ -21,29 +23,35 @@ function requireApiBase(): string {
 /**
  * Resolve the Authorization header to forward to the SparkPilot API.
  *
- * Policy:
- *   - If the incoming request carries `Authorization: Bearer <token>`, pass it through directly.
- *   - If there is no bearer token, throw a ProxyAuthError (→ HTTP 401).
+ * Policy (in priority order):
+ *   1. If the incoming request carries `Authorization: Bearer <token>`, pass it through directly.
+ *   2. If there is an HttpOnly session cookie (sparkpilot.session), use that as the bearer token.
+ *   3. If neither is present, throw a ProxyAuthError (→ HTTP 401).
  *
- * Service-principal / M2M fallback has been intentionally removed. All API
- * requests must be authenticated with an end-user OIDC token obtained via the
- * auth panel or the OIDC login flow.
+ * The session cookie approach (#58) ensures tokens are not readable from browser JS.
  */
 export async function resolveProxyAuthorization(incomingAuthorization: string | null): Promise<string> {
   const incoming = (incomingAuthorization ?? "").trim();
 
-  if (!incoming) {
-    throw new ProxyAuthError(
-      "No user access token. Use the auth panel to set your bearer token.",
-      401,
-    );
+  // Priority 1: explicit Authorization header
+  if (incoming) {
+    if (!incoming.toLowerCase().startsWith("bearer ")) {
+      throw new ProxyAuthError("Authorization header must use Bearer token format.", 401);
+    }
+    return incoming;
   }
 
-  if (!incoming.toLowerCase().startsWith("bearer ")) {
-    throw new ProxyAuthError("Authorization header must use Bearer token format.", 401);
+  // Priority 2: HttpOnly session cookie
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value ?? "";
+  if (sessionCookie.trim()) {
+    return `Bearer ${sessionCookie.trim()}`;
   }
 
-  return incoming;
+  throw new ProxyAuthError(
+    "No user access token. Sign in or use the auth panel to authenticate.",
+    401,
+  );
 }
 
 export function sparkpilotApiBase(): string {

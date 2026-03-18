@@ -5,10 +5,12 @@ import {
   type DiagnosticItem,
   Environment,
   Job,
+  type QueueUtilizationResponse,
   Run,
   cancelRun,
   fetchEnvironments,
   fetchJobs,
+  fetchQueueUtilization,
   fetchRunDiagnostics,
   fetchRunLogs,
   fetchRuns,
@@ -35,6 +37,7 @@ export default function RunsPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [logsHint, setLogsHint] = useState<string>("Select a run to view logs.");
+  const [logsLoading, setLogsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [polling, setPolling] = useState(false);
@@ -46,11 +49,37 @@ export default function RunsPage() {
   const [diagError, setDiagError] = useState<string | null>(null);
   const [diagCategory, setDiagCategory] = useState<string>("all");
   const [diagPg, setDiagPg] = useState<PaginationState>({ page: 0, pageSize: 10 });
+  const [queueUtilizationByEnvironmentId, setQueueUtilizationByEnvironmentId] = useState<Record<string, QueueUtilizationResponse>>({});
   const [error, setError] = useState<string | null>(null);
   const [pg, setPg] = useState<PaginationState>({ page: 0, pageSize: 25 });
 
   const envMap = useMemo(() => new Map(environments.map((e) => [e.id, e])), [environments]);
   const jobMap = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs]);
+  const queuePositionByRunId = useMemo(() => {
+    const map: Record<string, number> = {};
+    const byEnvironment = new Map<string, Run[]>();
+    for (const run of runs) {
+      if (!["queued", "dispatching", "accepted"].includes(run.state)) {
+        continue;
+      }
+      const rows = byEnvironment.get(run.environment_id) ?? [];
+      rows.push(run);
+      byEnvironment.set(run.environment_id, rows);
+    }
+    for (const rows of byEnvironment.values()) {
+      rows
+        .slice()
+        .sort((a, b) => {
+          const aTs = Date.parse(a.created_at ?? "");
+          const bTs = Date.parse(b.created_at ?? "");
+          return (Number.isNaN(aTs) ? 0 : aTs) - (Number.isNaN(bTs) ? 0 : bTs);
+        })
+        .forEach((run, idx) => {
+          map[run.id] = idx + 1;
+        });
+    }
+    return map;
+  }, [runs]);
 
   function envDisplay(id: string): string {
     const env = envMap.get(id);
@@ -61,6 +90,56 @@ export default function RunsPage() {
   function jobDisplay(id: string): string {
     const job = jobMap.get(id);
     return job?.name ?? shortId(id);
+  }
+
+  function queueHint(run: Run): string {
+    if (!["queued", "dispatching", "accepted", "running"].includes(run.state)) {
+      return "-";
+    }
+    const util = queueUtilizationByEnvironmentId[run.environment_id];
+    if (run.error_message?.trim()) {
+      return run.error_message;
+    }
+    if (!util) {
+      return run.state === "queued" ? "Queued - capacity details loading..." : run.state;
+    }
+    if (util.max_vcpu && util.used_vcpu >= util.max_vcpu) {
+      return `Capacity blocked: ${util.used_vcpu}/${util.max_vcpu} vCPU in use.`;
+    }
+    if (run.state === "queued") {
+      const position = queuePositionByRunId[run.id];
+      return `Queued${position ? ` (position ${position})` : ""}: ${util.active_run_count} active run(s), ${util.used_vcpu} vCPU in use.`;
+    }
+    if (run.state === "accepted") {
+      return "Accepted by EMR, waiting for cluster resources.";
+    }
+    if (run.state === "dispatching") {
+      return "Dispatching request to EMR on EKS.";
+    }
+    return "Running.";
+  }
+
+  async function refreshQueueUtilizationForActiveRuns(runRows: Run[]) {
+    const envIds = Array.from(
+      new Set(
+        runRows
+          .filter((run) => ["queued", "dispatching", "accepted", "running"].includes(run.state))
+          .map((run) => run.environment_id)
+      )
+    );
+    if (envIds.length === 0) {
+      return;
+    }
+    await Promise.all(
+      envIds.map(async (environmentId) => {
+        try {
+          const row = await fetchQueueUtilization(environmentId);
+          setQueueUtilizationByEnvironmentId((current) => ({ ...current, [environmentId]: row }));
+        } catch {
+          // Keep existing queue telemetry when refresh fails.
+        }
+      })
+    );
   }
 
   async function refreshAll() {
@@ -74,6 +153,7 @@ export default function RunsPage() {
       setRuns(runsPayload);
       setEnvironments(envPayload);
       setJobs(jobPayload);
+      await refreshQueueUtilizationForActiveRuns(runsPayload);
       setError(null);
     } catch (err: unknown) {
       setError(friendlyError(err, "Failed to load run data"));
@@ -87,6 +167,7 @@ export default function RunsPage() {
     try {
       const data = await fetchRuns();
       setRuns(data);
+      await refreshQueueUtilizationForActiveRuns(data);
       setError(null);
     } catch (err: unknown) {
       setError(friendlyError(err, "Failed to reload runs"));
@@ -97,8 +178,10 @@ export default function RunsPage() {
     setSelectedRunId(run.id);
     setError(null);
     setLogs([]);
+    setLogsLoading(true);
     if (!run.log_group || !run.log_stream_prefix) {
       setLogsHint("Logs unavailable - no CloudWatch log pointers were recorded for this run.");
+      setLogsLoading(false);
       return;
     }
     try {
@@ -109,6 +192,8 @@ export default function RunsPage() {
       setError(friendlyError(err, "Log fetch failed"));
       setLogs([]);
       setLogsHint("Log fetch failed. Check API connectivity and CloudWatch permissions.");
+    } finally {
+      setLogsLoading(false);
     }
   }
 
@@ -241,6 +326,19 @@ export default function RunsPage() {
         <div className="subtle">Create jobs, submit runs through the preflight gate, and inspect CloudWatch log streams.</div>
       </div>
 
+      <div className="card">
+        <h3>Guided Demo Setup</h3>
+        <ol className="guided-steps">
+          <li>Create or confirm a ready environment on the Environments page.</li>
+          <li>Create a job template (Form or JSON mode) with artifact URI and Spark config.</li>
+          <li>Submit run from a ready environment, run preflight, then submit.</li>
+          <li>Use Logs + Diagnostics + Queue/Capacity hints to verify progress.</li>
+        </ol>
+        <div className="subtle">
+          Tip: JSON mode supports copy/paste of known-good payloads for fast repeatable demos.
+        </div>
+      </div>
+
       <JobCreateCard
         environments={environments}
         onJobCreated={(job) => {
@@ -269,7 +367,7 @@ export default function RunsPage() {
           </span>
         ) : null}
         <div className="subtle">
-          {refreshing ? "Syncing…" : `Auto-refresh every ${AUTO_REFRESH_MS / 1000}s`}
+          {refreshing ? "Syncing..." : `Auto-refresh every ${AUTO_REFRESH_MS / 1000}s`}
         </div>
         <button type="button" className="button" onClick={() => void reloadRuns()}>
           Refresh
@@ -293,6 +391,7 @@ export default function RunsPage() {
                 <th className="col-hide-mobile">EMR Job Run</th>
                 <th className="col-hide-mobile">Started</th>
                 <th className="col-hide-mobile">Ended</th>
+                <th className="col-hide-mobile">Queue / Capacity</th>
                 <th>Logs</th>
                 <th>Actions</th>
               </tr>
@@ -309,6 +408,7 @@ export default function RunsPage() {
                   <td className="col-hide-mobile"><ShortId value={run.emr_job_run_id} /></td>
                   <td className="col-hide-mobile">{compactTime(run.started_at)}</td>
                   <td className="col-hide-mobile">{compactTime(run.ended_at)}</td>
+                  <td className="col-hide-mobile">{queueHint(run)}</td>
                   <td>
                     <button type="button" className="button button-sm" onClick={() => void loadLogs(run)}>
                       Logs
@@ -333,7 +433,7 @@ export default function RunsPage() {
                         disabled={!canCancel(run) || cancelRunId === run.id}
                         onClick={() => void requestCancel(run)}
                       >
-                        {cancelRunId === run.id ? "Cancelling…" : run.cancellation_requested ? "Requested" : "Cancel"}
+                        {cancelRunId === run.id ? "Cancelling..." : run.cancellation_requested ? "Requested" : "Cancel"}
                       </button>
                     ) : null}
                   </td>
@@ -341,7 +441,7 @@ export default function RunsPage() {
               ))}
               {runs.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="subtle">
+                  <td colSpan={10} className="subtle">
                     No runs yet. Create a job and submit a run above.
                   </td>
                 </tr>
@@ -358,13 +458,13 @@ export default function RunsPage() {
           Run Logs
           {selectedRun ? (
             <span className="subtle" style={{ fontWeight: 400, marginLeft: 8 }}>
-              {jobDisplay(selectedRun.job_id)} · <ShortId value={selectedRun.id} />
+              {jobDisplay(selectedRun.job_id)} | <ShortId value={selectedRun.id} />
             </span>
           ) : null}
         </h3>
         {selectedRun ? (
           <div className="subtle">
-            Log group: {selectedRun.log_group ?? "n/a"} · Stream prefix: {selectedRun.log_stream_prefix ?? "n/a"}
+            Log group: {selectedRun.log_group ?? "n/a"} | Stream prefix: {selectedRun.log_stream_prefix ?? "n/a"}
             {CANCELLABLE_STATES.has(selectedRun.state) ? (
               <span style={{ marginLeft: 8 }}>Live tail every {AUTO_REFRESH_MS / 1000}s</span>
             ) : null}
@@ -373,7 +473,7 @@ export default function RunsPage() {
             ) : null}
           </div>
         ) : null}
-        <div className="logs">{logs.length > 0 ? logs.join("\n") : logsHint}</div>
+        <div className="logs">{logsLoading ? "Loading logs..." : logs.length > 0 ? logs.join("\n") : logsHint}</div>
       </div>
 
       <div className="card">
@@ -381,7 +481,7 @@ export default function RunsPage() {
           Run Diagnostics
           {diagRun ? (
             <span className="subtle" style={{ fontWeight: 400, marginLeft: 8 }}>
-              {jobDisplay(diagRun.job_id)} · <ShortId value={diagRun.id} />
+              {jobDisplay(diagRun.job_id)} | <ShortId value={diagRun.id} />
             </span>
           ) : null}
         </h3>
@@ -412,7 +512,7 @@ export default function RunsPage() {
         ) : null}
 
         {diagLoading ? (
-          <div className="loading-state"><span className="subtle">Loading diagnostics…</span></div>
+          <div className="loading-state"><span className="subtle">Loading diagnostics...</span></div>
         ) : diagError ? (
           <div className="error-state">
             <span className="error-text">{diagError}</span>
@@ -464,9 +564,9 @@ export default function RunsPage() {
                         <tr key={d.id}>
                           <td><span className={badgeClass(d.category)}>{d.category}</span></td>
                           <td>{d.description}</td>
-                          <td className="col-hide-mobile">{d.remediation ?? "—"}</td>
+                          <td className="col-hide-mobile">{d.remediation ?? "-"}</td>
                           <td className="col-hide-mobile">
-                            {d.log_snippet ? <code className="log-snippet">{d.log_snippet}</code> : "—"}
+                            {d.log_snippet ? <code className="log-snippet">{d.log_snippet}</code> : "-"}
                           </td>
                         </tr>
                       ))}

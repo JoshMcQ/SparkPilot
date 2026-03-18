@@ -46,3 +46,20 @@ python -m pytest -q tests -p no:cacheprovider
 ```
 
 Result: `37 passed`.
+
+## Real AWS Cancellation Evidence (March 18, 2026)
+
+Artifact:
+
+- `artifacts/issue12-structured-streaming-20260317-232119/summary.json`
+
+Validated in live environment:
+
+- cancellation from active lifecycle (`accepted`/`running`) converged to `cancelled`
+- log retrieval remained available while run was active
+- immediate restart after cancellation succeeded (new run accepted/running, then cancelled deterministically)
+
+Run IDs:
+
+- `86b58f70-c6be-434f-b58e-80921f94494a` -> terminal `cancelled`
+- `b4bae50f-53f7-4aa3-93cb-c148db0d078d` -> terminal `cancelled`

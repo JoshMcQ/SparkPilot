@@ -1,12 +1,54 @@
 const API_PREFIX = "/api/sparkpilot";
 export const USER_ACCESS_TOKEN_STORAGE_KEY = "sparkpilot.userAccessToken";
 export const USER_ACCESS_TOKEN_CHANGED_EVENT = "sparkpilot:user-access-token-changed";
+/**
+ * Fired when the API returns a 401 with X-SparkPilot-Auth-Hint: key-rotation,
+ * indicating that signing keys changed and the user must re-authenticate (#84).
+ */
+export const AUTH_KEY_ROTATION_EVENT = "sparkpilot:auth-key-rotation";
+
+/**
+ * In-memory token reference for the current session.
+ * Kept in sync with the HttpOnly cookie via the /api/auth/session endpoint.
+ * This is NOT persisted in localStorage in production — only in memory for
+ * inclusion in the Authorization header during the current page lifecycle.
+ * The server-side proxy also reads the HttpOnly cookie as a fallback (#58).
+ */
+let _inMemoryToken: string = "";
 
 function _userAccessToken(): string {
   if (typeof window === "undefined") {
     return "";
   }
+  // In-memory token takes priority (set by storeUserAccessToken or page init)
+  if (_inMemoryToken) {
+    return _inMemoryToken;
+  }
+  // Backward compatibility: check localStorage for dev/migration flows
   return window.localStorage.getItem(USER_ACCESS_TOKEN_STORAGE_KEY)?.trim() ?? "";
+}
+
+/**
+ * Return the current in-memory token value (display-only, not for auth).
+ * After a page refresh the in-memory token is empty until the next login/paste.
+ */
+export function getInMemoryToken(): string {
+  return _inMemoryToken;
+}
+
+/**
+ * Async check whether an HttpOnly session cookie exists on the server.
+ * Does NOT expose the token value.
+ */
+export async function isSessionActive(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/session", { method: "GET" });
+    if (!res.ok) return false;
+    const body = await res.json();
+    return Boolean(body?.authenticated);
+  } catch {
+    return false;
+  }
 }
 
 export function storeUserAccessToken(token: string): void {
@@ -14,11 +56,33 @@ export function storeUserAccessToken(token: string): void {
     return;
   }
   const value = token.trim();
+  _inMemoryToken = value;
+
+  // Store in HttpOnly cookie via session API (#58)
   if (value) {
-    window.localStorage.setItem(USER_ACCESS_TOKEN_STORAGE_KEY, value);
+    fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: value }),
+    }).catch(() => {
+      // Silent fallback — cookie will be missing, header auth still works
+    });
   } else {
+    fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
+  }
+
+  // Keep localStorage for backward compat in dev mode only
+  if (process.env.NODE_ENV === "development") {
+    if (value) {
+      window.localStorage.setItem(USER_ACCESS_TOKEN_STORAGE_KEY, value);
+    } else {
+      window.localStorage.removeItem(USER_ACCESS_TOKEN_STORAGE_KEY);
+    }
+  } else {
+    // Production: remove any legacy localStorage token (#58)
     window.localStorage.removeItem(USER_ACCESS_TOKEN_STORAGE_KEY);
   }
+
   window.dispatchEvent(new Event(USER_ACCESS_TOKEN_CHANGED_EVENT));
 }
 
@@ -113,6 +177,18 @@ export type ProvisioningOperation = {
   updated_at: string;
 };
 
+export async function fetchProvisioningOperation(operationId: string): Promise<ProvisioningOperation> {
+  const response = await fetch(`${API_PREFIX}/v1/provisioning-operations/${operationId}`, {
+    cache: "no-store",
+    headers: _headers(false),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load provisioning operation"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "Provisioning operation fetch") as ProvisioningOperation;
+}
+
 export type JobCreateRequest = {
   environment_id: string;
   name: string;
@@ -145,16 +221,26 @@ export type Run = {
   job_id: string;
   environment_id: string;
   state: string;
-   cancellation_requested: boolean;
+  cancellation_requested: boolean;
   emr_job_run_id: string | null;
   started_at: string | null;
+  last_heartbeat_at?: string | null;
   ended_at: string | null;
+  created_at?: string;
+  updated_at?: string;
   log_group: string | null;
   log_stream_prefix: string | null;
   error_message: string | null;
 };
 
 async function _extractDetail(response: Response, fallback: string): Promise<string> {
+  // Detect key-rotation signature failures (#84)
+  if (response.status === 401) {
+    const authHint = response.headers.get("X-SparkPilot-Auth-Hint");
+    if (authHint === "key-rotation" && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(AUTH_KEY_ROTATION_EVENT));
+    }
+  }
   try {
     const body = await response.json();
     if (typeof body?.detail === "string" && body.detail.trim()) return body.detail;
@@ -181,6 +267,35 @@ export async function fetchEnvironments(): Promise<Environment[]> {
   return _asObjectArray(payload, "Environment fetch") as Environment[];
 }
 
+/**
+ * Authenticated user context from GET /v1/auth/me (#75).
+ */
+export type AuthMe = {
+  actor: string;
+  role: "admin" | "operator" | "user";
+  tenant_id: string | null;
+  team_id: string | null;
+  scoped_environment_ids: string[];
+};
+
+/**
+ * Fetch the authenticated user's identity context.
+ * Returns null if not authenticated or identity not yet provisioned.
+ */
+export async function fetchAuthMe(): Promise<AuthMe | null> {
+  try {
+    const response = await fetch(`${API_PREFIX}/v1/auth/me`, {
+      cache: "no-store",
+      headers: _headers(false),
+    });
+    if (!response.ok) return null;
+    const body = await response.json();
+    return body as AuthMe;
+  } catch {
+    return null;
+  }
+}
+
 export async function createEnvironment(payload: EnvironmentCreateRequest): Promise<ProvisioningOperation> {
   const response = await fetch(`${API_PREFIX}/v1/environments`, {
     method: "POST",
@@ -192,6 +307,30 @@ export async function createEnvironment(payload: EnvironmentCreateRequest): Prom
   }
   const body = await response.json();
   return _asObject(body, "Environment create") as ProvisioningOperation;
+}
+
+export async function retryEnvironmentProvisioning(environmentId: string): Promise<ProvisioningOperation> {
+  const response = await fetch(`${API_PREFIX}/v1/environments/${environmentId}/retry`, {
+    method: "POST",
+    headers: _headers(true),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Environment retry failed"));
+  }
+  const body = await response.json();
+  return _asObject(body, "Environment retry") as ProvisioningOperation;
+}
+
+export async function deleteEnvironment(environmentId: string): Promise<Environment> {
+  const response = await fetch(`${API_PREFIX}/v1/environments/${environmentId}`, {
+    method: "DELETE",
+    headers: _headers(false),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Environment delete failed"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "Environment delete") as Environment;
 }
 
 export async function createJob(payload: JobCreateRequest): Promise<Job> {
@@ -306,6 +445,28 @@ export async function fetchEnvironmentPreflight(
   }
   const payload = await response.json();
   return _asObject(payload, "Environment preflight") as PreflightResponse;
+}
+
+export type QueueUtilizationResponse = {
+  environment_id: string;
+  yunikorn_queue: string | null;
+  active_run_count: number;
+  used_vcpu: number;
+  guaranteed_vcpu: number | null;
+  max_vcpu: number | null;
+  utilization_pct: number | null;
+};
+
+export async function fetchQueueUtilization(environmentId: string): Promise<QueueUtilizationResponse> {
+  const response = await fetch(`${API_PREFIX}/v1/environments/${environmentId}/queue-utilization`, {
+    cache: "no-store",
+    headers: _headers(false),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load queue utilization"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "Queue utilization fetch") as QueueUtilizationResponse;
 }
 
 export type RunSubmitRequest = {

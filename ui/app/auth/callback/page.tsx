@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { handleCallback } from "@/lib/oidc-client";
 
@@ -39,9 +40,9 @@ function AuthCallbackContent() {
       <div className="card" style={{ padding: "2rem" }}>
         <h2>Login failed</h2>
         <p style={{ color: "var(--text-muted)" }}>{error}</p>
-        <a href="/" className="button" style={{ marginTop: "1rem", display: "inline-block" }}>
+        <Link href="/" className="button" style={{ marginTop: "1rem", display: "inline-block" }}>
           Back to home
-        </a>
+        </Link>
       </div>
     );
   }

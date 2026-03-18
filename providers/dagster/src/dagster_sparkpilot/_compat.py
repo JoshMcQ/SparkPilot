@@ -22,7 +22,7 @@ try:
         op,
         resource,
     )
-except Exception:  # noqa: BLE001
+except (ImportError, ModuleNotFoundError):
 
     class Failure(Exception):
         """Fallback Dagster failure signal for local tests."""

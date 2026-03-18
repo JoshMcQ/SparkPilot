@@ -17,9 +17,10 @@ from sparkpilot.config import get_settings, validate_runtime_settings
 from sparkpilot.db import get_db, init_db
 from sparkpilot.exceptions import SparkPilotError
 from sparkpilot.idempotency import with_idempotency
-from sparkpilot.models import Environment, Job, Run, TeamEnvironmentScope, UserIdentity
-from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError
+from sparkpilot.models import Environment, InteractiveEndpoint, Job, JobTemplate, Run, TeamEnvironmentScope, UserIdentity
+from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
 from sparkpilot.schemas import (
+    AuthMeResponse,
     CostShowbackResponse,
     DiagnosticItem,
     DiagnosticsResponse,
@@ -28,11 +29,18 @@ from sparkpilot.schemas import (
     EnvironmentResponse,
     GoldenPathCreate,
     GoldenPathResponse,
+    InteractiveEndpointCreateRequest,
+    InteractiveEndpointResponse,
     JobCreateRequest,
     JobResponse,
+    JobTemplateCreateRequest,
+    JobTemplateResponse,
     LogsResponse,
+    PolicyCreateRequest,
+    PolicyResponse,
     PreflightResponse,
     ProvisioningOperationResponse,
+    QueueUtilizationResponse,
     RunCreateRequest,
     RunResponse,
     TeamCreateRequest,
@@ -52,6 +60,7 @@ from sparkpilot.services import (
     remove_team_environment_scope,
     cancel_run,
     create_environment,
+    delete_environment,
     create_golden_path,
     create_job,
     create_or_update_user_identity,
@@ -78,6 +87,7 @@ from sparkpilot.services import (
     list_user_identities,
     list_runs,
     model_to_dict,
+    retry_environment_provisioning,
     _golden_path_to_response_payload,
 )
 
@@ -151,7 +161,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Bootstrap-Secret"],
 )
 
@@ -183,6 +193,15 @@ def _require_api_auth(request: Request) -> str:
         )
     try:
         identity = _oidc_verifier().verify_access_token(token)
+    except OIDCKeyRotationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+            headers={
+                "WWW-Authenticate": "Bearer",
+                "X-SparkPilot-Auth-Hint": "key-rotation",
+            },
+        ) from exc
     except OIDCValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -318,7 +337,13 @@ def _job_response(payload: dict[str, Any]) -> JobResponse:
     )
 
 
-def _run_response(payload: dict[str, Any]) -> RunResponse:
+def _run_response(payload: dict[str, Any], env: Environment | None = None) -> RunResponse:
+    spark_ui_uri = payload["spark_ui_uri"]
+    spark_history_url: str | None = None
+    if spark_ui_uri:
+        spark_history_url = spark_ui_uri
+    elif env is not None and env.spark_history_server_url and payload.get("emr_job_run_id"):
+        spark_history_url = f"{env.spark_history_server_url.rstrip('/')}/history/{payload['emr_job_run_id']}"
     return RunResponse(
         id=payload["id"],
         job_id=payload["job_id"],
@@ -334,7 +359,8 @@ def _run_response(payload: dict[str, Any]) -> RunResponse:
         log_group=payload["log_group"],
         log_stream_prefix=payload["log_stream_prefix"],
         driver_log_uri=payload["driver_log_uri"],
-        spark_ui_uri=payload["spark_ui_uri"],
+        spark_ui_uri=spark_ui_uri,
+        spark_history_url=spark_history_url,
         created_by_actor=payload.get("created_by_actor"),
         error_message=payload["error_message"],
         started_at=payload["started_at"],
@@ -480,6 +506,28 @@ def post_user_identity(
     return _response(model_to_dict(row), UserIdentityResponse)
 
 
+@app.get("/v1/auth/me", response_model=AuthMeResponse)
+def get_auth_me(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AuthMeResponse:
+    """Return the authenticated user's identity context (#75).
+
+    Allows the UI to resolve role, tenant, team, and environment access
+    from the OIDC subject without requiring the user to provide tenant UUIDs
+    manually.
+    """
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    return AuthMeResponse(
+        actor=access.actor,
+        role=access.role,
+        tenant_id=access.tenant_id,
+        team_id=access.team_id,
+        scoped_environment_ids=sorted(access.scoped_environment_ids),
+    )
+
+
 @app.post(
     "/v1/teams/{team_id}/environments/{environment_id}",
     response_model=TeamEnvironmentScopeResponse,
@@ -602,6 +650,44 @@ def get_environment_by_id(
     return _response(model_to_dict(env), EnvironmentResponse)
 
 
+@app.post("/v1/environments/{environment_id}/retry", response_model=ProvisioningOperationResponse)
+def post_environment_retry(
+    environment_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> ProvisioningOperationResponse:
+    key = _require_idempotency_key(idempotency_key)
+    actor, source_ip = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Only admin/operator can retry provisioning.")
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    op = retry_environment_provisioning(
+        db,
+        environment_id,
+        actor=actor,
+        source_ip=source_ip,
+        idempotency_key=key,
+    )
+    return _response(model_to_dict(op), ProvisioningOperationResponse)
+
+
+@app.delete("/v1/environments/{environment_id}", response_model=EnvironmentResponse)
+def delete_environment_by_id(
+    environment_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> EnvironmentResponse:
+    actor, source_ip = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Only admin/operator can delete environments.")
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    deleted = delete_environment(db, environment_id, actor=actor, source_ip=source_ip)
+    return _response(model_to_dict(deleted), EnvironmentResponse)
+
+
 @app.get("/v1/environments/{environment_id}/preflight", response_model=PreflightResponse)
 def get_environment_preflight_by_id(
     environment_id: str,
@@ -617,6 +703,7 @@ def get_environment_preflight_by_id(
         run = get_run(db, run_id)
         _require_run_access(access, run, env)
     payload = get_environment_preflight(db, environment_id, run_id=run_id)
+    db.commit()  # persist audit events from policy evaluation
     return PreflightResponse(**payload)
 
 
@@ -820,7 +907,7 @@ def get_run_by_id(
     run = get_run(db, run_id)
     env = get_environment(db, run.environment_id)
     _require_run_access(access, run, env)
-    return _run_response(model_to_dict(run))
+    return _run_response(model_to_dict(run), env)
 
 
 @app.post("/v1/runs/{run_id}/cancel", response_model=RunResponse)
@@ -972,6 +1059,367 @@ def get_costs_showback(
     return get_cost_showback(db, team=team, period=period, limit=limit, offset=offset)
 
 
+@app.post(
+    "/v1/environments/{environment_id}/job-templates",
+    response_model=JobTemplateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_job_template(
+    environment_id: str,
+    req: JobTemplateCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> JobTemplateResponse:
+    from sparkpilot.aws_clients import EmrEksClient
+
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Only admin/operator can create job templates.")
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    emr_client = EmrEksClient()
+    emr_template_id: str | None = None
+    if not emr_client.settings.dry_run_mode:
+        emr_template_id = emr_client.create_job_template(
+            env,
+            name=req.name,
+            job_driver=req.job_driver,
+            configuration_overrides=req.configuration_overrides,
+            tags=req.tags,
+        )
+    template = JobTemplate(
+        environment_id=environment_id,
+        tenant_id=env.tenant_id,
+        name=req.name,
+        description=req.description,
+        emr_template_id=emr_template_id,
+        job_driver_json=req.job_driver,
+        configuration_overrides_json=req.configuration_overrides,
+        tags_json=req.tags,
+    )
+    db.add(template)
+    db.commit()
+    db.refresh(template)
+    return JobTemplateResponse(
+        id=template.id,
+        environment_id=template.environment_id,
+        tenant_id=template.tenant_id,
+        name=template.name,
+        description=template.description,
+        emr_template_id=template.emr_template_id,
+        job_driver=template.job_driver_json,
+        configuration_overrides=template.configuration_overrides_json,
+        tags=template.tags_json,
+        created_at=template.created_at,
+        updated_at=template.updated_at,
+    )
+
+
+@app.get("/v1/environments/{environment_id}/job-templates", response_model=list[JobTemplateResponse])
+def get_job_templates(
+    environment_id: str,
+    request: Request,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[JobTemplateResponse]:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    rows = db.execute(
+        select(JobTemplate)
+        .where(JobTemplate.environment_id == environment_id)
+        .order_by(JobTemplate.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    ).scalars().all()
+    return [
+        JobTemplateResponse(
+            id=t.id,
+            environment_id=t.environment_id,
+            tenant_id=t.tenant_id,
+            name=t.name,
+            description=t.description,
+            emr_template_id=t.emr_template_id,
+            job_driver=t.job_driver_json,
+            configuration_overrides=t.configuration_overrides_json,
+            tags=t.tags_json,
+            created_at=t.created_at,
+            updated_at=t.updated_at,
+        )
+        for t in rows
+    ]
+
+
+@app.get(
+    "/v1/environments/{environment_id}/job-templates/{template_id}",
+    response_model=JobTemplateResponse,
+)
+def get_job_template_by_id(
+    environment_id: str,
+    template_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> JobTemplateResponse:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    template = db.get(JobTemplate, template_id)
+    if template is None or template.environment_id != environment_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job template not found.")
+    return JobTemplateResponse(
+        id=template.id,
+        environment_id=template.environment_id,
+        tenant_id=template.tenant_id,
+        name=template.name,
+        description=template.description,
+        emr_template_id=template.emr_template_id,
+        job_driver=template.job_driver_json,
+        configuration_overrides=template.configuration_overrides_json,
+        tags=template.tags_json,
+        created_at=template.created_at,
+        updated_at=template.updated_at,
+    )
+
+
+@app.delete(
+    "/v1/environments/{environment_id}/job-templates/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_job_template(
+    environment_id: str,
+    template_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    from sparkpilot.aws_clients import EmrEksClient
+
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Only admin/operator can delete job templates.")
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    template = db.get(JobTemplate, template_id)
+    if template is None or template.environment_id != environment_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job template not found.")
+    _emr_del = EmrEksClient()
+    if template.emr_template_id and not _emr_del.settings.dry_run_mode:
+        _emr_del.delete_job_template(env, template.emr_template_id)
+    db.delete(template)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get(
+    "/v1/environments/{environment_id}/queue-utilization",
+    response_model=QueueUtilizationResponse,
+)
+def get_queue_utilization(
+    environment_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> QueueUtilizationResponse:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    active_states = {"queued", "dispatching", "accepted", "running"}
+    active_runs = db.execute(
+        select(Run).where(
+            Run.environment_id == environment_id,
+            Run.state.in_(active_states),
+        )
+    ).scalars().all()
+    used_vcpu = 0
+    for run in active_runs:
+        resources = run.requested_resources_json or {}
+        driver_vcpu = resources.get("driver_vcpu", 0)
+        executor_vcpu = resources.get("executor_vcpu", 0)
+        executor_instances = resources.get("executor_instances", 0)
+        used_vcpu += driver_vcpu + executor_vcpu * executor_instances
+    utilization_pct: float | None = None
+    if env.yunikorn_queue_max_vcpu:
+        utilization_pct = round(used_vcpu / env.yunikorn_queue_max_vcpu * 100, 2)
+    return QueueUtilizationResponse(
+        environment_id=environment_id,
+        yunikorn_queue=env.yunikorn_queue,
+        active_run_count=len(active_runs),
+        used_vcpu=used_vcpu,
+        guaranteed_vcpu=env.yunikorn_queue_guaranteed_vcpu,
+        max_vcpu=env.yunikorn_queue_max_vcpu,
+        utilization_pct=utilization_pct,
+    )
+
+
+@app.post(
+    "/v1/environments/{environment_id}/endpoints",
+    response_model=InteractiveEndpointResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_interactive_endpoint(
+    environment_id: str,
+    req: InteractiveEndpointCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> InteractiveEndpointResponse:
+    from sparkpilot.aws_clients import EmrEksClient
+
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Only admin/operator can create endpoints.")
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    _emr_ep = EmrEksClient()
+    emr_endpoint_id: str | None = None
+    if not _emr_ep.settings.dry_run_mode:
+        emr_endpoint_id = _emr_ep.create_managed_endpoint(
+            env,
+            name=req.name,
+            execution_role_arn=req.execution_role_arn,
+            release_label=req.release_label,
+            certificate_arn=req.certificate_arn,
+        )
+    endpoint = InteractiveEndpoint(
+        environment_id=environment_id,
+        tenant_id=env.tenant_id,
+        name=req.name,
+        emr_endpoint_id=emr_endpoint_id,
+        execution_role_arn=req.execution_role_arn,
+        release_label=req.release_label,
+        idle_timeout_minutes=req.idle_timeout_minutes,
+        certificate_arn=req.certificate_arn,
+        status="creating",
+        created_by_actor=actor,
+    )
+    db.add(endpoint)
+    db.commit()
+    db.refresh(endpoint)
+    return InteractiveEndpointResponse(
+        id=endpoint.id,
+        environment_id=endpoint.environment_id,
+        tenant_id=endpoint.tenant_id,
+        name=endpoint.name,
+        emr_endpoint_id=endpoint.emr_endpoint_id,
+        execution_role_arn=endpoint.execution_role_arn,
+        release_label=endpoint.release_label,
+        status=endpoint.status,
+        idle_timeout_minutes=endpoint.idle_timeout_minutes,
+        certificate_arn=endpoint.certificate_arn,
+        endpoint_url=endpoint.endpoint_url,
+        created_by_actor=endpoint.created_by_actor,
+        created_at=endpoint.created_at,
+        updated_at=endpoint.updated_at,
+    )
+
+
+@app.get(
+    "/v1/environments/{environment_id}/endpoints",
+    response_model=list[InteractiveEndpointResponse],
+)
+def get_interactive_endpoints(
+    environment_id: str,
+    request: Request,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[InteractiveEndpointResponse]:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    rows = db.execute(
+        select(InteractiveEndpoint)
+        .where(InteractiveEndpoint.environment_id == environment_id)
+        .order_by(InteractiveEndpoint.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    ).scalars().all()
+    return [
+        InteractiveEndpointResponse(
+            id=ep.id,
+            environment_id=ep.environment_id,
+            tenant_id=ep.tenant_id,
+            name=ep.name,
+            emr_endpoint_id=ep.emr_endpoint_id,
+            execution_role_arn=ep.execution_role_arn,
+            release_label=ep.release_label,
+            status=ep.status,
+            idle_timeout_minutes=ep.idle_timeout_minutes,
+            certificate_arn=ep.certificate_arn,
+            endpoint_url=ep.endpoint_url,
+            created_by_actor=ep.created_by_actor,
+            created_at=ep.created_at,
+            updated_at=ep.updated_at,
+        )
+        for ep in rows
+    ]
+
+
+@app.get(
+    "/v1/environments/{environment_id}/endpoints/{endpoint_id}",
+    response_model=InteractiveEndpointResponse,
+)
+def get_interactive_endpoint_by_id(
+    environment_id: str,
+    endpoint_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> InteractiveEndpointResponse:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    endpoint = db.get(InteractiveEndpoint, endpoint_id)
+    if endpoint is None or endpoint.environment_id != environment_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interactive endpoint not found.")
+    return InteractiveEndpointResponse(
+        id=endpoint.id,
+        environment_id=endpoint.environment_id,
+        tenant_id=endpoint.tenant_id,
+        name=endpoint.name,
+        emr_endpoint_id=endpoint.emr_endpoint_id,
+        execution_role_arn=endpoint.execution_role_arn,
+        release_label=endpoint.release_label,
+        status=endpoint.status,
+        idle_timeout_minutes=endpoint.idle_timeout_minutes,
+        certificate_arn=endpoint.certificate_arn,
+        endpoint_url=endpoint.endpoint_url,
+        created_by_actor=endpoint.created_by_actor,
+        created_at=endpoint.created_at,
+        updated_at=endpoint.updated_at,
+    )
+
+
+@app.delete(
+    "/v1/environments/{environment_id}/endpoints/{endpoint_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_interactive_endpoint(
+    environment_id: str,
+    endpoint_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    from sparkpilot.aws_clients import EmrEksClient
+
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Only admin/operator can delete endpoints.")
+    env = get_environment(db, environment_id)
+    _require_environment_access(access, env)
+    endpoint = db.get(InteractiveEndpoint, endpoint_id)
+    if endpoint is None or endpoint.environment_id != environment_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interactive endpoint not found.")
+    _emr_ep_del = EmrEksClient()
+    if endpoint.emr_endpoint_id and not _emr_ep_del.settings.dry_run_mode:
+        _emr_ep_del.delete_managed_endpoint(env, endpoint.emr_endpoint_id)
+    db.delete(endpoint)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 def _create_tenant_result(
     db: Session,
     req: TenantCreateRequest,
@@ -1020,5 +1468,97 @@ def _cancel_run_result(
 ) -> tuple[int, dict[str, Any], str | None, str | None]:
     run = cancel_run(db, run_id, actor=actor, source_ip=source_ip, commit=False)
     return status.HTTP_200_OK, model_to_dict(run), "run", run.id
+
+
+@app.get("/v1/metrics/kpis")
+def get_kpi_metrics(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return operational KPI metrics. Admin-only."""
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    from sparkpilot.metrics import collect_all_kpis
+    return collect_all_kpis(db)
+
+
+# ---------------------------------------------------------------------------
+# Policy Engine endpoints (R13 #39)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/v1/policies", response_model=PolicyResponse, status_code=status.HTTP_201_CREATED)
+def post_policy(
+    req: PolicyCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> PolicyResponse:
+    actor, source_ip = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    from sparkpilot.policy_engine import create_policy, policy_to_dict
+    policy = create_policy(
+        db,
+        name=req.name,
+        scope=req.scope,
+        scope_id=req.scope_id,
+        rule_type=req.rule_type,
+        config=req.config,
+        enforcement=req.enforcement,
+        active=req.active,
+        actor=actor,
+        source_ip=source_ip,
+    )
+    return _response(policy_to_dict(policy), PolicyResponse)
+
+
+@app.get("/v1/policies", response_model=list[PolicyResponse])
+def get_policies(
+    request: Request,
+    scope: str | None = Query(default=None),
+    scope_id: str | None = Query(default=None),
+    active_only: bool = Query(default=True),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[PolicyResponse]:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    from sparkpilot.policy_engine import list_policies, policy_to_dict
+    rows = list_policies(db, scope=scope, scope_id=scope_id, active_only=active_only, limit=limit, offset=offset)
+    return [_response(policy_to_dict(p), PolicyResponse) for p in rows]
+
+
+@app.get("/v1/policies/{policy_id}", response_model=PolicyResponse)
+def get_policy_by_id(
+    policy_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> PolicyResponse:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    from sparkpilot.policy_engine import get_policy, policy_to_dict
+    policy = get_policy(db, policy_id)
+    if policy is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found.")
+    return _response(policy_to_dict(policy), PolicyResponse)
+
+
+@app.delete("/v1/policies/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_policy_endpoint(
+    policy_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    actor, source_ip = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_admin(access)
+    from sparkpilot.policy_engine import delete_policy
+    if not delete_policy(db, policy_id, actor=actor, source_ip=source_ip):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

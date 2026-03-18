@@ -72,6 +72,15 @@ class UserIdentityResponse(BaseModel):
     updated_at: datetime
 
 
+class AuthMeResponse(BaseModel):
+    """Authenticated user context returned by GET /v1/auth/me (#75)."""
+    actor: str
+    role: UserRole
+    tenant_id: str | None
+    team_id: str | None
+    scoped_environment_ids: list[str]
+
+
 class TeamEnvironmentScopeResponse(BaseModel):
     id: str
     team_id: str
@@ -94,6 +103,9 @@ class EnvironmentCreateRequest(BaseModel):
     eks_cluster_arn: str | None = None
     eks_namespace: str | None = Field(default=None, max_length=255)
     warm_pool_enabled: bool = False
+    lake_formation_enabled: bool = False
+    lf_catalog_id: str | None = None
+    lf_data_access_scope: dict | None = None
     quotas: EnvironmentQuotas = Field(default_factory=EnvironmentQuotas)
 
 
@@ -111,6 +123,10 @@ class EnvironmentResponse(BaseModel):
     eks_namespace: str | None
     emr_virtual_cluster_id: str | None
     warm_pool_enabled: bool
+    lake_formation_enabled: bool
+    lf_catalog_id: str | None
+    lf_data_access_scope: dict | None = Field(default=None, validation_alias="lf_data_access_scope_json")
+    identity_mode: str | None
     max_concurrent_runs: int
     max_vcpu: int
     max_run_seconds: int
@@ -176,6 +192,7 @@ class GoldenPathCreate(BaseModel):
     max_runtime_minutes: int = Field(default=120, ge=1, le=10080)
     tags: dict[str, str] = Field(default_factory=dict)
     recommended_instance_types: list[str] = Field(default_factory=list)
+    data_access_scope: dict | None = None
 
 
 class GoldenPathResponse(BaseModel):
@@ -192,6 +209,7 @@ class GoldenPathResponse(BaseModel):
     max_runtime_minutes: int
     tags: dict[str, str]
     recommended_instance_types: list[str]
+    data_access_scope: dict | None
     created_at: datetime
     updated_at: datetime
 
@@ -231,6 +249,7 @@ class RunResponse(BaseModel):
     log_stream_prefix: str | None
     driver_log_uri: str | None
     spark_ui_uri: str | None
+    spark_history_url: str | None = None
     created_by_actor: str | None
     error_message: str | None
     started_at: datetime | None
@@ -342,3 +361,112 @@ class EmrReleaseResponse(BaseModel):
     last_synced_at: datetime
     created_at: datetime
     updated_at: datetime
+
+
+class JobTemplateCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=2000)
+    job_driver: dict = Field(default_factory=dict)
+    configuration_overrides: dict = Field(default_factory=dict)
+    tags: dict[str, str] = Field(default_factory=dict)
+
+
+class JobTemplateResponse(BaseModel):
+    id: str
+    environment_id: str
+    tenant_id: str
+    name: str
+    description: str
+    emr_template_id: str | None
+    job_driver: dict
+    configuration_overrides: dict
+    tags: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class InteractiveEndpointCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    execution_role_arn: str = Field(min_length=20, max_length=1024)
+    release_label: str = Field(min_length=1, max_length=64)
+    idle_timeout_minutes: int = Field(default=60, ge=1, le=10080)
+    certificate_arn: str | None = None
+
+
+class InteractiveEndpointResponse(BaseModel):
+    id: str
+    environment_id: str
+    tenant_id: str
+    name: str
+    emr_endpoint_id: str | None
+    execution_role_arn: str
+    release_label: str
+    status: str
+    idle_timeout_minutes: int
+    certificate_arn: str | None
+    endpoint_url: str | None
+    created_by_actor: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class QueueUtilizationResponse(BaseModel):
+    environment_id: str
+    yunikorn_queue: str | None
+    active_run_count: int
+    used_vcpu: int
+    guaranteed_vcpu: int | None
+    max_vcpu: int | None
+    utilization_pct: float | None
+
+
+# ---------------------------------------------------------------------------
+# Policy Engine (R13 #39)
+# ---------------------------------------------------------------------------
+
+PolicyRuleType = Literal[
+    "max_runtime_seconds",
+    "max_vcpu",
+    "max_memory_gb",
+    "required_tags",
+    "allowed_golden_paths",
+    "allowed_release_labels",
+    "allowed_instance_types",
+]
+
+PolicyScope = Literal["global", "tenant", "environment"]
+PolicyEnforcement = Literal["hard", "soft"]
+
+
+class PolicyCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    scope: PolicyScope = "global"
+    scope_id: str | None = None
+    rule_type: PolicyRuleType
+    config: dict = Field(default_factory=dict)
+    enforcement: PolicyEnforcement = "hard"
+    active: bool = True
+
+
+class PolicyResponse(BaseModel):
+    id: str
+    name: str
+    scope: str
+    scope_id: str | None
+    rule_type: str
+    config: dict
+    enforcement: str
+    active: bool
+    created_by_actor: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PolicyEvaluationResult(BaseModel):
+    policy_id: str
+    policy_name: str
+    rule_type: str
+    enforcement: str
+    passed: bool
+    message: str
+    remediation: str | None = None

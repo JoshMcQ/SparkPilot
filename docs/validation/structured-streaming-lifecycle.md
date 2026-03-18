@@ -30,3 +30,21 @@ Validate SparkPilot behavior for long-running Structured Streaming workloads:
 - For local dry-run mode, deterministic lifecycle behavior is validated by tests and mocked EMR transitions.
 - For real AWS environments, use this flow with EMR on EKS and CloudWatch log access enabled.
 
+## Real AWS Proof (March 18, 2026)
+
+Artifact:
+
+- `artifacts/issue12-structured-streaming-20260317-232119/summary.json`
+
+Run identifiers:
+
+- environment: `871beffd-7513-48c1-8047-cce837afe9ef`
+- job: `7ab7ca9f-770a-4fd8-b933-e37a0042660e`
+- run1: `86b58f70-c6be-434f-b58e-80921f94494a` (EMR JobRun `0000000377uuo8q2jfv`)
+- run2: `b4bae50f-53f7-4aa3-93cb-c148db0d078d` (EMR JobRun `0000000377uutqsebdc`)
+
+Observed outcomes:
+
+- run1 reached active lifecycle (`accepted` -> `running`) and logs were readable during runtime (`log_line_count_while_running=200`).
+- cancellation moved run1 to deterministic terminal state `cancelled`.
+- restart semantics validated by submitting run2 after run1 cancellation; run2 entered active lifecycle and also converged to `cancelled` after explicit cancel.
