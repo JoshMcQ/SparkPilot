@@ -1,6 +1,6 @@
 # SparkPilot Production Hardening Progress
 
-Last updated: 2026-03-18 18:20 ET
+Last updated: 2026-03-18 19:10 ET
 
 ## Phase 0 — Tracker bootstrap
 
@@ -29,6 +29,7 @@ Last updated: 2026-03-18 18:20 ET
 
 ### Blocker log
 - 2026-03-18 19:03 ET — #3 evidence package refreshed: added live run.preflight_failed artifacts for PassRole deny + trust-policy AccessDenied and legacy reconciler `run.preflight_diagnostic` artifact with runtime IDs; posted in issue #3 comment.
+- 2026-03-18 19:09 ET — #75 blocked for completion in this pass: required non-prod *external* IdP OIDC auth-code+PKCE trace is not currently configured in this local stack (current issuer is internal mock OIDC). Need external IdP tenant/client config + callback setup to capture closure-grade artifacts.
 
 ## Verification passes
 
