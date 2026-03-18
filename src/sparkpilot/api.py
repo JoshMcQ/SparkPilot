@@ -10,14 +10,14 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Res
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from botocore.exceptions import BotoCoreError, ClientError
-from sqlalchemy import select, text
+from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session
 
 from sparkpilot.config import get_settings, validate_runtime_settings
 from sparkpilot.db import get_db, init_db
 from sparkpilot.exceptions import SparkPilotError
 from sparkpilot.idempotency import with_idempotency
-from sparkpilot.models import Environment, InteractiveEndpoint, Job, JobTemplate, Run, TeamEnvironmentScope, UserIdentity
+from sparkpilot.models import AuditEvent, Environment, InteractiveEndpoint, Job, JobTemplate, Run, TeamEnvironmentScope, UserIdentity
 from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
 from sparkpilot.schemas import (
     AuthMeResponse,
@@ -339,7 +339,51 @@ def _job_response(payload: dict[str, Any]) -> JobResponse:
     )
 
 
-def _run_response(payload: dict[str, Any], env: Environment | None = None) -> RunResponse:
+def _latest_run_preflight_snapshot(db: Session, run_id: str) -> dict[str, Any] | None:
+    event = db.execute(
+        select(AuditEvent)
+        .where(
+            and_(
+                AuditEvent.entity_type == "run",
+                AuditEvent.entity_id == run_id,
+                AuditEvent.action.in_(["run.preflight_passed", "run.preflight_failed", "run.preflight_diagnostic"]),
+            )
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if event is None:
+        return None
+
+    details = event.details_json if isinstance(event.details_json, dict) else {}
+    ready = details.get("ready")
+    if not isinstance(ready, bool):
+        ready = event.action != "run.preflight_failed"
+
+    summary = details.get("summary")
+    summary_text = str(summary) if summary is not None else None
+
+    checks_raw = details.get("checks")
+    checks: list[dict[str, object]] = []
+    if isinstance(checks_raw, list):
+        for item in checks_raw:
+            if isinstance(item, dict):
+                checks.append(item)
+
+    return {
+        "ready": ready,
+        "summary": summary_text,
+        "generated_at": event.created_at,
+        "checks": checks,
+    }
+
+
+def _run_response(
+    payload: dict[str, Any],
+    env: Environment | None = None,
+    *,
+    preflight: dict[str, Any] | None = None,
+) -> RunResponse:
     spark_ui_uri = payload["spark_ui_uri"]
     spark_history_url: str | None = None
     if spark_ui_uri:
@@ -363,6 +407,7 @@ def _run_response(payload: dict[str, Any], env: Environment | None = None) -> Ru
         driver_log_uri=payload["driver_log_uri"],
         spark_ui_uri=spark_ui_uri,
         spark_history_url=spark_history_url,
+        preflight=preflight,
         created_by_actor=payload.get("created_by_actor"),
         error_message=payload["error_message"],
         started_at=payload["started_at"],
@@ -895,7 +940,8 @@ def post_run(
     response.status_code = result.status_code
     if result.replayed:
         response.headers["X-Idempotent-Replay"] = "true"
-    return _run_response(result.body)
+    preflight = _latest_run_preflight_snapshot(db, result.body["id"])
+    return _run_response(result.body, preflight=preflight)
 
 
 @app.get("/v1/runs/{run_id}", response_model=RunResponse)
@@ -909,7 +955,8 @@ def get_run_by_id(
     run = get_run(db, run_id)
     env = get_environment(db, run.environment_id)
     _require_run_access(access, run, env)
-    return _run_response(model_to_dict(run), env)
+    preflight = _latest_run_preflight_snapshot(db, run.id)
+    return _run_response(model_to_dict(run), env, preflight=preflight)
 
 
 @app.post("/v1/runs/{run_id}/cancel", response_model=RunResponse)
@@ -936,7 +983,8 @@ def post_cancel_run(
     response.status_code = result.status_code
     if result.replayed:
         response.headers["X-Idempotent-Replay"] = "true"
-    return _run_response(result.body)
+    preflight = _latest_run_preflight_snapshot(db, result.body["id"])
+    return _run_response(result.body, preflight=preflight)
 
 
 @app.get("/v1/runs/{run_id}/logs", response_model=LogsResponse)

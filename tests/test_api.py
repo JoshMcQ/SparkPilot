@@ -1767,6 +1767,8 @@ def test_scheduler_blocks_dispatch_on_preflight_failure() -> None:
     run_payload = client.get(f"/v1/runs/{run['id']}").json()
     assert run_payload["state"] == "failed"
     assert "Preflight failed" in (run_payload["error_message"] or "")
+    assert isinstance(run_payload.get("preflight"), dict)
+    assert run_payload["preflight"]["ready"] is False
 
 
 def test_scheduler_blocks_dispatch_when_customer_role_dispatch_check_fails(monkeypatch) -> None:
@@ -1825,6 +1827,10 @@ def test_scheduler_blocks_dispatch_when_customer_role_dispatch_check_fails(monke
     run_payload = client.get(f"/v1/runs/{run['id']}").json()
     assert run_payload["state"] == "failed"
     assert "byoc_lite.customer_role_dispatch" in (run_payload["error_message"] or "")
+    assert isinstance(run_payload.get("preflight"), dict)
+    assert run_payload["preflight"]["ready"] is False
+    codes = {item.get("code") for item in run_payload["preflight"].get("checks", []) if isinstance(item, dict)}
+    assert "issue3.iam_simulate_principal_policy" in codes
 
 
 def test_byoc_lite_provisioning_prerequisite_failures_are_actionable() -> None:

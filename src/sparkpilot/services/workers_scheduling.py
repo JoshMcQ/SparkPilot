@@ -186,6 +186,7 @@ def process_scheduler_once(db: Session, *, actor: str = "worker:scheduler", limi
                         "ready": False,
                         "summary": _preflight_summary(preflight["checks"], include_warnings=True),
                         "environment_id": env.id,
+                        "checks": preflight["checks"],
                     },
                 )
                 continue
@@ -201,6 +202,7 @@ def process_scheduler_once(db: Session, *, actor: str = "worker:scheduler", limi
                     "ready": True,
                     "summary": _preflight_summary(preflight["checks"], include_warnings=True),
                     "environment_id": env.id,
+                    "checks": preflight["checks"],
                 },
             )
 
