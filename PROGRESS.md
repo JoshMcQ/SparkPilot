@@ -14,8 +14,8 @@ Last updated: 2026-03-18 18:20 ET
 
 ## Phase 1 — Evidence-gated issue integrity
 
-- [ ] Audit closed issues with `status:needs-live-aws-evidence`; reopen any issue missing explicit artifact links and runtime identifiers.
-- [ ] Produce evidence ledger table (issue -> acceptance criteria -> artifacts -> reopen/close decision).
+- [x] Audit closed issues with `status:needs-live-aws-evidence`; reopen any issue missing explicit artifact links and runtime identifiers. <!-- completed 2026-03-18 18:22 ET; no closed issues remain with this label after reopen actions -->
+- [x] Produce evidence ledger table (issue -> acceptance criteria -> artifacts -> reopen/close decision). <!-- completed 2026-03-18 18:24 ET; see docs/process/evidence-ledger-20260318.md -->
 
 ### Blocker log
 - None.
