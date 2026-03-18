@@ -1,18 +1,18 @@
 # SparkPilot Production Hardening Progress
 
-Last updated: 2026-03-18 19:18 ET
+Last updated: 2026-03-18 19:31 ET
 
-## Phase 0 — Tracker bootstrap
+## Phase 0 - Tracker bootstrap
 
 - [x] Initialize PROGRESS.md with live GitHub open-issue baseline and execution phases. <!-- completed 2026-03-18 18:11 ET -->
 - [x] Attach explicit live-AWS evidence mapping comment for #66 (operation_id/environment_id/run_id + artifact links) and close if acceptance criteria are satisfied. <!-- completed 2026-03-18 18:14 ET; left open pending missing trust/PassRole fail artifacts -->
 - [x] Attach explicit live-AWS evidence mapping comments for #18/#19/#20/#21 and close only when each acceptance mapping is complete. <!-- completed 2026-03-18 18:17 ET; all 4 remain open pending additional live fail-path artifacts -->
 
 ### Blocker log
-- 2026-03-18 18:14 ET — #66 remains open: issue thread now has collision/malformed-arn/fake-cluster live fail artifacts, but still missing explicit live fail artifacts for (a) execution-role trust hard-fail and (b) missing iam:PassRole hard-fail within this issue’s acceptance set.
-- 2026-03-18 18:17 ET — #18/#19/#20/#21 evidence comments posted, but closure is blocked on additional live fail-path artifacts (invalid namespace case, AccessDenied trust-policy guidance path, and OIDC-missing detect+instruct fail path with runtime IDs).
+- 2026-03-18 18:14 ET - #66 remains open: issue thread now has collision/malformed-arn/fake-cluster live fail artifacts, but still missing explicit live fail artifacts for (a) execution-role trust hard-fail and (b) missing iam:PassRole hard-fail within this issue's acceptance set.
+- 2026-03-18 18:17 ET - #18/#19/#20/#21 evidence comments posted, but closure is blocked on additional live fail-path artifacts (invalid namespace case, AccessDenied trust-policy guidance path, and OIDC-missing detect+instruct fail path with runtime IDs).
 
-## Phase 1 — Evidence-gated issue integrity
+## Phase 1 - Evidence-gated issue integrity
 
 - [x] Audit closed issues with `status:needs-live-aws-evidence`; reopen any issue missing explicit artifact links and runtime identifiers. <!-- completed 2026-03-18 18:22 ET; no closed issues remain with this label after reopen actions -->
 - [x] Produce evidence ledger table (issue -> acceptance criteria -> artifacts -> reopen/close decision). <!-- completed 2026-03-18 18:24 ET; see docs/process/evidence-ledger-20260318.md -->
@@ -20,19 +20,21 @@ Last updated: 2026-03-18 19:18 ET
 ### Blocker log
 - None.
 
-## Phase 2 — Open critical path
+## Phase 2 - Open critical path
 
 - [x] Complete #3 preflight IAM/IRSA validation evidence and closure package. <!-- completed 2026-03-18 19:03 ET; evidence refresh posted in issue #3 comment with live run.preflight_failed + run.preflight_diagnostic artifacts -->
 - [x] Complete #7 UI BYOC vs BYOC-Lite differentiation and validation package. <!-- completed 2026-03-18 19:06 ET; live evidence bundle + runtime IDs posted in issue #7 comment -->
 - [ ] Complete #75 production IdP login + subject mapping evidence package.
 - [x] Complete #81 access-page guided workflow polish + validation package. <!-- completed 2026-03-18 19:16 ET; access workflow helpers + inline validation + error mapping tests + live UI evidence posted -->
+- [x] Prepare external IdP evidence-capture runbook and environment template to unblock #75. <!-- completed 2026-03-18 19:31 ET; added docs/process/external-idp-evidence-runbook.md -->
 
 ### Blocker log
-- 2026-03-18 19:03 ET — #3 evidence package refreshed: added live run.preflight_failed artifacts for PassRole deny + trust-policy AccessDenied and legacy reconciler `run.preflight_diagnostic` artifact with runtime IDs; posted in issue #3 comment.
-- 2026-03-18 19:09 ET — #75 blocked for completion in this pass: required non-prod *external* IdP OIDC auth-code+PKCE trace is not currently configured in this local stack (current issuer is internal mock OIDC). Need external IdP tenant/client config + callback setup to capture closure-grade artifacts.
-- 2026-03-18 19:12 ET — Re-validated blocker for #75 while executing this heartbeat: local environment still uses internal mock issuer; cannot produce required external-IdP acceptance artifacts without external tenant/client details.
-- 2026-03-18 19:17 ET — Posted blocker/evidence request in issue #75 comment (`#issuecomment-4086219182`) listing required external IdP tenant/client/callback config needed to complete acceptance package.
-- 2026-03-18 19:18 ET — Re-checked #75 as first unchecked task this heartbeat; still blocked until external IdP tenant/client config is available. No further closure-grade evidence can be generated in current mock-only setup.
+- 2026-03-18 19:03 ET - #3 evidence package refreshed: added live run.preflight_failed artifacts for PassRole deny + trust-policy AccessDenied and legacy reconciler `run.preflight_diagnostic` artifact with runtime IDs; posted in issue #3 comment.
+- 2026-03-18 19:09 ET - #75 blocked for completion in this pass: required non-prod *external* IdP OIDC auth-code+PKCE trace is not currently configured in this local stack (current issuer is internal mock OIDC). Need external IdP tenant/client config + callback setup to capture closure-grade artifacts.
+- 2026-03-18 19:12 ET - Re-validated blocker for #75 while executing this heartbeat: local environment still uses internal mock issuer; cannot produce required external-IdP acceptance artifacts without external tenant/client details.
+- 2026-03-18 19:17 ET - Posted blocker/evidence request in issue #75 comment (`#issuecomment-4086219182`) listing required external IdP tenant/client/callback config needed to complete acceptance package.
+- 2026-03-18 19:18 ET - Re-checked #75 as first unchecked task this heartbeat; still blocked until external IdP tenant/client config is available. No further closure-grade evidence can be generated in current mock-only setup.
+- 2026-03-18 19:31 ET - Added unblocking runbook `docs/process/external-idp-evidence-runbook.md` and posted issue #75 comment (`#issuecomment-4086293886`) with required external IdP inputs + evidence capture checklist.
 
 ## Verification passes
 
