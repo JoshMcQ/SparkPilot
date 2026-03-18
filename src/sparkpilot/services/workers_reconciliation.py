@@ -162,12 +162,15 @@ def _record_reconciled_run_state(
     mapped_state: str,
     error: str | None,
 ) -> None:
+    now = _now()
     if error:
         run.error_message = error
     run.state = mapped_state
+    if mapped_state in {"accepted", "running"}:
+        run.last_heartbeat_at = now
     if mapped_state in TERMINAL_RUN_STATES:
         if not run.ended_at:
-            run.ended_at = _now()
+            run.ended_at = now
         _record_usage_if_needed(db, run, env)
         _record_run_diagnostics_if_needed(db, run, env)
     write_audit_event(

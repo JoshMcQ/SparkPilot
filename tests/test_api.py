@@ -2262,6 +2262,104 @@ def test_cancel_run_from_running_transitions_to_cancelled(monkeypatch) -> None:
     assert final["state"] == "cancelled"
 
 
+def test_structured_streaming_lifecycle_heartbeat_cancel_restart(monkeypatch) -> None:
+    run_state_by_emr_id: dict[str, str] = {}
+
+    def _start_job_run(_self, environment, _job, run):
+        emr_id = f"jr-stream-{run.id[:8]}"
+        run_state_by_emr_id[emr_id] = "RUNNING"
+        return EmrDispatchResult(
+            emr_job_run_id=emr_id,
+            log_group=f"/sparkpilot/runs/{environment.id}",
+            log_stream_prefix=f"{run.id}/attempt-{run.attempt}",
+            driver_log_uri=f"cloudwatch:///sparkpilot/runs/{environment.id}/{run.id}/attempt-{run.attempt}/driver",
+            spark_ui_uri=f"https://spark-ui.local/{run.id}",
+            aws_request_id=f"req-{run.id[:8]}",
+        )
+
+    def _describe_job_run(_self, _environment, run):
+        if not run.emr_job_run_id:
+            return ("FAILED", "Missing emr_job_run_id")
+        return (run_state_by_emr_id.get(run.emr_job_run_id, "RUNNING"), None)
+
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.start_job_run", _start_job_run)
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.describe_job_run", _describe_job_run)
+    monkeypatch.setattr("sparkpilot.services.EmrEksClient.cancel_job_run", lambda *_args, **_kwargs: "req-stream-cancel")
+
+    client = TestClient(app)
+    _, _, job, run = _create_ready_environment_and_run(client, suffix="streaming-lifecycle", retry_max_attempts=2)
+
+    # Dispatch queued run and reconcile to running.
+    with SessionLocal() as db:
+        assert process_scheduler_once(db) == 1
+    with SessionLocal() as db:
+        assert process_reconciler_once(db) == 1
+
+    running = client.get(f"/v1/runs/{run['id']}").json()
+    assert running["state"] == "running"
+    assert running["last_heartbeat_at"] is not None
+    first_heartbeat = datetime.fromisoformat(running["last_heartbeat_at"])
+    first_emr_id = running["emr_job_run_id"]
+    assert first_emr_id is not None
+
+    # Simulate sustained runtime and verify heartbeat refresh.
+    with SessionLocal() as db:
+        row = db.get(Run, run["id"])
+        assert row is not None
+        row.last_heartbeat_at = datetime.now(UTC) - timedelta(hours=1)
+        db.commit()
+    with SessionLocal() as db:
+        assert process_reconciler_once(db) == 1
+
+    running_again = client.get(f"/v1/runs/{run['id']}").json()
+    assert running_again["state"] == "running"
+    refreshed_heartbeat = datetime.fromisoformat(running_again["last_heartbeat_at"])
+    assert refreshed_heartbeat > first_heartbeat
+
+    # Logs remain accessible while run is still active.
+    logs = client.get(
+        f"/v1/runs/{run['id']}/logs",
+        params={"limit": 25},
+        headers={"X-Actor": "test-user"},
+    )
+    assert logs.status_code == 200
+    assert logs.json()["log_group"] is not None
+    assert len(logs.json()["lines"]) > 0
+
+    # Cancellation is deterministic: request cancel, reconcile to cancelled.
+    cancel_response = client.post(
+        f"/v1/runs/{run['id']}/cancel",
+        headers={"Idempotency-Key": "cancel-streaming-run", "X-Actor": "test-user"},
+    )
+    assert cancel_response.status_code == 200
+    assert cancel_response.json()["cancellation_requested"] is True
+    run_state_by_emr_id[first_emr_id] = "CANCELLED"
+    with SessionLocal() as db:
+        assert process_reconciler_once(db) == 1
+    cancelled = client.get(f"/v1/runs/{run['id']}").json()
+    assert cancelled["state"] == "cancelled"
+    assert cancelled["ended_at"] is not None
+
+    # Restart semantics: submit a fresh run for the same job and observe running state.
+    restarted = client.post(
+        f"/v1/jobs/{job['id']}/runs",
+        json={"timeout_seconds": 3600},
+        headers={"Idempotency-Key": "run-streaming-restart", "X-Actor": "test-user"},
+    )
+    assert restarted.status_code == 201
+    restarted_run = restarted.json()
+    assert restarted_run["id"] != run["id"]
+
+    with SessionLocal() as db:
+        assert process_scheduler_once(db) == 1
+    with SessionLocal() as db:
+        assert process_reconciler_once(db) == 1
+
+    restarted_current = client.get(f"/v1/runs/{restarted_run['id']}").json()
+    assert restarted_current["state"] == "running"
+    assert restarted_current["last_heartbeat_at"] is not None
+
+
 def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) -> None:
     def _start_job_run(_self, environment, job, run):
         return EmrDispatchResult(

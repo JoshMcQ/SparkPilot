@@ -8,6 +8,7 @@ import { shortId } from "@/lib/format";
 type CreateValues = {
   tenantId: string;
   region: string;
+  instanceArchitecture: "mixed" | "x86_64" | "arm64";
   customerRoleArn: string;
   eksClusterArn: string;
   eksNamespace: string;
@@ -21,6 +22,7 @@ function defaultValues(): CreateValues {
   return {
     tenantId: "",
     region: "us-east-1",
+    instanceArchitecture: "mixed",
     customerRoleArn: "",
     eksClusterArn: "",
     eksNamespace: "",
@@ -40,11 +42,22 @@ export default function EnvironmentCreateForm() {
 
   function validate(): string[] {
     const nextErrors: string[] = [];
+    const customerRoleArn = values.customerRoleArn.trim();
+    const eksClusterArn = values.eksClusterArn.trim();
+
+    const hasPlaceholder = (value: string) => value.includes("<") || value.includes(">");
+    const iamRoleArnPattern = /^arn:aws[a-zA-Z-]*:iam::\d{12}:role\/.+$/;
+    const eksClusterArnPattern = /^arn:aws[a-zA-Z-]*:eks:[a-z0-9-]+:\d{12}:cluster\/[A-Za-z0-9._\-]+$/;
+
     if (!values.tenantId.trim()) {
       nextErrors.push("Tenant ID is required.");
     }
-    if (!values.customerRoleArn.trim()) {
+    if (!customerRoleArn) {
       nextErrors.push("Customer role ARN is required.");
+    } else if (hasPlaceholder(customerRoleArn)) {
+      nextErrors.push("Customer role ARN contains placeholder markers. Replace <...> with real values.");
+    } else if (!iamRoleArnPattern.test(customerRoleArn)) {
+      nextErrors.push("Customer role ARN must match arn:aws:iam::<12-digit-account-id>:role/<role-name>.");
     }
     const maxConcurrentRuns = Number.parseInt(values.maxConcurrentRuns, 10);
     const maxVcpu = Number.parseInt(values.maxVcpu, 10);
@@ -58,8 +71,12 @@ export default function EnvironmentCreateForm() {
     if (Number.isNaN(maxRunSeconds) || maxRunSeconds < 60) {
       nextErrors.push("Max run seconds must be an integer >= 60.");
     }
-    if (!values.eksClusterArn.trim()) {
+    if (!eksClusterArn) {
       nextErrors.push("EKS cluster ARN is required in BYOC-Lite mode.");
+    } else if (hasPlaceholder(eksClusterArn)) {
+      nextErrors.push("EKS cluster ARN contains placeholder markers. Replace <...> with real values.");
+    } else if (!eksClusterArnPattern.test(eksClusterArn)) {
+      nextErrors.push("EKS cluster ARN must match arn:aws:eks:<region>:<12-digit-account-id>:cluster/<cluster-name>.");
     }
     if (!values.eksNamespace.trim()) {
       nextErrors.push("EKS namespace is required in BYOC-Lite mode.");
@@ -82,6 +99,7 @@ export default function EnvironmentCreateForm() {
         tenant_id: values.tenantId.trim(),
         provisioning_mode: "byoc_lite",
         region: values.region.trim() || "us-east-1",
+        instance_architecture: values.instanceArchitecture,
         customer_role_arn: values.customerRoleArn.trim(),
         eks_cluster_arn: values.eksClusterArn.trim(),
         eks_namespace: values.eksNamespace.trim(),
@@ -113,6 +131,22 @@ export default function EnvironmentCreateForm() {
         <label>
           Region
           <input value={values.region} onChange={(event) => setValues((current) => ({ ...current, region: event.target.value }))} />
+        </label>
+        <label>
+          Instance Architecture
+          <select
+            value={values.instanceArchitecture}
+            onChange={(event) =>
+              setValues((current) => ({
+                ...current,
+                instanceArchitecture: event.target.value as CreateValues["instanceArchitecture"],
+              }))
+            }
+          >
+            <option value="mixed">mixed</option>
+            <option value="x86_64">x86_64</option>
+            <option value="arm64">arm64</option>
+          </select>
         </label>
         <label>
           Customer Role ARN

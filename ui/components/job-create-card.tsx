@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Environment,
   Job,
@@ -58,7 +58,7 @@ export function JobCreateCard({
     name: "",
     artifact_uri: "",
     artifact_digest: "sha256:placeholder",
-    entrypoint: "",
+    entrypoint: "main",
     args_text: "",
     spark_conf_text: "",
     retry_max_attempts: "1",
@@ -67,6 +67,18 @@ export function JobCreateCard({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (environments.length === 0) {
+      return;
+    }
+    setForm((prev) => {
+      if (!prev.environment_id || !environments.some((env) => env.id === prev.environment_id)) {
+        return { ...prev, environment_id: environments[0].id };
+      }
+      return prev;
+    });
+  }, [environments]);
 
   async function handleCreate() {
     setError(null);
@@ -77,8 +89,14 @@ export function JobCreateCard({
     const uri = form.artifact_uri.trim();
     const digest = form.artifact_digest.trim();
     const main = form.entrypoint.trim();
-    if (!envId || !name || !uri || !digest || !main) {
-      setError("Environment, name, artifact URI, artifact digest, and entrypoint are required.");
+    const missing: string[] = [];
+    if (!envId) missing.push("Environment");
+    if (!name) missing.push("Job Name");
+    if (!uri) missing.push("Artifact URI");
+    if (!digest) missing.push("Artifact Digest");
+    if (!main) missing.push("Entrypoint");
+    if (missing.length > 0) {
+      setError(`Missing required field(s): ${missing.join(", ")}.`);
       return;
     }
     const retry = Number.parseInt(form.retry_max_attempts, 10);
@@ -125,7 +143,7 @@ export function JobCreateCard({
         <h3>Create Job Template</h3>
         <span className="subtle">Define reusable job definitions with artifact references and Spark configuration.</span>
       </summary>
-      <div className="form-grid">
+      <div className="form-grid job-template-grid">
         <label>
           Environment
           <select
@@ -164,13 +182,21 @@ export function JobCreateCard({
           Timeout (seconds)
           <input type="number" min={60} value={form.timeout_seconds} onChange={(e) => setForm((prev) => ({ ...prev, timeout_seconds: e.target.value }))} />
         </label>
-        <label>
+        <label className="multiline-field">
           Args (one per line)
-          <textarea value={form.args_text} onChange={(e) => setForm((prev) => ({ ...prev, args_text: e.target.value }))} />
+          <textarea
+            value={form.args_text}
+            onChange={(e) => setForm((prev) => ({ ...prev, args_text: e.target.value }))}
+            placeholder={"--date=2026-03-16\n--input=s3://bucket/path/"}
+          />
         </label>
-        <label>
+        <label className="multiline-field">
           Spark Conf (key=value per line)
-          <textarea value={form.spark_conf_text} onChange={(e) => setForm((prev) => ({ ...prev, spark_conf_text: e.target.value }))} />
+          <textarea
+            value={form.spark_conf_text}
+            onChange={(e) => setForm((prev) => ({ ...prev, spark_conf_text: e.target.value }))}
+            placeholder={"spark.executor.instances=2\nspark.sql.shuffle.partitions=200"}
+          />
         </label>
       </div>
       <div className="button-row">

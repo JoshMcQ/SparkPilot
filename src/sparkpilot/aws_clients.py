@@ -63,6 +63,151 @@ def _emr_sa_pattern(namespace: str, account_id: str, role_name: str) -> str:
     return f"system:serviceaccount:{namespace}:emr-containers-sa-*-*-{account_id}-{encoded}"
 
 
+def _as_str_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
+def _statement_has_action(statement: dict[str, Any], action: str) -> bool:
+    return any(candidate == action for candidate in _as_str_list(statement.get("Action")))
+
+
+def _statement_has_federated_principal(statement: dict[str, Any], provider_arn: str) -> bool:
+    principal = statement.get("Principal")
+    if isinstance(principal, str):
+        return principal == provider_arn
+    if not isinstance(principal, dict):
+        return False
+    federated_values = _as_str_list(principal.get("Federated"))
+    return provider_arn in federated_values
+
+
+def _statement_sub_patterns(statement: dict[str, Any], provider_path: str) -> list[str]:
+    condition = statement.get("Condition")
+    if not isinstance(condition, dict):
+        return []
+    key = f"{provider_path}:sub"
+    values: list[str] = []
+    for operator in ("StringLike", "StringEquals"):
+        block = condition.get(operator)
+        if not isinstance(block, dict):
+            continue
+        values.extend(_as_str_list(block.get(key)))
+    return values
+
+
+def _dedupe_trust_statements(statements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for statement in statements:
+        key = json.dumps(statement, sort_keys=True, separators=(",", ":"))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(statement)
+    return deduped
+
+
+def _is_sparkpilot_emr_web_identity_statement(statement: dict[str, Any]) -> bool:
+    """Return True if *statement* is a SparkPilot-managed EMR web-identity trust entry.
+
+    Identified by ``sts:AssumeRoleWithWebIdentity`` action with a ``:sub``
+    condition whose value contains the ``emr-containers-sa-`` service-account
+    prefix that ``_emr_sa_pattern`` generates.
+    """
+    if not _statement_has_action(statement, "sts:AssumeRoleWithWebIdentity"):
+        return False
+    condition = statement.get("Condition")
+    if not isinstance(condition, dict):
+        return False
+    for operator in ("StringLike", "StringEquals"):
+        block = condition.get(operator)
+        if not isinstance(block, dict):
+            continue
+        for key, value in block.items():
+            if str(key).endswith(":sub"):
+                for val in _as_str_list(value):
+                    if "emr-containers-sa-" in val:
+                        return True
+    return False
+
+
+def _consolidate_sparkpilot_web_identity_statements(
+    statements: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge SparkPilot EMR web-identity statements that share the same OIDC
+    provider into a single statement per provider with a list-valued
+    ``StringLike`` ``:sub`` condition.
+
+    This prevents the trust policy from growing by one statement per namespace
+    and hitting the AWS ``ACLSizePerRole=2048`` quota.
+
+    Non-SparkPilot statements are returned unchanged and appear first in the
+    result to preserve ordering of customer-authored entries.
+    """
+    retained: list[dict[str, Any]] = []
+    # provider_arn -> (sub_key, ordered unique patterns)
+    provider_sub_key: dict[str, str] = {}
+    provider_patterns: dict[str, list[str]] = {}
+    provider_patterns_seen: dict[str, set[str]] = {}
+
+    for stmt in statements:
+        if not _is_sparkpilot_emr_web_identity_statement(stmt):
+            retained.append(stmt)
+            continue
+
+        # Extract provider ARN
+        principal = stmt.get("Principal", {})
+        if isinstance(principal, dict):
+            federated = _as_str_list(principal.get("Federated"))
+            provider_arn = federated[0] if federated else ""
+        elif isinstance(principal, str):
+            provider_arn = principal
+        else:
+            retained.append(stmt)
+            continue
+        if not provider_arn:
+            retained.append(stmt)
+            continue
+
+        if provider_arn not in provider_patterns:
+            provider_patterns[provider_arn] = []
+            provider_patterns_seen[provider_arn] = set()
+
+        # Collect all :sub patterns from StringLike/StringEquals blocks
+        condition = stmt.get("Condition", {})
+        for operator in ("StringLike", "StringEquals"):
+            block = condition.get(operator)
+            if not isinstance(block, dict):
+                continue
+            for key, value in block.items():
+                if not str(key).endswith(":sub"):
+                    continue
+                # Remember the sub key for this provider (all should be the same)
+                if provider_arn not in provider_sub_key:
+                    provider_sub_key[provider_arn] = key
+                for pattern in _as_str_list(value):
+                    if pattern not in provider_patterns_seen[provider_arn]:
+                        provider_patterns_seen[provider_arn].add(pattern)
+                        provider_patterns[provider_arn].append(pattern)
+
+    # Build one consolidated statement per provider
+    for provider_arn, patterns in provider_patterns.items():
+        sub_key = provider_sub_key[provider_arn]
+        sub_value: str | list[str] = patterns[0] if len(patterns) == 1 else patterns
+        retained.append({
+            "Effect": "Allow",
+            "Principal": {"Federated": provider_arn},
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {"StringLike": {sub_key: sub_value}},
+        })
+
+    return retained
+
+
 def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
@@ -364,16 +509,32 @@ class EmrEksClient:
             },
         }
 
-        # Avoid duplicate statements
+        # Avoid duplicate statements, normalize pre-existing duplicate entries,
+        # and consolidate SparkPilot web-identity statements per OIDC provider so
+        # the policy does not grow by one statement per namespace.
         statements = trust_policy.get("Statement", [])
+        if not isinstance(statements, list):
+            statements = []
+        statements = [stmt for stmt in statements if isinstance(stmt, dict)]
+        statements = _dedupe_trust_statements(statements)
         already_present = any(
-            stmt.get("Action") == "sts:AssumeRoleWithWebIdentity"
-            and stmt.get("Condition", {}).get("StringLike", {}).get(f"{provider_path}:sub") == sa_pattern
+            _statement_has_action(stmt, "sts:AssumeRoleWithWebIdentity")
+            and _statement_has_federated_principal(stmt, provider_arn)
+            and sa_pattern in _statement_sub_patterns(stmt, provider_path)
             for stmt in statements
         )
         if not already_present:
             statements.append(new_statement)
-            trust_policy["Statement"] = statements
+        pre_consolidation_count = len(statements)
+        statements = _consolidate_sparkpilot_web_identity_statements(statements)
+        if len(statements) < pre_consolidation_count:
+            logger.info(
+                "Consolidated trust policy for role '%s': %d → %d statements.",
+                role_name,
+                pre_consolidation_count,
+                len(statements),
+            )
+        trust_policy["Statement"] = statements
 
         # 3. Update the trust policy
         try:
@@ -400,6 +561,13 @@ class EmrEksClient:
                     "Remediation: verify execution role ARN and EKS cluster name, then run "
                     f"`aws emr-containers update-role-trust-policy --cluster-name {cluster_name} "
                     f"--namespace {environment.eks_namespace} --role-name {role_name} --region {environment.region}`."
+                ) from None
+            if code in {"LimitExceeded", "LimitExceededException"}:
+                raise ValueError(
+                    "Execution role trust policy exceeds AWS size quota (ACLSizePerRole=2048). "
+                    f"Role '{role_name}' cannot accept additional web-identity trust statements. "
+                    "Remediation: prune stale OIDC trust statements on the execution role, or create a fresh "
+                    "execution role with a minimal trust policy and set SPARKPILOT_EMR_EXECUTION_ROLE_ARN to it."
                 ) from None
             raise
 
@@ -970,12 +1138,43 @@ class CloudWatchLogsProxy:
         try:
             session = assume_role_session(role_arn, region)
             client = session.client("logs", region_name=region)
-            kwargs: dict[str, Any] = {"logGroupName": log_group, "limit": limit}
+            kwargs: dict[str, Any] = {"logGroupName": log_group}
             if log_stream_prefix:
                 kwargs["logStreamNamePrefix"] = log_stream_prefix
-            response = client.filter_log_events(**kwargs)
-            events = response.get("events", [])
-            return [event.get("message", "") for event in events]
+
+            events: list[dict[str, Any]] = []
+            next_token: str | None = None
+            previous_token: str | None = None
+            page_count = 0
+            # Bound API calls so this endpoint remains responsive for very large streams.
+            max_pages = 25
+            page_limit = min(max(limit, 1), 10_000)
+
+            while True:
+                request = dict(kwargs)
+                request["limit"] = page_limit
+                if next_token:
+                    request["nextToken"] = next_token
+                response = client.filter_log_events(**request)
+                events.extend(response.get("events", []))
+                page_count += 1
+
+                next_token = response.get("nextToken")
+                if not next_token or next_token == previous_token or page_count >= max_pages:
+                    break
+                previous_token = next_token
+
+            # CloudWatch can return interleaved events across streams; normalize ordering before tailing.
+            events.sort(
+                key=lambda event: (
+                    int(event.get("timestamp", 0)),
+                    int(event.get("ingestionTime", 0)),
+                    str(event.get("eventId", "")),
+                )
+            )
+            if len(events) > limit:
+                events = events[-limit:]
+            return [str(event.get("message", "")) for event in events]
         except ClientError as exc:
             error_code = exc.response.get("Error", {}).get("Code")
             if error_code == "ResourceNotFoundException":

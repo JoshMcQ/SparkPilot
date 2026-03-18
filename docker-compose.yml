@@ -37,8 +37,8 @@ services:
     environment:
       SPARKPILOT_ENVIRONMENT: dev
       SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
-      SPARKPILOT_DRY_RUN_MODE: "true"
-      SPARKPILOT_ENABLE_FULL_BYOC_MODE: "false"
+      SPARKPILOT_DRY_RUN_MODE: ${SPARKPILOT_DRY_RUN_MODE:-true}
+      SPARKPILOT_ENABLE_FULL_BYOC_MODE: ${SPARKPILOT_ENABLE_FULL_BYOC_MODE:-false}
       SPARKPILOT_AUTH_MODE: oidc
       SPARKPILOT_OIDC_ISSUER: ${SPARKPILOT_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
       SPARKPILOT_OIDC_AUDIENCE: ${SPARKPILOT_OIDC_AUDIENCE:-sparkpilot-api}
@@ -47,6 +47,11 @@ services:
       SPARKPILOT_CORS_ORIGINS: ${SPARKPILOT_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       SPARKPILOT_POLL_INTERVAL_SECONDS: ${SPARKPILOT_POLL_INTERVAL_SECONDS:-2}
       SPARKPILOT_EMR_EXECUTION_ROLE_ARN: ${SPARKPILOT_EMR_EXECUTION_ROLE_ARN:-arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
     ports:
       - "8000:8000"
     healthcheck:
@@ -68,8 +73,8 @@ services:
     environment:
       SPARKPILOT_ENVIRONMENT: dev
       SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
-      SPARKPILOT_DRY_RUN_MODE: "true"
-      SPARKPILOT_ENABLE_FULL_BYOC_MODE: "false"
+      SPARKPILOT_DRY_RUN_MODE: ${SPARKPILOT_DRY_RUN_MODE:-true}
+      SPARKPILOT_ENABLE_FULL_BYOC_MODE: ${SPARKPILOT_ENABLE_FULL_BYOC_MODE:-false}
       SPARKPILOT_AUTH_MODE: oidc
       SPARKPILOT_OIDC_ISSUER: ${SPARKPILOT_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
       SPARKPILOT_OIDC_AUDIENCE: ${SPARKPILOT_OIDC_AUDIENCE:-sparkpilot-api}
@@ -77,6 +82,11 @@ services:
       SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-sparkpilot-local-bootstrap-secret}
       SPARKPILOT_POLL_INTERVAL_SECONDS: ${SPARKPILOT_POLL_INTERVAL_SECONDS:-2}
       SPARKPILOT_EMR_EXECUTION_ROLE_ARN: ${SPARKPILOT_EMR_EXECUTION_ROLE_ARN:-arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
     depends_on:
       sparkpilot-api:
         condition: service_healthy
@@ -91,8 +101,8 @@ services:
     environment:
       SPARKPILOT_ENVIRONMENT: dev
       SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
-      SPARKPILOT_DRY_RUN_MODE: "true"
-      SPARKPILOT_ENABLE_FULL_BYOC_MODE: "false"
+      SPARKPILOT_DRY_RUN_MODE: ${SPARKPILOT_DRY_RUN_MODE:-true}
+      SPARKPILOT_ENABLE_FULL_BYOC_MODE: ${SPARKPILOT_ENABLE_FULL_BYOC_MODE:-false}
       SPARKPILOT_AUTH_MODE: oidc
       SPARKPILOT_OIDC_ISSUER: ${SPARKPILOT_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
       SPARKPILOT_OIDC_AUDIENCE: ${SPARKPILOT_OIDC_AUDIENCE:-sparkpilot-api}
@@ -100,6 +110,11 @@ services:
       SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-sparkpilot-local-bootstrap-secret}
       SPARKPILOT_POLL_INTERVAL_SECONDS: ${SPARKPILOT_POLL_INTERVAL_SECONDS:-2}
       SPARKPILOT_EMR_EXECUTION_ROLE_ARN: ${SPARKPILOT_EMR_EXECUTION_ROLE_ARN:-arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
     depends_on:
       sparkpilot-api:
         condition: service_healthy
@@ -114,8 +129,8 @@ services:
     environment:
       SPARKPILOT_ENVIRONMENT: dev
       SPARKPILOT_DATABASE_URL: postgresql+psycopg://sparkpilot:${SPARKPILOT_POSTGRES_PASSWORD:-sparkpilot}@postgres:5432/sparkpilot
-      SPARKPILOT_DRY_RUN_MODE: "true"
-      SPARKPILOT_ENABLE_FULL_BYOC_MODE: "false"
+      SPARKPILOT_DRY_RUN_MODE: ${SPARKPILOT_DRY_RUN_MODE:-true}
+      SPARKPILOT_ENABLE_FULL_BYOC_MODE: ${SPARKPILOT_ENABLE_FULL_BYOC_MODE:-false}
       SPARKPILOT_AUTH_MODE: oidc
       SPARKPILOT_OIDC_ISSUER: ${SPARKPILOT_OIDC_ISSUER:-http://sparkpilot-oidc:8080}
       SPARKPILOT_OIDC_AUDIENCE: ${SPARKPILOT_OIDC_AUDIENCE:-sparkpilot-api}
@@ -123,6 +138,11 @@ services:
       SPARKPILOT_BOOTSTRAP_SECRET: ${SPARKPILOT_BOOTSTRAP_SECRET:-sparkpilot-local-bootstrap-secret}
       SPARKPILOT_POLL_INTERVAL_SECONDS: ${SPARKPILOT_POLL_INTERVAL_SECONDS:-2}
       SPARKPILOT_EMR_EXECUTION_ROLE_ARN: ${SPARKPILOT_EMR_EXECUTION_ROLE_ARN:-arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
     depends_on:
       sparkpilot-api:
         condition: service_healthy
@@ -132,7 +152,7 @@ services:
   sparkpilot-ui:
     image: node:22-alpine
     working_dir: /workspace/ui
-    command: ["sh", "-lc", "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"]
+    command: ["sh", "-lc", "npm ci && npm run dev -- --hostname 0.0.0.0 --port 3000"]
     environment:
       SPARKPILOT_API: http://sparkpilot-api:8000
       OIDC_ISSUER: ${OIDC_ISSUER:-http://sparkpilot-oidc:8080}
@@ -143,6 +163,8 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
     volumes:
       - .:/workspace
+      - sparkpilot_ui_node_modules:/workspace/ui/node_modules
+      - sparkpilot_ui_next:/workspace/ui/.next
     ports:
       - "3000:3000"
     depends_on:
@@ -151,3 +173,5 @@ services:
 
 volumes:
   sparkpilot_postgres_data:
+  sparkpilot_ui_node_modules:
+  sparkpilot_ui_next:

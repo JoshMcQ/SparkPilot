@@ -1,5 +1,6 @@
 const API_PREFIX = "/api/sparkpilot";
 export const USER_ACCESS_TOKEN_STORAGE_KEY = "sparkpilot.userAccessToken";
+export const USER_ACCESS_TOKEN_CHANGED_EVENT = "sparkpilot:user-access-token-changed";
 
 function _userAccessToken(): string {
   if (typeof window === "undefined") {
@@ -15,9 +16,10 @@ export function storeUserAccessToken(token: string): void {
   const value = token.trim();
   if (value) {
     window.localStorage.setItem(USER_ACCESS_TOKEN_STORAGE_KEY, value);
-    return;
+  } else {
+    window.localStorage.removeItem(USER_ACCESS_TOKEN_STORAGE_KEY);
   }
-  window.localStorage.removeItem(USER_ACCESS_TOKEN_STORAGE_KEY);
+  window.dispatchEvent(new Event(USER_ACCESS_TOKEN_CHANGED_EVENT));
 }
 
 function _idempotencyKey(): string {
@@ -69,6 +71,7 @@ export type Environment = {
   engine: string;
   status: string;
   provisioning_mode: string;
+  instance_architecture?: "x86_64" | "arm64" | "mixed";
   customer_role_arn: string;
   eks_cluster_arn: string | null;
   eks_namespace: string | null;
@@ -78,12 +81,14 @@ export type Environment = {
   max_vcpu: number;
   max_run_seconds: number;
   created_at: string;
+  updated_at?: string;
 };
 
 export type EnvironmentCreateRequest = {
   tenant_id: string;
   provisioning_mode: "full" | "byoc_lite";
   region: string;
+  instance_architecture?: "x86_64" | "arm64" | "mixed";
   customer_role_arn: string;
   eks_cluster_arn?: string;
   eks_namespace?: string;
@@ -250,8 +255,13 @@ export type RunLogsResponse = {
   lines: string[];
 };
 
-export async function fetchRunLogs(runId: string): Promise<RunLogsResponse> {
-  const response = await fetch(`${API_PREFIX}/v1/runs/${runId}/logs`, {
+export async function fetchRunLogs(runId: string, options?: { limit?: number }): Promise<RunLogsResponse> {
+  const params = new URLSearchParams();
+  if (options?.limit != null) {
+    params.set("limit", String(options.limit));
+  }
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  const response = await fetch(`${API_PREFIX}/v1/runs/${runId}/logs${suffix}`, {
     cache: "no-store",
     headers: _headers(false),
   });

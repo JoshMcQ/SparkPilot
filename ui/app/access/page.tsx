@@ -177,7 +177,7 @@ function UserIdentitiesSection() {
             <input
               value={actor}
               onChange={(e) => setActor(e.target.value)}
-              placeholder="user@example.com"
+              placeholder="user:demo-admin or user@example.com"
               readOnly={editingId !== null}
               className={editingId ? "input-readonly" : ""}
             />
@@ -748,6 +748,19 @@ export default function AccessPage() {
         <div className="subtle">
           Manage user identities, teams, team-environment scopes, and budget guardrails.
           All operations require admin-level bearer token authentication.
+        </div>
+      </div>
+      <div className="card">
+        <h3>How To Use This Page</h3>
+        <ol className="guided-steps">
+          <li>Create or update a user identity first. The Actor must match the JWT subject (`sub`) claim.</li>
+          <li>Create a team for workload ownership under a tenant.</li>
+          <li>Assign team-environment scopes so operators/users only see approved environments.</li>
+          <li>Set a monthly team budget with warn/block thresholds.</li>
+        </ol>
+        <div className="subtle">
+          Production target: this manual bootstrap flow should be backed by a real IdP (Auth0/Okta/Cognito)
+          and managed identity provisioning.
         </div>
       </div>
 

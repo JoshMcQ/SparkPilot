@@ -7,6 +7,7 @@ This documentation set is organized as a product IA with five top-level paths.
 - [Choose your mode](./setup/choose-mode.md)
 - [BYOC-lite 30-minute quickstart](./setup/byoc-lite-30-minute-quickstart.md)
 - [First live BYOC-lite run](./setup/first-live-run.md)
+- [Job template + run fields (demo-safe)](./setup/job-template-and-run-fields.md)
 - [Live BYOC-lite from scratch](./runbooks/live-byoc-lite-from-scratch.md)
 - [AWS auth quickstart](./setup/aws-auth-quickstart.md)
 
@@ -15,6 +16,7 @@ This documentation set is organized as a product IA with five top-level paths.
 - [Runbooks index](./runbooks.md)
 - [Enterprise matrix real AWS runbook](./runbooks/enterprise-matrix-real-aws.md)
 - [Live BYOC-lite real AWS proof (March 5, 2026)](./validation/live-byoc-lite-real-aws-proof-20260305.md)
+- [Structured streaming lifecycle validation](./validation/structured-streaming-lifecycle.md)
 - [Execution tracker](./execution-tracker.md)
 
 ## Integrate

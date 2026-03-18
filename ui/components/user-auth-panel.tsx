@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { USER_ACCESS_TOKEN_STORAGE_KEY, storeUserAccessToken } from "@/lib/api";
+import { USER_ACCESS_TOKEN_STORAGE_KEY, fetchEnvironments, storeUserAccessToken } from "@/lib/api";
 import { isOidcConfigured, startLoginFlow, decodeJwtForDisplay } from "@/lib/oidc-client";
 
 function _formatExpiry(exp: number | null): string {
@@ -18,6 +18,8 @@ function _formatExpiry(exp: number | null): string {
 export function UserAuthPanel() {
   const [value, setValue] = useState("");
   const [active, setActive] = useState(false);
+  const [applyPending, setApplyPending] = useState(false);
+  const [applyFeedback, setApplyFeedback] = useState<string | null>(null);
   const [loginPending, setLoginPending] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const oidcConfigured = isOidcConfigured();
@@ -28,15 +30,35 @@ export function UserAuthPanel() {
     setActive(Boolean(existing));
   }, []);
 
-  function saveToken() {
-    storeUserAccessToken(value);
-    setActive(Boolean(value.trim()));
+  async function saveToken() {
+    const normalized = value.trim();
+    setValue(normalized);
+    storeUserAccessToken(normalized);
+    setActive(Boolean(normalized));
+    setApplyFeedback(null);
+
+    if (!normalized) {
+      setApplyFeedback("Token cleared.");
+      return;
+    }
+
+    setApplyPending(true);
+    try {
+      const envs = await fetchEnvironments();
+      setApplyFeedback(`Token applied. API auth verified (${envs.length} environments visible).`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "API validation failed.";
+      setApplyFeedback(`Token saved, but API check failed: ${message}`);
+    } finally {
+      setApplyPending(false);
+    }
   }
 
   function clearToken() {
     setValue("");
     storeUserAccessToken("");
     setActive(false);
+    setApplyFeedback("Token cleared.");
   }
 
   async function handleSignIn() {
@@ -111,13 +133,14 @@ export function UserAuthPanel() {
               value={value}
               onChange={(event) => setValue(event.target.value)}
             />
-            <button type="button" className="button button-sm" onClick={saveToken}>
-              Apply
+            <button type="button" className="button button-sm" onClick={() => void saveToken()} disabled={applyPending}>
+              {applyPending ? "Applying..." : "Apply"}
             </button>
             <button type="button" className="button button-sm button-secondary" onClick={clearToken}>
               Clear
             </button>
           </div>
+          {applyFeedback ? <div className="subtle auth-feedback">{applyFeedback}</div> : null}
           <div className="subtle auth-status">
             {active
               ? "Requests are sent with your bearer token."

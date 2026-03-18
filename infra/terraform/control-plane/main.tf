@@ -85,6 +85,7 @@ locals {
     provisioner = ["python", "-m", "sparkpilot.workers", "provisioner"]
     scheduler   = ["python", "-m", "sparkpilot.workers", "scheduler"]
     reconciler  = ["python", "-m", "sparkpilot.workers", "reconciler"]
+    cur_reconciliation = ["python", "-m", "sparkpilot.workers", "cur-reconciliation"]
   }
 }
 

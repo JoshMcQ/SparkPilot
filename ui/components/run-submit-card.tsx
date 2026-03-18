@@ -185,7 +185,7 @@ export function RunSubmitCard({
       {preflightError ? <div className="error-text">{preflightError}</div> : null}
       {submitError ? <div className="error-text">{submitError}</div> : null}
       {preflightReady !== null ? (
-        <div className="subtle">
+        <div className="subtle run-preflight-status">
           Preflight:{" "}
           <span className={badgeClass(preflightReady ? "ready" : "failed")}>
             {preflightReady ? "ready" : "not ready"}

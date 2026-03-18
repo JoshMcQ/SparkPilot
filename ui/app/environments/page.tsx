@@ -10,6 +10,13 @@ import { ShortId } from "@/components/short-id";
 import { PaginationControls, PaginationState, paginate } from "@/components/pagination";
 import EnvironmentCreateForm from "./environment-create-form";
 
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return "-";
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return value;
+  return new Date(parsed).toLocaleString();
+}
+
 export default function EnvironmentsPage() {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +82,15 @@ export default function EnvironmentsPage() {
                   <Fragment key={env.id}>
                     <tr
                       className={expandedId === env.id ? "row-selected row-expandable" : "row-expandable"}
+                      tabIndex={0}
+                      aria-expanded={expandedId === env.id}
                       onClick={() => setExpandedId(expandedId === env.id ? null : env.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setExpandedId(expandedId === env.id ? null : env.id);
+                        }
+                      }}
                     >
                       <td><ShortId value={env.id} /></td>
                       <td>
@@ -127,7 +142,11 @@ export default function EnvironmentsPage() {
                             </div>
                             <div className="detail-item">
                               <span className="detail-label">Created</span>
-                              <span>{new Date(env.created_at).toLocaleDateString()}</span>
+                              <span>{formatTimestamp(env.created_at)}</span>
+                            </div>
+                            <div className="detail-item">
+                              <span className="detail-label">Updated</span>
+                              <span>{formatTimestamp(env.updated_at)}</span>
                             </div>
                           </div>
                         </td>

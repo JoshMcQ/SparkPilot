@@ -14,6 +14,13 @@ function asText(value: string | null | undefined, empty: string): string {
   return value;
 }
 
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return "-";
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return value;
+  return new Date(parsed).toLocaleString();
+}
+
 function preflightCounts(checks: PreflightCheck[]): { pass: number; warning: number; fail: number } {
   return checks.reduce(
     (acc, check) => {
@@ -122,6 +129,9 @@ export default function EnvironmentDetailPage() {
         </div>
         <div className="subtle">
           ID: <ShortId value={environment.id} /> | tenant: <ShortId value={environment.tenant_id} />
+        </div>
+        <div className="subtle">
+          Created: {formatTimestamp(environment.created_at)} | Updated: {formatTimestamp(environment.updated_at)}
         </div>
       </div>
 

@@ -7,6 +7,8 @@ Description-Content-Type: text/markdown
 Requires-Dist: fastapi>=0.116.0
 Requires-Dist: uvicorn>=0.35.0
 Requires-Dist: sqlalchemy>=2.0.38
+Requires-Dist: alembic>=1.14.0
+Requires-Dist: psycopg[binary]<4.0.0,>=3.2.0
 Requires-Dist: pydantic>=2.11.0
 Requires-Dist: pydantic-settings>=2.9.0
 Requires-Dist: typer>=0.16.0
@@ -42,38 +44,89 @@ python -m venv .venv
 pip install -e ".[dev]"
 ```
 
-2. Run database-backed API locally:
+2. Start the full local stack in one command (API + OIDC + Postgres + workers + UI):
 
 ```powershell
-$env:SPARKPILOT_DATABASE_URL="sqlite:///./sparkpilot.db"
-uvicorn sparkpilot.api:app --reload
+docker compose up --build
 ```
 
-3. Run workers (separate shells):
+3. Mint a local user token for RBAC testing (mock OIDC), then paste it into the UI header auth panel:
 
 ```powershell
-python -m sparkpilot.workers provisioner --once
-python -m sparkpilot.workers scheduler --once
-python -m sparkpilot.workers reconciler --once
+$basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("sparkpilot-cli:sparkpilot-cli-secret"))
+$token = Invoke-RestMethod -Method Post -Uri http://localhost:8080/oauth/token -Headers @{ Authorization = "Basic $basic" } -Body @{
+  grant_type = "client_credentials"
+  audience = "sparkpilot-api"
+  subject = "user:demo-admin"
+}
+$token.access_token
 ```
 
-4. Run CLI against local API:
+4. Run tests:
+
+```powershell
+pytest
+```
+
+5. Run CLI against local API:
 
 ```powershell
 sparkpilot --help
 ```
 
-5. Run tests:
+6. Stop local stack:
 
 ```powershell
-pytest
+docker compose down
 ```
+
+## Database Migrations
+
+SparkPilot now uses Alembic for schema migrations.
+
+For staging/production databases, run:
+
+```powershell
+alembic upgrade head
+```
+
+In non-dev environments, API startup rejects databases that are not at the Alembic head revision.
+
+## Pricing Estimation
+
+Usage estimates now support live AWS pricing ingestion.
+
+- `SPARKPILOT_PRICING_SOURCE=auto` (default): try AWS Pricing API in live mode, fallback to static env rates.
+- `SPARKPILOT_PRICING_SOURCE=aws_pricing_api`: require live AWS pricing lookup (fail if unavailable).
+- `SPARKPILOT_PRICING_SOURCE=static`: use configured static pricing env vars only.
+- Matrix cost guard calculations use the same runtime pricing snapshot as usage-cost recording and include the pricing source in cost guard messages.
+
+`SPARKPILOT_PRICING_CACHE_SECONDS` controls in-process cache TTL for AWS pricing lookups.
 
 ## First Real AWS Run
 
 - Set up AWS credentials: `docs/setup/aws-auth-quickstart.md`
 - Run your first live job: `docs/setup/first-live-run.md`
 - Run enterprise scenario matrix with cost caps: `docs/runbooks/enterprise-matrix-real-aws.md`
+
+## One-Command Live UI (Real AWS)
+
+Start API + workers + OIDC + UI in Docker with live AWS dispatch enabled:
+
+```powershell
+pwsh scripts/dev/start-live-ui.ps1 `
+  -EmrExecutionRoleArn arn:aws:iam::<account-id>:role/SparkPilotEmrExecutionRole `
+  -AwsProfile default `
+  -AwsRegion us-east-1
+```
+
+The script:
+
+- switches `SPARKPILOT_DRY_RUN_MODE=false`
+- starts the full stack
+- mints a bearer token
+- bootstraps admin identity for that token subject
+- copies token to clipboard and opens `http://localhost:3000`
 
 ## Current Scope
 

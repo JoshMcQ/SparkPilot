@@ -146,6 +146,7 @@ def process_scheduler_once(db: Session, *, actor: str = "worker:scheduler", limi
             dispatch = emr.start_job_run(env, job, run)
             run.state = "accepted"
             run.started_at = _now()
+            run.last_heartbeat_at = run.started_at
             run.emr_job_run_id = dispatch.emr_job_run_id
             run.log_group = dispatch.log_group
             run.log_stream_prefix = dispatch.log_stream_prefix

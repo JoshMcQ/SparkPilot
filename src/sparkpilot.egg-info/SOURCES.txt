@@ -6,10 +6,12 @@ src/sparkpilot/audit.py
 src/sparkpilot/aws_clients.py
 src/sparkpilot/cli.py
 src/sparkpilot/config.py
+src/sparkpilot/cost_center.py
 src/sparkpilot/db.py
 src/sparkpilot/e2e_matrix.py
 src/sparkpilot/exceptions.py
 src/sparkpilot/idempotency.py
+src/sparkpilot/mock_oidc.py
 src/sparkpilot/models.py
 src/sparkpilot/oidc.py
 src/sparkpilot/quota.py
@@ -42,10 +44,14 @@ tests/test_airflow_provider_integration.py
 tests/test_api.py
 tests/test_aws_clients.py
 tests/test_config.py
+tests/test_dagster_provider.py
 tests/test_diagnostics.py
 tests/test_e2e_matrix.py
 tests/test_finops.py
+tests/test_mock_oidc.py
+tests/test_oidc.py
 tests/test_preflight_cache.py
 tests/test_rbac.py
 tests/test_security_hardening.py
+tests/test_smoke_live_byoc_lite.py
 tests/test_terraform_orchestrator.py

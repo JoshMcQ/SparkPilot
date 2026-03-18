@@ -2,13 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { fetchEnvironments, fetchRuns } from "@/lib/api";
+import {
+  fetchEnvironments,
+  fetchRuns,
+  USER_ACCESS_TOKEN_CHANGED_EVENT,
+  USER_ACCESS_TOKEN_STORAGE_KEY,
+} from "@/lib/api";
 
 export default function HomePage() {
   const [environments, setEnvironments] = useState(0);
   const [runs, setRuns] = useState(0);
   const [running, setRunning] = useState(0);
-  const [apiDown, setApiDown] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,10 +29,10 @@ export default function HomePage() {
         setEnvironments(envData.length);
         setRuns(runData.length);
         setRunning(runData.filter((r) => ["accepted", "running", "dispatching"].includes(r.state)).length);
-        setApiDown(false);
-      } catch {
+        setError(null);
+      } catch (err: unknown) {
         if (!cancelled) {
-          setApiDown(true);
+          setError(err instanceof Error ? err.message : "Failed to load dashboard metrics.");
         }
       } finally {
         if (!cancelled) {
@@ -36,13 +41,30 @@ export default function HomePage() {
       }
     };
 
+    const onTokenChanged = () => {
+      void load();
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === USER_ACCESS_TOKEN_STORAGE_KEY) {
+        void load();
+      }
+    };
+
+    window.addEventListener(USER_ACCESS_TOKEN_CHANGED_EVENT, onTokenChanged);
+    window.addEventListener("storage", onStorage);
     void load();
     return () => {
       cancelled = true;
+      window.removeEventListener(USER_ACCESS_TOKEN_CHANGED_EVENT, onTokenChanged);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
-  const isEmpty = environments === 0 && runs === 0 && !apiDown;
+  const isAuthError =
+    !!error && /authentication failed|access denied|no user access token|oidc jwt validation failed/i.test(error);
+  const isApiDown =
+    !!error && /api is unreachable|backend is running|network|failed to fetch|http 5\d\d/i.test(error);
+  const isEmpty = environments === 0 && runs === 0 && !error;
 
   return (
     <section className="stack">
@@ -52,10 +74,16 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {apiDown ? (
+      {error ? (
         <div className="card error-card">
-          <strong>API Unreachable</strong>
-          <div>SparkPilot backend is not responding. Verify the API server is running and check your network connectivity.</div>
+          <strong>{isAuthError ? "Authentication Required" : isApiDown ? "API Unreachable" : "Dashboard Error"}</strong>
+          <div>
+            {isAuthError
+              ? "Your token is missing, expired, or invalid. Apply a fresh bearer token in the auth panel."
+              : isApiDown
+                ? "SparkPilot backend is not responding. Verify the API server is running and check your network connectivity."
+                : error}
+          </div>
         </div>
       ) : null}
 
@@ -64,7 +92,7 @@ export default function HomePage() {
           <h3>Environments</h3>
           <div className="stat-value">{environments}</div>
           <div className="subtle">Dedicated tenant clusters</div>
-          {environments === 0 && !apiDown ? (
+          {environments === 0 && !error ? (
             <Link href="/environments" className="inline-link cta-link">Create your first environment &rarr;</Link>
           ) : null}
         </article>

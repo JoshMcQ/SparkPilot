@@ -7,6 +7,7 @@ from typing import Any, TypeVar
 
 import boto3
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from botocore.exceptions import BotoCoreError, ClientError
 from sqlalchemy import select, text
@@ -100,6 +101,39 @@ app = FastAPI(
     redoc_url=None if _is_production else "/redoc",
     openapi_url=None if _is_production else "/openapi.json",
 )
+
+
+def _custom_openapi() -> dict[str, Any]:
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+    components = schema.setdefault("components", {})
+    security_schemes = components.setdefault("securitySchemes", {})
+    security_schemes["bearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "OIDC access token",
+    }
+    for path, operations in schema.get("paths", {}).items():
+        if path == "/healthz":
+            continue
+        if not isinstance(operations, dict):
+            continue
+        for method, operation in operations.items():
+            if method.lower() not in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}:
+                continue
+            if isinstance(operation, dict):
+                operation.setdefault("security", [{"bearerAuth": []}])
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = _custom_openapi
 
 
 @app.exception_handler(SparkPilotError)
@@ -304,6 +338,7 @@ def _run_response(payload: dict[str, Any]) -> RunResponse:
         created_by_actor=payload.get("created_by_actor"),
         error_message=payload["error_message"],
         started_at=payload["started_at"],
+        last_heartbeat_at=payload["last_heartbeat_at"],
         ended_at=payload["ended_at"],
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],

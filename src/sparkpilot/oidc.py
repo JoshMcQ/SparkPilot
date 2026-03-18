@@ -135,6 +135,22 @@ class OIDCTokenVerifier:
                 issuer=self.issuer,
                 options={"require": ["sub", "iss", "aud", "exp"]},
             )
+        except jwt.InvalidSignatureError:
+            # Support key rotation where an issuer reuses the same kid for a new key.
+            # Refresh JWKS and retry once before failing the request.
+            self._refresh_jwks()
+            try:
+                algorithm, signing_key = self._resolve_signing_key(token)
+                claims = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=[algorithm],
+                    audience=self.audience,
+                    issuer=self.issuer,
+                    options={"require": ["sub", "iss", "aud", "exp"]},
+                )
+            except jwt.PyJWTError as exc:
+                raise OIDCValidationError(f"OIDC JWT validation failed: {exc}") from exc
         except jwt.PyJWTError as exc:
             raise OIDCValidationError(f"OIDC JWT validation failed: {exc}") from exc
         if not isinstance(claims, dict):

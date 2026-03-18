@@ -234,6 +234,7 @@ class RunResponse(BaseModel):
     created_by_actor: str | None
     error_message: str | None
     started_at: datetime | None
+    last_heartbeat_at: datetime | None
     ended_at: datetime | None
     created_at: datetime
     updated_at: datetime

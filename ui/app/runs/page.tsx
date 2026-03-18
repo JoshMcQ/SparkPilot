@@ -22,6 +22,7 @@ import { PaginationControls, PaginationState, paginate } from "@/components/pagi
 
 const AUTO_REFRESH_MS = 8_000;
 const CANCELLABLE_STATES = new Set(["accepted", "running", "dispatching", "queued"]);
+const LOG_TAIL_LINES = 500;
 
 function canCancel(run: Run): boolean {
   return CANCELLABLE_STATES.has(run.state) && !run.cancellation_requested;
@@ -39,6 +40,7 @@ export default function RunsPage() {
   const [polling, setPolling] = useState(false);
   const [cancelRunId, setCancelRunId] = useState<string | null>(null);
   const [diagRunId, setDiagRunId] = useState<string | null>(null);
+  const [diagSelectRunId, setDiagSelectRunId] = useState<string>("");
   const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagError, setDiagError] = useState<string | null>(null);
@@ -100,13 +102,27 @@ export default function RunsPage() {
       return;
     }
     try {
-      const payload = await fetchRunLogs(run.id);
+      const payload = await fetchRunLogs(run.id, { limit: LOG_TAIL_LINES });
       setLogs(payload.lines);
       setLogsHint(payload.lines.length > 0 ? "" : "No log lines available yet. The run may still be starting.");
     } catch (err: unknown) {
       setError(friendlyError(err, "Log fetch failed"));
       setLogs([]);
       setLogsHint("Log fetch failed. Check API connectivity and CloudWatch permissions.");
+    }
+  }
+
+  async function refreshSelectedRunLogs(runId: string) {
+    const run = runs.find((item) => item.id === runId);
+    if (!run || !run.log_group || !run.log_stream_prefix) {
+      return;
+    }
+    try {
+      const payload = await fetchRunLogs(run.id, { limit: LOG_TAIL_LINES });
+      setLogs(payload.lines);
+      setLogsHint(payload.lines.length > 0 ? "" : "No log lines available yet. The run may still be starting.");
+    } catch {
+      // Keep current log lines if background refresh fails; manual Logs click still surfaces errors.
     }
   }
 
@@ -128,6 +144,7 @@ export default function RunsPage() {
   }
 
   async function loadDiagnostics(run: Run) {
+    setDiagSelectRunId(run.id);
     setDiagRunId(run.id);
     setDiagnostics([]);
     setDiagError(null);
@@ -143,6 +160,17 @@ export default function RunsPage() {
     } finally {
       setDiagLoading(false);
     }
+  }
+
+  async function loadDiagnosticsById(runId: string) {
+    const run = runs.find((item) => item.id === runId);
+    if (!run) {
+      setDiagRunId(null);
+      setDiagnostics([]);
+      setDiagError("Selected run is no longer available. Refresh and try again.");
+      return;
+    }
+    await loadDiagnostics(run);
   }
 
   // Initial load
@@ -173,6 +201,34 @@ export default function RunsPage() {
       setPolling(false);
     };
   }, []);
+
+  useEffect(() => {
+    if (runs.length === 0) {
+      setDiagSelectRunId("");
+      setDiagRunId(null);
+      setDiagnostics([]);
+      setDiagError(null);
+      return;
+    }
+    setDiagSelectRunId((current) => {
+      if (current && runs.some((run) => run.id === current)) {
+        return current;
+      }
+      return runs[0].id;
+    });
+    if (diagRunId && !runs.some((run) => run.id === diagRunId)) {
+      setDiagRunId(null);
+      setDiagnostics([]);
+      setDiagError(null);
+    }
+  }, [runs, diagRunId]);
+
+  useEffect(() => {
+    if (!selectedRunId || document.visibilityState !== "visible") {
+      return;
+    }
+    void refreshSelectedRunLogs(selectedRunId);
+  }, [runs, selectedRunId]);
 
   const selectedRun = selectedRunId ? runs.find((r) => r.id === selectedRunId) ?? null : null;
   const diagRun = diagRunId ? runs.find((r) => r.id === diagRunId) ?? null : null;
@@ -257,7 +313,15 @@ export default function RunsPage() {
                     <button type="button" className="button button-sm" onClick={() => void loadLogs(run)}>
                       Logs
                     </button>
-                    <button type="button" className="button button-sm button-secondary" style={{ marginLeft: 4 }} onClick={() => void loadDiagnostics(run)}>
+                    <button
+                      type="button"
+                      className="button button-sm button-secondary"
+                      style={{ marginLeft: 4 }}
+                      onClick={() => {
+                        setDiagSelectRunId(run.id);
+                        void loadDiagnostics(run);
+                      }}
+                    >
                       Diag
                     </button>
                   </td>
@@ -301,6 +365,9 @@ export default function RunsPage() {
         {selectedRun ? (
           <div className="subtle">
             Log group: {selectedRun.log_group ?? "n/a"} · Stream prefix: {selectedRun.log_stream_prefix ?? "n/a"}
+            {CANCELLABLE_STATES.has(selectedRun.state) ? (
+              <span style={{ marginLeft: 8 }}>Live tail every {AUTO_REFRESH_MS / 1000}s</span>
+            ) : null}
             {selectedRun.error_message ? (
               <span className="error-text" style={{ marginLeft: 8 }}>Error: {selectedRun.error_message}</span>
             ) : null}
@@ -318,6 +385,31 @@ export default function RunsPage() {
             </span>
           ) : null}
         </h3>
+        {runs.length > 0 ? (
+          <div className="diagnostics-toolbar">
+            <label className="filter-label">
+              Run
+              <select
+                value={diagSelectRunId}
+                onChange={(event) => setDiagSelectRunId(event.target.value)}
+              >
+                {runs.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {jobDisplay(run.job_id)} | {shortId(run.id)} | {run.state}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="button button-sm"
+              disabled={!diagSelectRunId || diagLoading}
+              onClick={() => void loadDiagnosticsById(diagSelectRunId)}
+            >
+              {diagLoading ? "Loading..." : "Load Diagnostics"}
+            </button>
+          </div>
+        ) : null}
 
         {diagLoading ? (
           <div className="loading-state"><span className="subtle">Loading diagnostics…</span></div>
@@ -333,7 +425,7 @@ export default function RunsPage() {
         ) : diagRunId && diagnostics.length === 0 ? (
           <div className="empty-state"><span className="subtle">No diagnostic findings for this run.</span></div>
         ) : !diagRunId ? (
-          <div className="empty-state"><span className="subtle">Select a run and click Diag to view diagnostic findings.</span></div>
+          <div className="empty-state"><span className="subtle">Choose a run and click Load Diagnostics to view findings.</span></div>
         ) : (
           (() => {
             const categories = Array.from(new Set(diagnostics.map((d) => d.category))).sort();

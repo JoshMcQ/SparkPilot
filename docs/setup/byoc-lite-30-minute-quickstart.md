@@ -68,7 +68,8 @@ python -m scripts.smoke.live_byoc_lite `
 
 1. Open `/environments` and confirm environment status is `ready`.
 2. Open `/runs`, run preflight, submit one run, and open logs.
-3. Open `/costs` and load usage/showback for the tenant.
+3. Use [Job template + run fields (demo-safe)](./job-template-and-run-fields.md) for exact values.
+4. Open `/costs` and load usage/showback for the tenant.
 
 ## Step 4: Review Results (5 min)
 

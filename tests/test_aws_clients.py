@@ -3,7 +3,14 @@ import json
 import pytest
 from types import SimpleNamespace
 
-from sparkpilot.aws_clients import CloudWatchLogsProxy, EmrEksClient, _emr_job_run_name
+from sparkpilot.aws_clients import (
+    CloudWatchLogsProxy,
+    EmrEksClient,
+    _consolidate_sparkpilot_web_identity_statements,
+    _emr_job_run_name,
+    _emr_sa_pattern,
+    _is_sparkpilot_emr_web_identity_statement,
+)
 from sparkpilot.config import get_settings
 
 
@@ -64,6 +71,58 @@ def test_fetch_lines_raises_on_non_resource_not_found_client_error(monkeypatch) 
             log_stream_prefix="run/attempt-1",
             limit=20,
         )
+
+    get_settings.cache_clear()
+
+
+def test_fetch_lines_paginates_and_returns_latest_lines(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    calls: list[dict[str, object]] = []
+
+    class _FakeLogsClient:
+        def filter_log_events(self, **kwargs):
+            calls.append(kwargs)
+            token = kwargs.get("nextToken")
+            if token is None:
+                return {
+                    "events": [
+                        {"timestamp": 100, "ingestionTime": 1, "eventId": "evt-a", "message": "first"},
+                        {"timestamp": 300, "ingestionTime": 1, "eventId": "evt-c", "message": "third"},
+                    ],
+                    "nextToken": "token-1",
+                }
+            if token == "token-1":
+                return {
+                    "events": [
+                        {"timestamp": 200, "ingestionTime": 1, "eventId": "evt-b", "message": "second"},
+                        {"timestamp": 400, "ingestionTime": 1, "eventId": "evt-d", "message": "fourth"},
+                    ]
+                }
+            raise AssertionError(f"Unexpected token: {token}")
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "logs"
+            assert region_name == "us-east-1"
+            return _FakeLogsClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    lines = CloudWatchLogsProxy().fetch_lines(
+        role_arn="arn:aws:iam::123456789012:role/TestRole",
+        region="us-east-1",
+        log_group="/sparkpilot/runs/test",
+        log_stream_prefix="run/attempt-1",
+        limit=2,
+    )
+
+    assert lines == ["third", "fourth"]
+    assert len(calls) == 2
+    assert calls[0]["limit"] == 2
+    assert "nextToken" not in calls[0]
+    assert calls[1]["nextToken"] == "token-1"
 
     get_settings.cache_clear()
 
@@ -138,6 +197,231 @@ def test_update_execution_role_trust_policy_success(monkeypatch) -> None:
     get_settings.cache_clear()
 
 
+def test_update_execution_role_trust_policy_dedupes_and_detects_existing_statement(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+    )
+    get_settings.cache_clear()
+
+    updated_policy = {}
+    provider_path = "oidc.eks.us-east-1.amazonaws.com/id/ABC123"
+    provider_arn = f"arn:aws:iam::123456789012:oidc-provider/{provider_path}"
+    sa_pattern = _emr_sa_pattern("sparkpilot-team", "123456789012", "SparkPilotEmrExecutionRole")
+    existing_statement = {
+        "Effect": "Allow",
+        "Principal": {"Federated": provider_arn},
+        "Action": ["sts:AssumeRoleWithWebIdentity"],
+        "Condition": {
+            "StringEquals": {
+                f"{provider_path}:sub": sa_pattern,
+            }
+        },
+    }
+
+    class _FakeEksClient:
+        def describe_cluster(self, **kwargs):
+            assert kwargs["name"] == "customer-shared"
+            return {
+                "cluster": {
+                    "identity": {
+                        "oidc": {
+                            "issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/ABC123",
+                        }
+                    }
+                }
+            }
+
+    class _FakeIamClient:
+        def get_role(self, **kwargs):
+            assert kwargs["RoleName"] == "SparkPilotEmrExecutionRole"
+            return {
+                "Role": {
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [existing_statement, existing_statement],
+                    }
+                }
+            }
+
+        def update_assume_role_policy(self, **kwargs):
+            assert kwargs["RoleName"] == "SparkPilotEmrExecutionRole"
+            updated_policy.update(json.loads(kwargs["PolicyDocument"]))
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            if service_name == "eks":
+                assert region_name == "us-east-1"
+                return _FakeEksClient()
+            if service_name == "iam":
+                return _FakeIamClient()
+            raise AssertionError(f"Unexpected service: {service_name}")
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace="sparkpilot-team",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+    result = EmrEksClient().update_execution_role_trust_policy(environment)
+    assert result["updated"] is True
+    assert result["already_present"] is True
+    assert len(updated_policy["Statement"]) == 1
+    get_settings.cache_clear()
+
+
+def test_update_execution_role_trust_policy_consolidates_multi_namespace_statements(monkeypatch) -> None:
+    """When the trust policy already has SparkPilot web-identity statements for
+    other namespaces, the update consolidates them into a single statement with
+    a list-valued :sub condition instead of appending another statement."""
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+    )
+    get_settings.cache_clear()
+
+    updated_policy = {}
+    provider_path = "oidc.eks.us-east-1.amazonaws.com/id/ABC123"
+    provider_arn = f"arn:aws:iam::123456789012:oidc-provider/{provider_path}"
+    old_sa_pattern = _emr_sa_pattern("old-namespace", "123456789012", "SparkPilotEmrExecutionRole")
+    old_statement = {
+        "Effect": "Allow",
+        "Principal": {"Federated": provider_arn},
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+            "StringLike": {f"{provider_path}:sub": old_sa_pattern}
+        },
+    }
+    # A non-SparkPilot statement that must be preserved
+    service_statement = {
+        "Effect": "Allow",
+        "Principal": {"Service": "elasticmapreduce.amazonaws.com"},
+        "Action": "sts:AssumeRole",
+    }
+
+    class _FakeEksClient:
+        def describe_cluster(self, **kwargs):
+            return {
+                "cluster": {
+                    "identity": {
+                        "oidc": {
+                            "issuer": f"https://{provider_path}",
+                        }
+                    }
+                }
+            }
+
+    class _FakeIamClient:
+        def get_role(self, **kwargs):
+            return {
+                "Role": {
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [service_statement, old_statement],
+                    }
+                }
+            }
+
+        def update_assume_role_policy(self, **kwargs):
+            updated_policy.update(json.loads(kwargs["PolicyDocument"]))
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            if service_name == "eks":
+                return _FakeEksClient()
+            if service_name == "iam":
+                return _FakeIamClient()
+            raise AssertionError(f"Unexpected service: {service_name}")
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace="new-namespace",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+    result = EmrEksClient().update_execution_role_trust_policy(environment)
+    assert result["updated"] is True
+    assert result["already_present"] is False
+
+    stmts = updated_policy["Statement"]
+    # service_statement preserved + 1 consolidated web-identity statement
+    assert len(stmts) == 2
+    # Non-SparkPilot statement is first and unchanged
+    assert stmts[0] == service_statement
+    # Consolidated SparkPilot statement has list-valued sub condition
+    sp_stmt = stmts[1]
+    sub_values = sp_stmt["Condition"]["StringLike"][f"{provider_path}:sub"]
+    assert isinstance(sub_values, list)
+    assert old_sa_pattern in sub_values
+    new_sa_pattern = _emr_sa_pattern("new-namespace", "123456789012", "SparkPilotEmrExecutionRole")
+    assert new_sa_pattern in sub_values
+    get_settings.cache_clear()
+
+
+def test_consolidate_sparkpilot_web_identity_statements_unit() -> None:
+    """Unit test for the consolidation function in isolation."""
+    provider_path = "oidc.eks.us-east-1.amazonaws.com/id/XYZABC"
+    provider_arn = f"arn:aws:iam::111111111111:oidc-provider/{provider_path}"
+    sub_key = f"{provider_path}:sub"
+
+    ns1_stmt = {
+        "Effect": "Allow",
+        "Principal": {"Federated": provider_arn},
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {"StringLike": {sub_key: "system:serviceaccount:ns1:emr-containers-sa-*-*-111111111111-abc"}},
+    }
+    ns2_stmt = {
+        "Effect": "Allow",
+        "Principal": {"Federated": provider_arn},
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {"StringEquals": {sub_key: "system:serviceaccount:ns2:emr-containers-sa-*-*-111111111111-abc"}},
+    }
+    non_sp_stmt = {
+        "Effect": "Allow",
+        "Principal": {"Service": "elasticmapreduce.amazonaws.com"},
+        "Action": "sts:AssumeRole",
+    }
+
+    result = _consolidate_sparkpilot_web_identity_statements([non_sp_stmt, ns1_stmt, ns2_stmt])
+    assert len(result) == 2
+    assert result[0] == non_sp_stmt
+    consolidated = result[1]
+    sub_values = consolidated["Condition"]["StringLike"][sub_key]
+    assert isinstance(sub_values, list)
+    assert len(sub_values) == 2
+
+
+def test_is_sparkpilot_emr_web_identity_statement_detection() -> None:
+    provider_path = "oidc.eks.us-east-1.amazonaws.com/id/ABC"
+    sp_stmt = {
+        "Effect": "Allow",
+        "Principal": {"Federated": f"arn:aws:iam::123:oidc-provider/{provider_path}"},
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {"StringLike": {f"{provider_path}:sub": "system:serviceaccount:ns:emr-containers-sa-*-*-123-x"}},
+    }
+    assert _is_sparkpilot_emr_web_identity_statement(sp_stmt) is True
+    non_sp = {
+        "Effect": "Allow",
+        "Principal": {"Service": "elasticmapreduce.amazonaws.com"},
+        "Action": "sts:AssumeRole",
+    }
+    assert _is_sparkpilot_emr_web_identity_statement(non_sp) is False
+    # IRSA statement for non-EMR service account
+    irsa_stmt = {
+        "Effect": "Allow",
+        "Principal": {"Federated": f"arn:aws:iam::123:oidc-provider/{provider_path}"},
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {"StringEquals": {f"{provider_path}:sub": "system:serviceaccount:default:my-app"}},
+    }
+    assert _is_sparkpilot_emr_web_identity_statement(irsa_stmt) is False
+
+
 def test_update_execution_role_trust_policy_access_denied_message_is_actionable(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     monkeypatch.setenv(
@@ -203,6 +487,72 @@ def test_update_execution_role_trust_policy_access_denied_message_is_actionable(
     assert "aws emr-containers update-role-trust-policy" in message
     assert "--cluster-name customer-shared" in message
     assert "--namespace sparkpilot-team" in message
+    get_settings.cache_clear()
+
+
+def test_update_execution_role_trust_policy_limit_exceeded_is_actionable(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+    )
+    get_settings.cache_clear()
+
+    class _FakeEksClient:
+        def describe_cluster(self, **_kwargs):
+            return {
+                "cluster": {
+                    "identity": {
+                        "oidc": {
+                            "issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/ABC123",
+                        }
+                    }
+                }
+            }
+
+    class _FakeIamClient:
+        def get_role(self, **_kwargs):
+            return {
+                "Role": {
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [],
+                    }
+                }
+            }
+
+        def update_assume_role_policy(self, **_kwargs):
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "LimitExceeded",
+                        "Message": "Cannot exceed quota for ACLSizePerRole: 2048",
+                    }
+                },
+                "UpdateAssumeRolePolicy",
+            )
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            if service_name == "eks":
+                return _FakeEksClient()
+            if service_name == "iam":
+                return _FakeIamClient()
+            raise AssertionError(f"Unexpected service: {service_name}")
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace="sparkpilot-team",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        EmrEksClient().update_execution_role_trust_policy(environment)
+    message = str(exc_info.value)
+    assert "ACLSizePerRole=2048" in message
+    assert "prune stale OIDC trust statements" in message
     get_settings.cache_clear()
 
 
