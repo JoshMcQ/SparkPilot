@@ -4273,6 +4273,8 @@ def test_matrix_iam_pass_role_missing_fails(monkeypatch) -> None:
     assert pass_role_check is not None
     assert pass_role_check["status"] == "fail"
     assert pass_role_check["remediation"] is not None
+    assert "aws iam put-role-policy" in pass_role_check["remediation"]
+    assert "--role-name" in pass_role_check["remediation"]
 
 
 def test_matrix_dispatch_permission_missing_fails(monkeypatch) -> None:
@@ -4297,6 +4299,8 @@ def test_matrix_dispatch_permission_missing_fails(monkeypatch) -> None:
     assert "missing" in dispatch_check["message"].lower()
     assert dispatch_check["remediation"] is not None
     assert "StartJobRun" in dispatch_check["remediation"]
+    assert "aws iam put-role-policy" in dispatch_check["remediation"]
+    assert "--role-name" in dispatch_check["remediation"]
 
 
 def test_matrix_namespace_reserved_fails() -> None:

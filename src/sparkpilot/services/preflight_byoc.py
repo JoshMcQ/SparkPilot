@@ -78,6 +78,34 @@ def _eks_cluster_region(eks_cluster_arn: str | None) -> str | None:
     return parts[3]
 
 
+def _role_name_from_arn(role_arn: str | None) -> str | None:
+    if not role_arn:
+        return None
+    if "/" not in role_arn:
+        return None
+    return role_arn.rsplit("/", 1)[-1]
+
+
+def _dispatch_policy_remediation_command(customer_role_name: str) -> str:
+    return (
+        "aws iam put-role-policy "
+        f"--role-name {customer_role_name} "
+        "--policy-name SparkPilotByocLiteDispatch "
+        "--policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"emr-containers:StartJobRun\",\"emr-containers:DescribeJobRun\",\"emr-containers:CancelJobRun\"],\"Resource\":\"*\"}]}'"
+    )
+
+
+def _pass_role_policy_remediation_command(customer_role_name: str, execution_role_arn: str) -> str:
+    return (
+        "aws iam put-role-policy "
+        f"--role-name {customer_role_name} "
+        "--policy-name SparkPilotByocLitePassRole "
+        "--policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"iam:PassRole\"],\"Resource\":[\""
+        f"{execution_role_arn}"
+        "\"]}]}'"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Spark conf Spot helpers
 # ---------------------------------------------------------------------------
@@ -296,6 +324,9 @@ def _add_byoc_lite_dispatch_permission_checks(
         dispatch_allowed = bool(permissions.get("dispatch_actions_allowed"))
         pass_role_allowed = bool(permissions.get("pass_role_allowed"))
         denied_actions = str(permissions.get("denied_dispatch_actions") or "")
+        execution_role_arn = str(permissions.get("execution_role_arn") or "")
+        customer_role_name = _role_name_from_arn(environment.customer_role_arn) or "<customer-role-name>"
+
         add_check(
             code="byoc_lite.customer_role_dispatch",
             status_value="pass" if dispatch_allowed else "fail",
@@ -305,8 +336,8 @@ def _add_byoc_lite_dispatch_permission_checks(
                 else "Customer role is missing required EMR dispatch actions."
             ),
             remediation=(
-                "Allow emr-containers:StartJobRun, emr-containers:DescribeJobRun, and "
-                "emr-containers:CancelJobRun on customer_role_arn."
+                "Add dispatch actions and retry preflight. Command: "
+                + _dispatch_policy_remediation_command(customer_role_name)
             )
             if not dispatch_allowed
             else None,
@@ -321,18 +352,29 @@ def _add_byoc_lite_dispatch_permission_checks(
                 else "Customer role does not allow iam:PassRole for execution role."
             ),
             remediation=(
-                "Allow iam:PassRole on SPARKPILOT_EMR_EXECUTION_ROLE_ARN for customer_role_arn."
+                "Grant iam:PassRole on the execution role and retry preflight. Command: "
+                + _pass_role_policy_remediation_command(
+                    customer_role_name,
+                    execution_role_arn or "<execution-role-arn>",
+                )
             )
             if not pass_role_allowed
             else None,
-            details={"execution_role_arn": str(permissions.get("execution_role_arn") or "")},
+            details={"execution_role_arn": execution_role_arn},
         )
     except ValueError as exc:
+        customer_role_name = _role_name_from_arn(environment.customer_role_arn) or "<customer-role-name>"
         add_check(
             code="byoc_lite.customer_role_dispatch",
             status_value="fail",
             message=str(exc),
-            remediation="Grant customer_role_arn IAM simulation permissions or validate dispatch permissions manually.",
+            remediation=(
+                "Allow IAM simulation for the customer role and rerun preflight. Command: "
+                "aws iam put-role-policy "
+                f"--role-name {customer_role_name} "
+                "--policy-name SparkPilotPreflightSimulation "
+                "--policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"iam:SimulatePrincipalPolicy\"],\"Resource\":\"*\"}]}'"
+            ),
             details={"required_actions": ", ".join(BYOC_LITE_CUSTOMER_ROLE_REQUIRED_ACTIONS)},
         )
         add_check(
@@ -340,8 +382,8 @@ def _add_byoc_lite_dispatch_permission_checks(
             status_value="fail",
             message="Unable to validate iam:PassRole due to dispatch permission check failure.",
             remediation=(
-                "Grant customer_role_arn iam:SimulatePrincipalPolicy and rerun preflight, or "
-                "manually confirm iam:PassRole on SPARKPILOT_EMR_EXECUTION_ROLE_ARN."
+                "After enabling IAM simulation, rerun preflight and apply PassRole policy if needed. "
+                "Required action: iam:PassRole on SPARKPILOT_EMR_EXECUTION_ROLE_ARN."
             ),
         )
 
