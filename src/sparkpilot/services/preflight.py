@@ -28,6 +28,65 @@ logger = logging.getLogger(__name__)
 
 PREFLIGHT_AUDIT_ACTIONS = {"run.preflight_passed", "run.preflight_failed", "run.preflight_diagnostic"}
 
+CHECK_STATUS_PRIORITY = {"pass": 0, "warning": 1, "fail": 2}
+
+
+def _check_status_priority(status: str) -> int:
+    return CHECK_STATUS_PRIORITY.get(str(status).lower(), 0)
+
+
+def _upsert_preflight_check(
+    checks: list[dict[str, Any]],
+    *,
+    code: str,
+    status_value: str,
+    message: str,
+    remediation: str | None = None,
+    details: dict[str, str | int | bool] | None = None,
+) -> None:
+    """Insert or merge a preflight check by code.
+
+    Idempotency rules:
+    - same code emitted repeatedly does not duplicate rows
+    - higher-severity status wins (`fail` > `warning` > `pass`)
+    - for equal severity, keep first message and fill missing remediation/details
+    """
+    incoming = {
+        "code": code,
+        "status": status_value,
+        "message": message,
+        "remediation": remediation,
+        "details": details or {},
+    }
+
+    for idx, existing in enumerate(checks):
+        if existing.get("code") != code:
+            continue
+
+        existing_priority = _check_status_priority(str(existing.get("status") or ""))
+        incoming_priority = _check_status_priority(status_value)
+
+        if incoming_priority > existing_priority:
+            checks[idx] = incoming
+            return
+
+        if incoming_priority == existing_priority:
+            merged = dict(existing)
+            if not merged.get("message"):
+                merged["message"] = message
+            if remediation and not merged.get("remediation"):
+                merged["remediation"] = remediation
+
+            merged_details = dict(merged.get("details") or {})
+            for key, value in (details or {}).items():
+                merged_details.setdefault(key, value)
+            merged["details"] = merged_details
+
+            checks[idx] = merged
+        return
+
+    checks.append(incoming)
+
 
 # ---------------------------------------------------------------------------
 # Preflight TTL cache for scheduler hot path
@@ -814,14 +873,13 @@ def _build_preflight(
         remediation: str | None = None,
         details: dict[str, str | int | bool] | None = None,
     ) -> None:
-        checks.append(
-            {
-                "code": code,
-                "status": status_value,
-                "message": message,
-                "remediation": remediation,
-                "details": details or {},
-            }
+        _upsert_preflight_check(
+            checks,
+            code=code,
+            status_value=status_value,
+            message=message,
+            remediation=remediation,
+            details=details,
         )
 
     _add_runtime_and_release_preflight_checks(
