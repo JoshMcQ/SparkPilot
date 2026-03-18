@@ -1,6 +1,6 @@
 # SparkPilot Production Hardening Progress
 
-Last updated: 2026-03-18 19:10 ET
+Last updated: 2026-03-18 19:16 ET
 
 ## Phase 0 — Tracker bootstrap
 
@@ -25,11 +25,12 @@ Last updated: 2026-03-18 19:10 ET
 - [x] Complete #3 preflight IAM/IRSA validation evidence and closure package. <!-- completed 2026-03-18 19:03 ET; evidence refresh posted in issue #3 comment with live run.preflight_failed + run.preflight_diagnostic artifacts -->
 - [x] Complete #7 UI BYOC vs BYOC-Lite differentiation and validation package. <!-- completed 2026-03-18 19:06 ET; live evidence bundle + runtime IDs posted in issue #7 comment -->
 - [ ] Complete #75 production IdP login + subject mapping evidence package.
-- [ ] Complete #81 access-page guided workflow polish + validation package.
+- [x] Complete #81 access-page guided workflow polish + validation package. <!-- completed 2026-03-18 19:16 ET; access workflow helpers + inline validation + error mapping tests + live UI evidence posted -->
 
 ### Blocker log
 - 2026-03-18 19:03 ET — #3 evidence package refreshed: added live run.preflight_failed artifacts for PassRole deny + trust-policy AccessDenied and legacy reconciler `run.preflight_diagnostic` artifact with runtime IDs; posted in issue #3 comment.
 - 2026-03-18 19:09 ET — #75 blocked for completion in this pass: required non-prod *external* IdP OIDC auth-code+PKCE trace is not currently configured in this local stack (current issuer is internal mock OIDC). Need external IdP tenant/client config + callback setup to capture closure-grade artifacts.
+- 2026-03-18 19:12 ET — Re-validated blocker for #75 while executing this heartbeat: local environment still uses internal mock issuer; cannot produce required external-IdP acceptance artifacts without external tenant/client details.
 
 ## Verification passes
 
@@ -44,3 +45,17 @@ Last updated: 2026-03-18 19:10 ET
   - Result: working tree currently includes local modifications in `ui/*` and `PROGRESS.md` (see diff stat output); no destructive ops performed.
 - `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
   - Result: no credential-like secret strings detected (only generic doc/test text references to the word `secret`).
+
+### 2026-03-18 19:16 ET (after next 3 completed tasks: #3, #7, #81)
+- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
+  - Result: `317 passed, 3 skipped` (35.31s)
+- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
+  - Result: completed with warnings (no hard errors):
+    - `_cookieOptions` unused (`ui/app/api/auth/session/route.ts`)
+    - missing hook deps in `ui/app/costs/page.tsx` and `ui/app/runs/page.tsx`
+- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm audit`
+  - Result: 1 moderate vulnerability in `next` (`GHSA-3x4c-7xq6-9pq8`, `GHSA-ggv3-7p47-pfv8`); fix requires breaking upgrade path (`next@16.2.0`). Logged for controlled remediation (no `--force`).
+- `cd C:\Users\JoshMcQueary\SparkPilot && git diff --stat`
+  - Result: includes this pass updates to `ui/app/access/page.tsx`, `ui/lib/access-workflow.ts`, `ui/tests/access-workflow.test.ts`, `ui/package*.json`, plus pre-existing in-progress UI/test files.
+- `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
+  - Result: no credential-like secret strings detected.
