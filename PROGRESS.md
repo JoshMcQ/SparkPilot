@@ -1,6 +1,6 @@
 # SparkPilot Production Hardening Progress
 
-Last updated: 2026-03-18 20:14 ET
+Last updated: 2026-03-19 10:16 ET
 
 ## Phase 0 - Tracker bootstrap
 
@@ -49,7 +49,30 @@ Last updated: 2026-03-18 20:14 ET
 ### Blocker log
 - None.
 
+## Phase 5 - PR #92 finalization (2026-03-19)
+
+- [x] Fix PR #92 failing `security-scan` workflow setup by pinning current Trivy action/version inputs. <!-- completed 2026-03-19 10:16 ET; updated `.github/workflows/ci-cd.yml` from `aquasecurity/trivy-action@0.28.0` (defaulting to broken Trivy v0.56.1 setup path in CI) to `@0.33.1` with explicit `version: v0.69.3`; local Docker Trivy FS scan returned exit 0 with no HIGH/CRITICAL findings -->
+- [x] Resolve remaining actionable CodeRabbit review items still open on PR #92. <!-- completed 2026-03-19 10:16 ET; widened `ui/package.json` test discovery to `tests/**/*.test.ts` and deduplicated IAM role ARN parsing via shared `parse_role_name_from_arn()` helper used by both `aws_clients.py` and `preflight_byoc.py`, with regression tests -->
+- [ ] Push PR #92 remediation commit(s), resolve stale/outstanding CodeRabbit threads on GitHub, and re-run `gh pr checks 92 --repo JoshMcQ/SparkPilot` until the red check is gone.
+
+### Blocker log
+- 2026-03-19 10:13 ET - First local validation attempt produced false negatives from environment drift (worktree missing `ui/node_modules`, editable install still pointing at main repo) and a self-inflicted SQLite lock storm from two parallel `pytest` runs against `sparkpilot_test.db`. Corrected by reinstalling editable package in the worktree, running `npm ci`, and rerunning validations serially.
+
 ## Verification passes
+
+### 2026-03-19 10:16 ET (PR #92 security-scan + CodeRabbit remediation)
+- `pytest -q`
+  - Result: `327 passed, 6 skipped` (serial rerun in worktree after clearing `sparkpilot_test.db`; parallel run was discarded as invalid due Windows file locking).
+- `python -m pytest -q` (venv)
+  - Result: `327 passed, 6 skipped`.
+- `cd ui && npm run lint`
+  - Result: clean (`eslint` completed with no errors/warnings).
+- `cd ui && npm audit`
+  - Result: `found 0 vulnerabilities`.
+- `cd ui && npm test`
+  - Result: `6 passed` with globbed discovery (`tests/**/*.test.ts`).
+- `docker run --rm -v ${PWD}:/repo -w /repo aquasec/trivy:0.69.3 fs --severity CRITICAL,HIGH --exit-code 1 .`
+  - Result: exit `0`; local Trivy FS scan reported no HIGH/CRITICAL vulnerabilities in repo inputs scanned locally.
 
 ### 2026-03-18 18:20 ET (after 3 completed tasks)
 - `python -m pytest (from repo root with venv activated)`

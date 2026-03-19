@@ -14,6 +14,7 @@ from sparkpilot.aws_clients import (
     _emr_job_run_name,
     _emr_sa_pattern,
     _is_sparkpilot_emr_web_identity_statement,
+    parse_role_name_from_arn,
 )
 from sparkpilot.config import get_settings
 from sparkpilot.exceptions import SparkPilotError
@@ -1455,3 +1456,19 @@ def test_find_namespace_virtual_cluster_collision_access_denied(monkeypatch) -> 
         EmrEksClient().find_namespace_virtual_cluster_collision(env)
 
     get_settings.cache_clear()
+
+
+def test_parse_role_name_from_arn_preserves_role_path_leaf() -> None:
+    assert (
+        parse_role_name_from_arn(
+            "arn:aws:iam::123456789012:role/platform/service/SparkPilotExecutionRole"
+        )
+        == "SparkPilotExecutionRole"
+    )
+
+
+def test_parse_role_name_from_arn_invalid_modes() -> None:
+    assert parse_role_name_from_arn("not-an-arn") is None
+
+    with pytest.raises(ValueError, match="Invalid IAM role ARN"):
+        parse_role_name_from_arn("not-an-arn", raise_on_invalid=True)

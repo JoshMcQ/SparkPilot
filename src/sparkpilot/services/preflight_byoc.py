@@ -8,7 +8,7 @@ import os
 import re
 from typing import Callable
 
-from sparkpilot.aws_clients import EmrEksClient
+from sparkpilot.aws_clients import EmrEksClient, parse_role_name_from_arn
 from sparkpilot.models import Environment
 
 # ---------------------------------------------------------------------------
@@ -77,14 +77,6 @@ def _eks_cluster_region(eks_cluster_arn: str | None) -> str | None:
     if len(parts) < 6:
         return None
     return parts[3]
-
-
-def _role_name_from_arn(role_arn: str | None) -> str | None:
-    if not role_arn:
-        return None
-    if "/" not in role_arn:
-        return None
-    return role_arn.rsplit("/", 1)[-1]
 
 
 def _dispatch_policy_remediation_command(customer_role_name: str) -> str:
@@ -376,7 +368,7 @@ def _add_byoc_lite_dispatch_permission_checks(
         pass_role_allowed = bool(permissions.get("pass_role_allowed"))
         denied_actions = str(permissions.get("denied_dispatch_actions") or "")
         execution_role_arn = str(permissions.get("execution_role_arn") or "")
-        customer_role_name = _role_name_from_arn(environment.customer_role_arn) or "<customer-role-name>"
+        customer_role_name = parse_role_name_from_arn(environment.customer_role_arn) or "<customer-role-name>"
 
         add_check(
             code="byoc_lite.customer_role_dispatch",
@@ -414,7 +406,7 @@ def _add_byoc_lite_dispatch_permission_checks(
             details={"execution_role_arn": execution_role_arn},
         )
     except ValueError as exc:
-        customer_role_name = _role_name_from_arn(environment.customer_role_arn) or "<customer-role-name>"
+        customer_role_name = parse_role_name_from_arn(environment.customer_role_arn) or "<customer-role-name>"
         add_check(
             code="byoc_lite.customer_role_dispatch",
             status_value="fail",

@@ -63,6 +63,27 @@ def _emr_sa_pattern(namespace: str, account_id: str, role_name: str) -> str:
     return f"system:serviceaccount:{namespace}:emr-containers-sa-*-*-{account_id}-{encoded}"
 
 
+def parse_role_name_from_arn(role_arn: str | None, *, raise_on_invalid: bool = False) -> str | None:
+    if not role_arn:
+        if raise_on_invalid:
+            raise ValueError("Invalid IAM role ARN.")
+        return None
+
+    match = ROLE_ARN_PATTERN.match(role_arn)
+    if not match:
+        if raise_on_invalid:
+            raise ValueError("Invalid IAM role ARN.")
+        return None
+
+    role_path = match.group(1)
+    role_name = role_path.split("/")[-1].strip()
+    if role_name:
+        return role_name
+    if raise_on_invalid:
+        raise ValueError("Invalid IAM role ARN.")
+    return None
+
+
 def _as_str_list(value: Any) -> list[str]:
     if value is None:
         return []
@@ -317,11 +338,9 @@ class EmrEksClient:
 
     @staticmethod
     def _role_name_from_arn(role_arn: str) -> str:
-        match = ROLE_ARN_PATTERN.match(role_arn)
-        if not match:
-            raise ValueError("Invalid IAM role ARN.")
-        role_path = match.group(1)
-        return role_path.split("/")[-1]
+        role_name = parse_role_name_from_arn(role_arn, raise_on_invalid=True)
+        assert role_name is not None
+        return role_name
 
     @staticmethod
     def _account_id_from_arn(arn: str) -> str:
