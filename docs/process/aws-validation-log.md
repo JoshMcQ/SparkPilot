@@ -7,6 +7,10 @@
 | 2026-03-18 19:28 | Issue #19 live namespace integration test (`tests/test_issue19_live_namespace_integration.py`) validating namespace normalization/format/bootstrap/collision checks against `sparkpilot-live-1` | none | none | ~$0.00 (read-only EMR virtual-cluster listing + EKS/IAM preflight calls) | No ephemeral resources created; teardown not required |
 | 2026-03-18 20:12 | Issue #20 live trust-policy automation integration (`tests/test_issue20_live_trust_policy_integration.py`) validating update+verify flow for execution role trust policy on `sparkpilot-live-1` / `sparkpilot-demo-2` | none | none | ~$0.00 (IAM/EKS read-write API calls only) | No ephemeral resources created; teardown not required |
 | 2026-03-18 20:23 | Issue #21 live OIDC detection integration (`tests/test_issue21_live_oidc_integration.py`) validating detect-only OIDC association checks on `sparkpilot-live-1` | none | none | ~$0.00 (read-only EKS/IAM OIDC discovery APIs) | No ephemeral resources created; teardown not required |
+| 2026-03-18 22:12 | Phase 5 misconfigured-role preflight validation against `arn:aws:iam::787587782916:role/SparkPilotEKSNodeRole` (expected STS assume-role failure) | none | none | ~$0.00 (STS/IAM preflight APIs only) | No ephemeral resources created; teardown not required |
+| 2026-03-18 22:13 | Phase 5 correctly configured-role preflight validation (`tests/test_issue3_live_preflight_integration.py`) | none | none | ~$0.00 (STS/IAM/EKS preflight APIs only) | No ephemeral resources created; teardown not required |
+| 2026-03-18 22:14 | Phase 5 trust-policy + OIDC validation rerun (`tests/test_issue20_live_trust_policy_integration.py`, `tests/test_issue21_live_oidc_integration.py`) | none | none | ~$0.00 (IAM/EKS APIs only) | No ephemeral resources created; teardown not required |
+| 2026-03-18 22:15 | Final tagged-resource audit (`aws resourcegroupstaggingapi get-resources --tag-filters Key=project,Values=sparkpilot`) | none | none | ~$0.00 | Command returned empty `ResourceTagMappingList`; no tagged resources to teardown |
 
 ## Notes
 
@@ -16,3 +20,6 @@
 - Issue #18 live run verified presence and non-failing status for prerequisite matrix codes: cluster ARN/namespace/region/account alignment, OIDC association, execution role trust, dispatch permission, and iam:PassRole.
 - Issue #20 live run validated trust-policy automation update path and follow-up trust verification (including list-valued `StringLike` subject handling).
 - Issue #21 live run validated OIDC detect-only path (`associated=true`) and confirms no IAM mutation step is required in default preflight mode.
+- Misconfigured-role validation produced expected `issue3.sts_caller_identity=fail` with explicit remediation and downstream checks skipped.
+- Correctly configured-role validation still passes full Issue #3 preflight gate sequence in live mode.
+- Final tagged-resource audit returned zero rows for `project=sparkpilot`.
