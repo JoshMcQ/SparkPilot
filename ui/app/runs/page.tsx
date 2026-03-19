@@ -14,6 +14,7 @@ import {
   fetchRunDiagnostics,
   fetchRunLogs,
   fetchRuns,
+  fetchUsage,
 } from "@/lib/api";
 import { shortId, compactTime, friendlyError } from "@/lib/format";
 import { badgeClass } from "@/lib/badge";
@@ -28,6 +29,17 @@ const LOG_TAIL_LINES = 500;
 
 function canCancel(run: Run): boolean {
   return CANCELLABLE_STATES.has(run.state) && !run.cancellation_requested;
+}
+
+function formatEstimatedCost(micros: number | undefined): string {
+  if (micros == null) {
+    return "—";
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(micros / 1_000_000);
 }
 
 export default function RunsPage() {
@@ -50,6 +62,10 @@ export default function RunsPage() {
   const [diagCategory, setDiagCategory] = useState<string>("all");
   const [diagPg, setDiagPg] = useState<PaginationState>({ page: 0, pageSize: 10 });
   const [queueUtilizationByEnvironmentId, setQueueUtilizationByEnvironmentId] = useState<Record<string, QueueUtilizationResponse>>({});
+  const [runCostMicrosByRunId, setRunCostMicrosByRunId] = useState<Record<string, number>>({});
+  const [runSearch, setRunSearch] = useState("");
+  const [runStateFilter, setRunStateFilter] = useState("all");
+  const [runEnvironmentFilter, setRunEnvironmentFilter] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [pg, setPg] = useState<PaginationState>({ page: 0, pageSize: 25 });
 
@@ -81,16 +97,18 @@ export default function RunsPage() {
     return map;
   }, [runs]);
 
-  function envDisplay(id: string): string {
+  const runStateOptions = useMemo(() => Array.from(new Set(runs.map((run) => run.state))).sort(), [runs]);
+
+  const envDisplay = useCallback((id: string): string => {
     const env = envMap.get(id);
     if (!env) return shortId(id);
     return `${env.region} / ${env.eks_namespace ?? env.provisioning_mode}`;
-  }
+  }, [envMap]);
 
-  function jobDisplay(id: string): string {
+  const jobDisplay = useCallback((id: string): string => {
     const job = jobMap.get(id);
     return job?.name ?? shortId(id);
-  }
+  }, [jobMap]);
 
   function queueHint(run: Run): string {
     const util = queueUtilizationByEnvironmentId[run.environment_id];
@@ -157,6 +175,35 @@ export default function RunsPage() {
     );
   }, []);
 
+  const refreshRunCostSummary = useCallback(async (envRows: Environment[]) => {
+    const tenantIds = Array.from(new Set(envRows.map((env) => env.tenant_id).filter(Boolean)));
+    if (tenantIds.length === 0) {
+      setRunCostMicrosByRunId({});
+      return;
+    }
+
+    const usagePayloads = await Promise.all(
+      tenantIds.map(async (tenantId) => {
+        try {
+          return await fetchUsage(tenantId);
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const merged: Record<string, number> = {};
+    for (const payload of usagePayloads) {
+      if (!payload) {
+        continue;
+      }
+      for (const item of payload.items) {
+        merged[item.run_id] = (merged[item.run_id] ?? 0) + item.estimated_cost_usd_micros;
+      }
+    }
+    setRunCostMicrosByRunId(merged);
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -169,6 +216,7 @@ export default function RunsPage() {
       setEnvironments(envPayload);
       setJobs(jobPayload);
       await refreshQueueUtilizationForActiveRuns(runsPayload);
+      await refreshRunCostSummary(envPayload);
       setError(null);
     } catch (err: unknown) {
       setError(friendlyError(err, "Failed to load run data"));
@@ -176,7 +224,7 @@ export default function RunsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [refreshQueueUtilizationForActiveRuns]);
+  }, [refreshQueueUtilizationForActiveRuns, refreshRunCostSummary]);
 
   const reloadRuns = useCallback(async () => {
     try {
@@ -332,7 +380,38 @@ export default function RunsPage() {
 
   const selectedRun = selectedRunId ? runs.find((r) => r.id === selectedRunId) ?? null : null;
   const diagRun = diagRunId ? runs.find((r) => r.id === diagRunId) ?? null : null;
-  const visibleRuns = paginate(runs, pg);
+
+  const filteredRuns = useMemo(() => {
+    const needle = runSearch.trim().toLowerCase();
+    return runs.filter((run) => {
+      if (runStateFilter !== "all" && run.state !== runStateFilter) {
+        return false;
+      }
+      if (runEnvironmentFilter !== "all" && run.environment_id !== runEnvironmentFilter) {
+        return false;
+      }
+      if (!needle) {
+        return true;
+      }
+      const haystack = [
+        run.id,
+        run.job_id,
+        run.environment_id,
+        run.emr_job_run_id ?? "",
+        jobDisplay(run.job_id),
+        envDisplay(run.environment_id),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [runs, runSearch, runStateFilter, runEnvironmentFilter, jobDisplay, envDisplay]);
+
+  useEffect(() => {
+    setPg((current) => ({ ...current, page: 0 }));
+  }, [runSearch, runStateFilter, runEnvironmentFilter]);
+
+  const visibleRuns = paginate(filteredRuns, pg);
 
   return (
     <section className="stack">
@@ -389,6 +468,43 @@ export default function RunsPage() {
         </button>
       </div>
 
+      <div className="card">
+        <div className="filter-row">
+          <label className="filter-label" style={{ minWidth: 240 }}>
+            Search
+            <input
+              type="text"
+              value={runSearch}
+              onChange={(event) => setRunSearch(event.target.value)}
+              placeholder="Run ID, job, environment, EMR job run"
+            />
+          </label>
+          <label className="filter-label">
+            State
+            <select value={runStateFilter} onChange={(event) => setRunStateFilter(event.target.value)}>
+              <option value="all">All states</option>
+              {runStateOptions.map((state) => (
+                <option key={state} value={state}>{state}</option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-label">
+            Environment
+            <select value={runEnvironmentFilter} onChange={(event) => setRunEnvironmentFilter(event.target.value)}>
+              <option value="all">All environments</option>
+              {environments.map((environment) => (
+                <option key={environment.id} value={environment.id}>
+                  {environment.region} / {environment.eks_namespace ?? environment.provisioning_mode}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="subtle" style={{ alignSelf: "flex-end", paddingBottom: 4 }}>
+            {filteredRuns.length} result{filteredRuns.length === 1 ? "" : "s"}
+          </div>
+        </div>
+      </div>
+
       {loading ? (
         <div className="card">
           <div className="subtle">Loading run history...</div>
@@ -407,6 +523,7 @@ export default function RunsPage() {
                 <th className="col-hide-mobile">Started</th>
                 <th className="col-hide-mobile">Ended</th>
                 <th className="col-hide-mobile">Queue / Capacity</th>
+                <th className="col-hide-mobile">Est Cost</th>
                 <th>Logs</th>
                 <th>Actions</th>
               </tr>
@@ -426,6 +543,7 @@ export default function RunsPage() {
                   <td className="col-hide-mobile">
                     <span className="queue-hint">{queueHint(run)}</span>
                   </td>
+                  <td className="col-hide-mobile">{formatEstimatedCost(runCostMicrosByRunId[run.id])}</td>
                   <td>
                     <div className="row-actions row-actions-logs">
                       <button type="button" className="button button-sm" onClick={() => void loadLogs(run)}>
@@ -461,17 +579,19 @@ export default function RunsPage() {
                   </td>
                 </tr>
               ))}
-              {runs.length === 0 ? (
+              {filteredRuns.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="subtle">
-                    No runs yet. Create a job and submit a run above.
+                  <td colSpan={11} className="subtle">
+                    {runs.length === 0
+                      ? "No runs yet. Create a job and submit a run above."
+                      : "No runs match the active filters. Adjust search or filters to broaden results."}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
-        <PaginationControls total={runs.length} state={pg} onChange={setPg} />
+        <PaginationControls total={filteredRuns.length} state={pg} onChange={setPg} />
         </>
       )}
 
