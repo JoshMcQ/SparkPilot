@@ -16,7 +16,7 @@ Only mark an item complete when there is direct evidence in-repo or captured com
 ## Phase 4 - UI overhaul (production-grade proof required)
 
 - [ ] Build and validate a real AWS login/onboarding flow with evidence (implementation + tested happy path + failure states).
-- [ ] Add dark mode with implementation proof and UI verification evidence.
+- [x] Add dark mode with implementation proof and UI verification evidence. <!-- completed 2026-03-19 13:49 ET -->
 - [ ] Run a Lighthouse audit and record results/artifacts.
 - [ ] Perform responsive testing and record viewport/device evidence.
 - [ ] Perform cross-browser testing and record browser-by-browser evidence.
@@ -85,4 +85,34 @@ Only mark an item complete when there is direct evidence in-repo or captured com
   - Result: `found 0 vulnerabilities`.
 - Scope note
   - Result: this completes the login/onboarding implementation + browser-tested happy/failure-path evidence requirement, but does not count as responsive/cross-browser/Lighthouse/dark-mode proof; those remain separate unchecked items below.
+
+### 2026-03-19 13:49 ET (Phase 4 dark mode - completed with UI verification evidence)
+- Added persisted theme toggle
+  - Result: new `ui/components/theme-toggle.tsx` toggles light/dark mode, persists the choice in `localStorage`, and applies the theme via `data-theme` on the root element.
+- Added dark-theme tokens and header wiring
+  - Result: `ui/app/styles/tokens.css` now defines a dark palette; `ui/app/layout.tsx` exposes the toggle in the header; `ui/app/globals.css` adds dark-mode-aware header/nav styling hooks.
+- Added browser verification for dark mode
+  - Result: `ui/tests/e2e/theme-toggle.spec.ts` verifies dark-mode toggle behavior and persistence after reload in Chromium.
+- `cd ui && npm run test:e2e:theme`
+  - Result: `1 passed`.
+- `cd ui && npm run test:e2e:onboarding && npm run test:e2e:theme`
+  - Result: `3 passed` + `1 passed` after the dark-mode change.
+- `python -m pytest -q`
+  - Result: `327 passed, 6 skipped`.
+- `cd ui && npm run lint`
+  - Result: clean after fixing an intermediate layout syntax error and a hydration mismatch in the first dark-mode implementation.
+- `cd ui && npm audit`
+  - Result: `found 0 vulnerabilities`.
+
+### 2026-03-19 13:50 ET (mandatory 3-task verification pass)
+- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
+  - Result: `327 passed, 6 skipped in 37.35s`.
+- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
+  - Result: clean.
+- `cd C:\Users\JoshMcQueary\SparkPilot && git diff --stat`
+  - Result: current unstaged diff still includes intentional tracker/dark-mode updates plus pre-existing unrelated service/UI changes already present on this branch.
+- `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
+  - Result: no credential-like secret strings detected; only generic documentation/test references to `secret`.
+onsive/cross-browser/Lighthouse proof.
+hthouse/dark-mode proof; those remain separate unchecked items below.
 onsive/cross-browser/Lighthouse proof.

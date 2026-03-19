@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
-    "test:e2e:onboarding": "playwright test tests/e2e/onboarding.spec.ts"
+    "test:e2e:onboarding": "playwright test tests/e2e/onboarding.spec.ts",
+    "test:e2e:theme": "playwright test tests/e2e/theme-toggle.spec.ts"
   },
   "dependencies": {
     "next": "16.2.0",

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { TopNav } from "@/components/top-nav";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { UserAuthPanel } from "@/components/user-auth-panel";
 
 const plexSans = IBM_Plex_Sans({
@@ -31,7 +32,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <h1>SparkPilot</h1>
               <div className="subtle">AWS-first BYOC Spark runtime control plane</div>
             </div>
-            <TopNav />
+            <div className="header-actions">
+              <ThemeToggle />
+              <TopNav />
+            </div>
           </header>
           <UserAuthPanel />
           {children}
