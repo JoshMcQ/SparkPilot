@@ -1805,7 +1805,7 @@ class CloudWatchLogsProxy:
             )
 
             # Map common AWS errors to domain-specific exceptions with actionable messages
-            _MAPPED_LOG_ERRORS: dict[str, tuple[int, str]] = {
+            mapped_log_errors: dict[str, tuple[int, str]] = {
                 "AccessDeniedException": (
                     403,
                     f"Access denied reading CloudWatch logs (group={log_group}). "
@@ -1835,8 +1835,8 @@ class CloudWatchLogsProxy:
                 ),
             }
 
-            if error_code in _MAPPED_LOG_ERRORS:
-                status_code, detail = _MAPPED_LOG_ERRORS[error_code]
+            if error_code in mapped_log_errors:
+                status_code, detail = mapped_log_errors[error_code]
                 from sparkpilot.exceptions import SparkPilotError
                 raise SparkPilotError(detail=detail, status_code=status_code) from exc
 
