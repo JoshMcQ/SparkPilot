@@ -9,6 +9,24 @@ import {
   USER_ACCESS_TOKEN_STORAGE_KEY,
 } from "@/lib/api";
 
+const VALUE_PILLARS = [
+  {
+    title: "Fail-fast preflight safety",
+    detail:
+      "SparkPilot blocks bad submissions before dispatch with IAM/IRSA/OIDC diagnostics and remediation steps.",
+  },
+  {
+    title: "Cost-aware operations",
+    detail:
+      "Track environment/run usage and connect run execution to accountable cost controls and team ownership.",
+  },
+  {
+    title: "Operator-first workflows",
+    detail:
+      "Guided access setup, explicit run states, and deterministic log pointers reduce on-call investigation time.",
+  },
+];
+
 export default function HomePage() {
   const [environments, setEnvironments] = useState(0);
   const [runs, setRuns] = useState(0);
@@ -68,6 +86,33 @@ export default function HomePage() {
 
   return (
     <section className="stack">
+      <div className="card">
+        <h3>SparkPilot</h3>
+        <p className="subtle" style={{ marginTop: 8 }}>
+          Production guardrails for Spark on EKS: preflight gating, reliable dispatch telemetry, and cost-aware
+          run operations.
+        </p>
+        <div className="button-row" style={{ marginTop: 12 }}>
+          <Link href="/environments" className="button">Get Started</Link>
+          <Link
+            href="/runs"
+            className="button"
+            style={{ background: "var(--surface)", color: "var(--brand)", border: "1px solid var(--brand)" }}
+          >
+            Explore Run Operations
+          </Link>
+        </div>
+      </div>
+
+      <div className="card-grid">
+        {VALUE_PILLARS.map((pillar) => (
+          <article key={pillar.title} className="card">
+            <h3>{pillar.title}</h3>
+            <p className="subtle">{pillar.detail}</p>
+          </article>
+        ))}
+      </div>
+
       {loading ? (
         <div className="card">
           <div className="subtle">Loading dashboard metrics...</div>
@@ -115,12 +160,18 @@ export default function HomePage() {
         <div className="card">
           <h3>Getting Started</h3>
           <p className="subtle">
-            Welcome to SparkPilot. Start by provisioning an environment, then create a job and submit a run.
-            Each run goes through preflight checks before dispatching to EMR on EKS.
+            Start by provisioning an environment, then create a job and submit a run. Each run goes through
+            preflight checks before dispatching to EMR on EKS.
           </p>
           <div className="button-row">
             <Link href="/environments" className="button">Create Environment</Link>
-            <Link href="/runs" className="button" style={{ background: "var(--surface)", color: "var(--brand)", border: "1px solid var(--brand)" }}>View Runs</Link>
+            <Link
+              href="/runs"
+              className="button"
+              style={{ background: "var(--surface)", color: "var(--brand)", border: "1px solid var(--brand)" }}
+            >
+              View Runs
+            </Link>
           </div>
         </div>
       ) : null}
