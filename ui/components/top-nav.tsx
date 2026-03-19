@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/runs", label: "Runs" },
   { href: "/costs", label: "Costs" },
   { href: "/access", label: "Access" },
+  { href: "/settings", label: "Settings" },
 ];
 
 function _isActive(pathname: string, href: string): boolean {
