@@ -4253,6 +4253,86 @@ def test_matrix_execution_role_trust_fails(monkeypatch) -> None:
     assert "trust" in trust_check["message"].lower()
 
 
+def test_matrix_execution_role_trust_auto_remediates_when_enabled(monkeypatch) -> None:
+    """When trust check fails, preflight can auto-update trust policy and recover (#20)."""
+    monkeypatch.setenv("SPARKPILOT_PREFLIGHT_AUTOFIX_TRUST_POLICY", "true")
+    monkeypatch.setattr("sparkpilot.services.preflight._add_issue3_dispatch_gate_checks", lambda *args, **kwargs: None)
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "trust-auto-remediate")
+
+    calls = {"check": 0}
+
+    def _check(self, env):
+        calls["check"] += 1
+        if calls["check"] == 1:
+            raise ValueError("Execution role trust policy missing EMR web-identity statement.")
+        return {
+            "role_name": "SparkPilotEmrExecutionRole",
+            "provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/ABC123",
+        }
+
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_execution_role_trust_policy",
+        _check,
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.update_execution_role_trust_policy",
+        lambda self, env: {
+            "updated": True,
+            "already_present": False,
+            "role_name": "SparkPilotEmrExecutionRole",
+            "provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/ABC123",
+        },
+    )
+
+    from sparkpilot.services import preflight as preflight_service
+
+    preflight_service._preflight_cache.clear()
+
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    trust_check = checks.get("byoc_lite.execution_role_trust")
+    assert trust_check is not None
+    assert trust_check["status"] == "pass"
+    assert "auto-remediated" in trust_check["message"].lower()
+    assert trust_check.get("details", {}).get("auto_remediated") is True
+
+
+def test_matrix_execution_role_trust_auto_remediation_access_denied(monkeypatch) -> None:
+    """AccessDenied during trust auto-remediation returns actionable failure context (#20)."""
+    monkeypatch.setenv("SPARKPILOT_PREFLIGHT_AUTOFIX_TRUST_POLICY", "true")
+    monkeypatch.setattr("sparkpilot.services.preflight._add_issue3_dispatch_gate_checks", lambda *args, **kwargs: None)
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "trust-auto-denied")
+
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_execution_role_trust_policy",
+        lambda self, env: (_ for _ in ()).throw(ValueError("Execution role trust policy missing.")),
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.update_execution_role_trust_policy",
+        lambda self, env: (_ for _ in ()).throw(
+            ValueError(
+                "Access denied while updating execution role trust policy. Required permissions: iam:GetRole, iam:UpdateAssumeRolePolicy, eks:DescribeCluster, iam:GetOpenIDConnectProvider. Remediation: run aws emr-containers update-role-trust-policy --cluster-name matrix-cluster --namespace sparkpilot-team --role-name SparkPilotEmrExecutionRole --region us-east-1"
+            )
+        ),
+    )
+
+    from sparkpilot.services import preflight as preflight_service
+
+    preflight_service._preflight_cache.clear()
+
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    trust_check = checks.get("byoc_lite.execution_role_trust")
+    assert trust_check is not None
+    assert trust_check["status"] == "fail"
+    assert "auto-remediation attempt failed" in trust_check["message"].lower()
+    assert "update-role-trust-policy" in str(trust_check.get("remediation") or "")
+
+
 def test_matrix_iam_pass_role_missing_fails(monkeypatch) -> None:
     """Missing iam:PassRole permission fails with remediation (#66)."""
     client = TestClient(app)

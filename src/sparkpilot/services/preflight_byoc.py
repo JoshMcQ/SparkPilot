@@ -4,6 +4,7 @@ Extracted from preflight.py to keep that module focused on the core builder,
 TTL cache, and summary helpers.
 """
 
+import os
 import re
 from typing import Callable
 
@@ -104,6 +105,11 @@ def _pass_role_policy_remediation_command(customer_role_name: str, execution_rol
         f"{execution_role_arn}"
         "\"]}]}'"
     )
+
+
+def _preflight_auto_trust_update_enabled() -> bool:
+    value = os.getenv("SPARKPILOT_PREFLIGHT_AUTOFIX_TRUST_POLICY", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +224,40 @@ def _add_byoc_lite_execution_role_trust_check(
                 "provider_arn": str(trust_result.get("provider_arn") or ""),
             },
         )
+        return
     except ValueError as exc:
+        if _preflight_auto_trust_update_enabled():
+            try:
+                update_result = emr.update_execution_role_trust_policy(environment)
+                trust_result = emr.check_execution_role_trust_policy(environment)
+                add_check(
+                    code="byoc_lite.execution_role_trust",
+                    status_value="pass",
+                    message="Execution role trust policy was auto-remediated during preflight.",
+                    details={
+                        "auto_remediated": True,
+                        "updated": bool(update_result.get("updated")),
+                        "already_present": bool(update_result.get("already_present")),
+                        "role_name": str(trust_result.get("role_name") or update_result.get("role_name") or ""),
+                        "provider_arn": str(
+                            trust_result.get("provider_arn")
+                            or update_result.get("provider_arn")
+                            or ""
+                        ),
+                    },
+                )
+                return
+            except ValueError as update_exc:
+                add_check(
+                    code="byoc_lite.execution_role_trust",
+                    status_value="fail",
+                    message=(
+                        f"{exc} Auto-remediation attempt failed: {update_exc}"
+                    ),
+                    remediation=str(update_exc),
+                )
+                return
+
         add_check(
             code="byoc_lite.execution_role_trust",
             status_value="fail",

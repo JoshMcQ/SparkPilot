@@ -817,7 +817,8 @@ class EmrEksClient:
             string_like = condition.get("StringLike", {})
             if not isinstance(string_like, dict):
                 return False
-            return string_like.get(f"{provider_path}:sub") == sa_pattern
+            sub_value = string_like.get(f"{provider_path}:sub")
+            return sa_pattern in _as_str_list(sub_value)
 
         if not any(isinstance(stmt, dict) and _matches(stmt) for stmt in statements):
             raise ValueError(
