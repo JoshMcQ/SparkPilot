@@ -1,6 +1,6 @@
 # SparkPilot Production Hardening Progress
 
-Last updated: 2026-03-19 10:16 ET
+Last updated: 2026-03-19 10:20 ET
 
 ## Phase 0 - Tracker bootstrap
 
@@ -53,12 +53,24 @@ Last updated: 2026-03-19 10:16 ET
 
 - [x] Fix PR #92 failing `security-scan` workflow setup by pinning current Trivy action/version inputs. <!-- completed 2026-03-19 10:16 ET; updated `.github/workflows/ci-cd.yml` from `aquasecurity/trivy-action@0.28.0` (defaulting to broken Trivy v0.56.1 setup path in CI) to `@0.33.1` with explicit `version: v0.69.3`; local Docker Trivy FS scan returned exit 0 with no HIGH/CRITICAL findings -->
 - [x] Resolve remaining actionable CodeRabbit review items still open on PR #92. <!-- completed 2026-03-19 10:16 ET; widened `ui/package.json` test discovery to `tests/**/*.test.ts` and deduplicated IAM role ARN parsing via shared `parse_role_name_from_arn()` helper used by both `aws_clients.py` and `preflight_byoc.py`, with regression tests -->
-- [ ] Push PR #92 remediation commit(s), resolve stale/outstanding CodeRabbit threads on GitHub, and re-run `gh pr checks 92 --repo JoshMcQ/SparkPilot` until the red check is gone.
+- [x] Push PR #92 remediation commit(s), resolve stale/outstanding CodeRabbit threads on GitHub, and re-run `gh pr checks 92 --repo JoshMcQ/SparkPilot` until the red check is gone. <!-- completed 2026-03-19 10:20 ET; pushed commit `c6f0881` to `chore/closed-issue-audit-v2-20260318`, resolved all open review threads, and verified PR checks green: `test`, `ui-build`, `terraform-validate`, `e2e-local-smoke`, `security-scan`, `CodeRabbit` -->
 
 ### Blocker log
 - 2026-03-19 10:13 ET - First local validation attempt produced false negatives from environment drift (worktree missing `ui/node_modules`, editable install still pointing at main repo) and a self-inflicted SQLite lock storm from two parallel `pytest` runs against `sparkpilot_test.db`. Corrected by reinstalling editable package in the worktree, running `npm ci`, and rerunning validations serially.
 
 ## Verification passes
+
+### 2026-03-19 10:20 ET (post-push verification + PR checks green)
+- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
+  - Result: `327 passed, 6 skipped` (the 6 skipped tests remain the live-AWS guarded cases; no skipped test is counted as passing live AWS validation).
+- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
+  - Result: clean (`eslint` completed with no errors/warnings).
+- `cd C:\Users\JoshMcQueary\SparkPilot && git diff --stat`
+  - Result: clean working tree after commit/push (`c6f0881`).
+- `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
+  - Result: no credential-like secret strings detected; only generic documentation/test references to `secret`.
+- `gh pr checks 92 --repo JoshMcQ/SparkPilot`
+  - Result: all PR #92 checks green (`test`, `ui-build`, `terraform-validate`, `e2e-local-smoke`, `security-scan`, `CodeRabbit`).
 
 ### 2026-03-19 10:16 ET (PR #92 security-scan + CodeRabbit remediation)
 - `pytest -q`
