@@ -60,15 +60,22 @@ function parsePositiveInt(raw: string, field: string): number {
   return value;
 }
 
-function jsonParseError(err: unknown): string {
+function jsonParseError(err: unknown, input?: string): string {
   if (!(err instanceof Error)) {
     return "Invalid JSON payload.";
   }
   const positionMatch = err.message.match(/position\s+(\d+)/i);
   if (positionMatch?.[1]) {
-    return `Invalid JSON near character ${positionMatch[1]}. ${err.message}`;
+    const position = Number.parseInt(positionMatch[1], 10);
+    if (Number.isFinite(position) && input != null) {
+      const before = input.slice(0, position);
+      const line = before.split(/\r?\n/).length;
+      const column = position - (before.lastIndexOf("\n") + 1) + 1;
+      return `Invalid JSON at line ${line}, column ${column} (character ${position}).`;
+    }
+    return `Invalid JSON near character ${positionMatch[1]}.`;
   }
-  return `Invalid JSON payload. ${err.message}`;
+  return err.message;
 }
 
 function buildJsonFromForm(form: RunSubmitFormState): JsonRunPayload {
@@ -151,6 +158,7 @@ export function RunSubmitCard({
   const [showNonReady, setShowNonReady] = useState(false);
   const [jsonInput, setJsonInput] = useState<string>(() => JSON.stringify(buildJsonFromForm(defaultForm(environments)), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [lastSubmittedPayload, setLastSubmittedPayload] = useState<string | null>(null);
 
   const [preflightReady, setPreflightReady] = useState<boolean | null>(null);
   const [preflightChecks, setPreflightChecks] = useState<PreflightCheck[]>([]);
@@ -311,7 +319,7 @@ export function RunSubmitCard({
       try {
         payload = validateJsonPayload(JSON.parse(jsonInput) as unknown);
       } catch (err: unknown) {
-        setJsonError(err instanceof Error ? err.message : jsonParseError(err));
+        setJsonError(jsonParseError(err, jsonInput));
         setSubmitError("Fix JSON payload errors before submitting.");
         return;
       }
@@ -351,11 +359,21 @@ export function RunSubmitCard({
     setSubmitBusy(true);
     try {
       const run = await submitRun(jobId, request);
+      setLastSubmittedPayload(JSON.stringify({ environment_id: environmentId, job_id: jobId, ...request }, null, 2));
       onRunSubmitted(run);
     } catch (err: unknown) {
       setSubmitError(friendlyError(err, "Run submission failed"));
     } finally {
       setSubmitBusy(false);
+    }
+  }
+
+  async function copyLastSubmittedPayload() {
+    if (!lastSubmittedPayload) return;
+    try {
+      await navigator.clipboard.writeText(lastSubmittedPayload);
+    } catch {
+      setSubmitError("Failed to copy payload to clipboard.");
     }
   }
 
@@ -533,6 +551,15 @@ export function RunSubmitCard({
         </button>
         <button type="button" className="button" disabled={submitBusy || preflightReady !== true} onClick={handleSubmit}>
           {submitBusy ? "Submitting..." : "Submit Run"}
+        </button>
+        <button
+          type="button"
+          className="button button-secondary"
+          disabled={!lastSubmittedPayload}
+          onClick={() => void copyLastSubmittedPayload()}
+          title={lastSubmittedPayload ? "Copy the exact last submitted payload JSON for reruns." : "Submit a run first to enable payload export."}
+        >
+          Copy Last Submitted JSON
         </button>
       </div>
 

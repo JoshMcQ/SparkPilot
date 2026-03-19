@@ -130,15 +130,22 @@ function parseJobPayload(value: unknown): JobCreateRequest {
   return payload;
 }
 
-function jsonParseError(err: unknown): string {
+function jsonParseError(err: unknown, input?: string): string {
   if (!(err instanceof Error)) {
     return "Invalid JSON payload.";
   }
   const positionMatch = err.message.match(/position\s+(\d+)/i);
   if (positionMatch?.[1]) {
-    return `Invalid JSON near character ${positionMatch[1]}. ${err.message}`;
+    const position = Number.parseInt(positionMatch[1], 10);
+    if (Number.isFinite(position) && input != null) {
+      const before = input.slice(0, position);
+      const line = before.split(/\r?\n/).length;
+      const column = position - (before.lastIndexOf("\n") + 1) + 1;
+      return `Invalid JSON at line ${line}, column ${column} (character ${position}).`;
+    }
+    return `Invalid JSON near character ${positionMatch[1]}.`;
   }
-  return `Invalid JSON payload. ${err.message}`;
+  return err.message;
 }
 
 export function JobCreateCard({
@@ -210,7 +217,7 @@ export function JobCreateCard({
       try {
         payload = parseJobPayload(JSON.parse(jsonInput) as unknown);
       } catch (err: unknown) {
-        const detail = err instanceof Error ? err.message : jsonParseError(err);
+        const detail = jsonParseError(err, jsonInput);
         setJsonError(detail);
         setError("Fix JSON payload errors before creating job.");
         return;
@@ -402,7 +409,7 @@ export function JobCreateCard({
           ) : null}
         </div>
       ) : (
-        <div className="stack">
+        <div className="json-panel stack">
           <div className="button-row">
             <button type="button" className="button button-sm button-secondary" onClick={() => syncJsonFromForm(form)}>
               Export From Form
@@ -414,6 +421,7 @@ export function JobCreateCard({
           <label className="multiline-field">
             Job Template JSON
             <textarea
+              className="json-textarea"
               value={jsonInput}
               onChange={(event) => {
                 setJsonInput(event.target.value);
