@@ -1,74 +1,70 @@
 # SparkPilot Production Push — Completion Report
 
-Date: 2026-03-18
+Date: 2026-03-19
 Owner: Vector
 Scope source: `PROGRESS.md`
 
 ## Executive summary
-All checklist items in `PROGRESS.md` are now marked complete.
+All checklist items in `PROGRESS.md` are complete.
 
 Completed phases:
-- Phase 0: tracker/bootstrap + live issue evidence mapping comments
-- Phase 1: evidence-gated issue integrity audit and ledger
-- Phase 2: open critical-path evidence/delivery tasks (#3, #7, #75, #81 + #75 unblocking runbook)
+- Phase 0: tracker/bootstrap + live evidence mapping comments
+- Phase 1: evidence-gated issue integrity audit + evidence ledger
+- Phase 2: open critical path completion (#3, #7, #75, #81 + #75 unblocking runbook)
+- Phase 3: clean-code refactor helpers in `api.py`
 
-## Key deliverables
+## Key outcomes
 
-### 1) Evidence integrity audit
-- Closed-issue evidence audit executed and tracked.
-- Evidence ledger produced:
-  - `docs/process/evidence-ledger-20260318.md`
-- Reopen/closure quality gate enforcement applied where evidence was missing.
+1. **Evidence integrity enforcement**
+   - Performed evidence-gated closure audit and corrected issue state where evidence was insufficient.
+   - Produced ledger: `docs/process/evidence-ledger-20260318.md`.
 
-### 2) Issue #3 preflight IAM/IRSA package
-- Added/posted live fail-path evidence with runtime identifiers.
-- Included scheduler pre-dispatch block behavior and reconciler fallback diagnostic evidence.
+2. **Issue #3 (IAM/IRSA preflight gate) complete**
+   - Added/attached live fail-path evidence with runtime IDs.
+   - Included reconciler fallback diagnostic evidence (`run.preflight_diagnostic`).
 
-### 3) Issue #7 UI mode differentiation package
-- Posted live API-backed evidence for BYOC vs BYOC-Lite differentiation and mode-specific fields.
-- Attached validation artifacts and runtime IDs.
+3. **Issue #7 (BYOC vs BYOC-Lite UI differentiation) complete**
+   - Attached live API payload evidence for mode-specific rendering and identifiers.
 
-### 4) Issue #81 access workflow polish package
-- Implemented guided admin workflow + validation/error mapping improvements.
-- Added test coverage for workflow ordering and validation helpers.
-- Posted evidence bundle and closed issue #81.
+4. **Issue #81 (Access page usability) complete**
+   - Shipped guided workflow, stronger inline validation, and clearer auth/bootstrap error mapping.
+   - Added focused UI tests for workflow and validation behavior.
 
-### 5) Issue #75 external IdP completion
-- Produced external IdP (AWS Cognito) auth-code + PKCE evidence bundle:
-  - `artifacts/issue75-cognito-live-evidence-20260318-194720/summary.md`
-  - `.../oidc-auth-code-pkce-trace.json`
-  - `.../auth-me.json`
-  - `.../environments-authorized.json`
-  - `.../admin-endpoint-denied-headers.txt`
-  - `.../admin-endpoint-denied-body.txt`
-- Demonstrated subject mapping and role-scoped API allow/deny behavior.
-- Posted acceptance-mapped evidence and closed issue #75.
+5. **Issue #75 (external IdP login + subject mapping) complete**
+   - Captured non-prod external IdP auth-code+PKCE trace (AWS Cognito).
+   - Captured subject-mapped role-scoped API allow/deny proofs.
+   - Posted acceptance-mapped artifact bundle and closed issue.
 
-## AWS validation and cost safety
-For issue #75 validation run:
-- Resources created (temporary):
-  - Cognito user pool, app client, hosted domain, test user
-  - Temporary API container for external-issuer verifier config
-  - Temporary DB identity/team/scope rows
-- Resources deleted in same run:
-  - All of the above
-- Resources still running:
-  - None from this validation run
-- Estimated cost impact:
-  - Negligible / free-tier-level short-lived metadata usage
+6. **Phase 3 clean-code task complete**
+   - Extracted helper functions to reduce duplication in `api.py` response construction and vCPU aggregation logic.
+
+## AWS validation + cost safety (issue #75 run)
+Created (temporary):
+- Cognito user pool, app client, hosted domain, test user
+- Temporary API container for external-issuer verification
+- Temporary DB identity/team/scope rows for scoped auth proof
+
+Deleted in-session:
+- All temporary resources above
+
+Still running:
+- None from this validation run
+
+Estimated cost impact:
+- Negligible / short-lived metadata usage
 
 Teardown proof artifacts:
 - `artifacts/issue75-cognito-live-evidence-20260318-194720/teardown-summary.txt`
 - `artifacts/issue75-cognito-live-evidence-20260318-194720/teardown-db.csv`
 - `artifacts/issue75-cognito-live-evidence-20260318-194720/teardown-container.txt`
 
-## Validation status snapshot
-Latest recorded verification pass (from `PROGRESS.md`) includes:
-- Backend: `pytest` passing
-- UI: `npm run lint` (warnings only)
-- Security: `npm audit` with known moderate Next.js advisories documented for controlled remediation path
-- Secret scan of recent commits: no credential-like leaks detected
+## Validation snapshot
+From recorded verification passes in `PROGRESS.md`:
+- `pytest` passing
+- `npm run lint` passing with known warnings
+- `npm audit` shows known moderate Next.js advisories; controlled upgrade path documented (no force-fix)
+- Recent commit secret scan showed no credential leakage patterns
 
 ## Notes
-- Completion in this report corresponds to the explicit checklist in `PROGRESS.md`.
-- Evidence references and closure comments are attached in corresponding GitHub issues.
+- This report reflects completion against the explicit checklist in `PROGRESS.md`.
+- Evidence links and acceptance mappings are posted in corresponding GitHub issue comments.

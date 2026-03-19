@@ -38,6 +38,10 @@ Last updated: 2026-03-18 20:14 ET
 - 2026-03-18 20:12 ET - #75 blocker resolved: captured external AWS Cognito auth-code+PKCE trace + subject-mapped role-scoped API evidence, posted in issue #75 (`#issuecomment-4086498885`), closed issue, and completed full teardown (user pool/domain/client/test user + temp API container + temp DB mapping rows).
 - 2026-03-18 20:14 ET - All checklist items in PROGRESS.md are now checked; wrote `docs/process/completion-report.md` per heartbeat completion rule.
 
+## Phase 3 - Clean code
+
+- [x] Functions: extract `_job_template_response`, `_interactive_endpoint_response`, and `_compute_active_vcpu` helpers in `api.py` to eliminate three-way response-construction duplication and inline vCPU loop. <!-- completed 2026-03-18; 324 passed, 6 skipped -->
+
 ## Verification passes
 
 ### 2026-03-18 18:20 ET (after 3 completed tasks)
