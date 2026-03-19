@@ -1,72 +1,150 @@
 # SparkPilot Production Push - Completion Report
 
 Date: 2026-03-19
-Last refreshed: 2026-03-19 12:23 ET (heartbeat)
+Last refreshed: 2026-03-19 14:12 ET (heartbeat)
 Owner: Vector
 Scope source: `PROGRESS.md`
 
 ## Executive summary
-All checklist items in `PROGRESS.md` are complete.
+All checklist items in `PROGRESS.md` are complete and now backed by direct session output or in-repo artifacts.
 
 Completed phases:
-- Phase 0: tracker bootstrap + live evidence mapping comments
-- Phase 1: evidence-gated issue integrity audit + evidence ledger
-- Phase 2: open critical path completion (#3, #7, #75, #81 + #75 unblocking runbook)
-- Phase 3: clean-code helper extraction in `api.py`
-- Phase 4: UI backlog follow-through (#91 JSON diagnostics + payload export)
-- Phase 5: PR #92 finalization (review remediation + CI stabilization)
+- Phase 0: proof-based tracker correction
+- Phase 4: production-grade UI evidence pass
+- Phase 5: demo recording artifact
+- Phase 6: real CUR reconciliation evidence verification
+- Phase 7: clean-code hotspot rescan + next refactor
 
-## Post-checklist completion work
-1. **PR #92 review / CI remediation**
-   - Cleared the original failing CI state and rechecked PR status with `gh pr checks 92`.
-   - Fixed pytest collection parity for direct `pytest -q` runs by adding `tests/__init__.py` and normalizing imports to `tests.conftest` where needed.
-   - Fixed idempotent POST replay determinism in `src/sparkpilot/api.py` by storing/returning stable preflight snapshots.
-   - Moved CLI preflight pretty-print output to stderr so JSON stdout stays machine-readable.
-   - Hardened BYOC/IAM preflight simulation behavior and policy-check dedupe behavior.
-   - Stabilized the OIDC cache-expiry regression test for CI runners by expiring the cache relative to `time.monotonic()` instead of hardcoding `0`.
-   - Fixed Terraform formatting for `infra/terraform/control-plane/main.tf` after the `terraform fmt -check -recursive` gate failed in CI.
+## What was completed in this heartbeat window
 
-2. **Guarded live AWS re-validation (truth-only pass accounting)**
-   - Re-ran the guarded read-only live suite with `SPARKPILOT_RUN_LIVE_TESTS=1`:
-     - `tests/test_issue3_live_preflight_integration.py`
-     - `tests/test_issue18_live_prereq_integration.py`
-     - `tests/test_issue19_live_namespace_integration.py`
-     - `tests/test_issue21_live_oidc_integration.py`
-     - Result: `4 passed in 2.79s`
-   - Re-ran the same read-only live suite again with `-vv -s` for direct terminal inspection:
-     - Result: `4 passed in 2.63s`
-   - Re-ran the mutating Issue #20 live trust-policy test:
-     - First attempt failed before any AWS write because `SPARKPILOT_EMR_EXECUTION_ROLE_ARN` was unset while `SPARKPILOT_DRY_RUN_MODE=false`.
-     - Rerun with `SPARKPILOT_EMR_EXECUTION_ROLE_ARN=arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole`
-     - Result: `1 passed in 5.77s`
-   - Skipped tests were not counted as passes.
+### 1) UI overhaul evidence closed
+- Added a dedicated AWS onboarding route: `ui/app/onboarding/aws/page.tsx`
+- Added onboarding navigation and entry points from the home page and environments page
+- Fixed auth callback to land back on onboarding
+- Added live auth-state refresh when the UI token changes
+- Added a persisted dark-mode toggle via `ui/components/theme-toggle.tsx`
+- Added dark theme tokens in `ui/app/styles/tokens.css`
+- Added browser smoke coverage with Playwright:
+  - `ui/tests/e2e/onboarding.spec.ts`
+  - `ui/tests/e2e/theme-toggle.spec.ts`
+  - `ui/tests/e2e/responsive-onboarding.spec.ts`
+- Expanded cross-browser coverage in `ui/playwright.config.ts` for Chromium, Firefox, and WebKit
+- Generated Lighthouse artifacts for the onboarding route:
+  - `ui/artifacts/lighthouse-onboarding.report.html`
+  - `ui/artifacts/lighthouse-onboarding.report.json`
 
-## Validation status
-Latest recorded validation state:
-- Guarded live AWS pytest suite: `9 observed passes` across the re-validation session (`4 passed` read-only + `1 passed` mutating rerun + `4 passed` read-only rerun with full terminal capture).
-- Completed-tracker verification recorded in `PROGRESS.md` includes:
-  - `pytest -q`: `325 passed, 6 skipped`
-  - `python -m pytest -q`: `325 passed, 6 skipped`
-  - `cd ui && npm run lint`: clean
-  - `cd ui && npm audit`: `found 0 vulnerabilities`
-  - `cd ui && npm test`: `6 passed`
-- A later PR #92 finalization pass in the repo history recorded fully green CI and repo-wide verification after the follow-up review/CI fixes.
+### 2) Demo artifact created
+- Added scripted walkthrough recorder: `ui/scripts/record-demo.mjs`
+- Generated demo artifact:
+  - `ui/artifacts/demo/sparkpilot-ui-demo-20260319.webm`
+- Artifact metadata:
+  - size: `876551` bytes
+  - timestamp: `2026-03-19 14:04:48 ET`
 
-Important note on live AWS tests:
-- The skipped tests in local repo-wide verification were not counted as passing live AWS validation.
-- No claim of live AWS pass is made in this report without explicit non-skipped test output.
+### 3) CUR reconciliation evidence verified
+- Verified live CUR reconciliation evidence already present in-repo:
+  - `docs/validation/cur-reconciliation-live-athena-validation-20260318.md`
+  - `artifacts/issue67-cur-20260317-231046/summary.json`
+  - `artifacts/issue67-cur-20260317-231046/athena_queries.json`
+- Verified artifact details:
+  - live Athena database/table names are recorded
+  - concrete Athena query execution IDs are recorded
+  - 4 allocations moved from `actual_cost_usd_micros=null` to populated actual cost values
+  - audit details include `action=cost.cur_reconciliation`
+  - variance check passed with `max_variance_micros=0` under `threshold_micros=1`
 
-## AWS safety and teardown
-- No node scaling was needed in the 2026-03-19 live re-validation session.
-- Therefore no nodegroup scale events occurred in that session.
-- The first Issue #20 rerun failed before mutation, so no AWS write occurred on that attempt.
-- The successful Issue #20 rerun completed only after setting the execution role ARN explicitly.
-- No active AWS resources were intentionally left running by this completion window.
+### 4) Clean-code follow-through completed for the next hotspot
+- Re-scanned current complexity hotspots from `src/**/*.py`
+- Refactored `src/sparkpilot/cost_center.py`:
+  - introduced `CostCenterResolutionInputs`
+  - extracted `_normalize_resolution_inputs`
+  - extracted `_resolve_cost_center_from_policy`
+  - extracted `_resolve_cost_center_fallback`
+- Verified the touched file dropped out of the >=10 branch-count hotspot list
 
-## Artifacts updated
+## Validation results observed in this session
+
+### UI/browser evidence
+- `cd ui && npm run test:e2e:onboarding`
+  - Result: `3 passed`
+- `cd ui && npm run test:e2e:theme`
+  - Result: `1 passed`
+- `cd ui && npm run test:e2e:responsive`
+  - Result: `3 passed`
+- `cd ui && npm run test:e2e:cross-browser`
+  - Result: `12 passed`
+  - Chromium: onboarding + theme passed
+  - Firefox: onboarding + theme passed
+  - WebKit: onboarding + theme passed
+
+### Lighthouse
+- Parsed category scores from `ui/artifacts/lighthouse-onboarding.report.json`:
+  - performance: `0.77`
+  - accessibility: `1.00`
+  - best-practices: `0.96`
+  - SEO: `1.00`
+- Important nuance:
+  - Lighthouse wrote the artifacts successfully before exiting non-zero on Windows temp cleanup (`EPERM` during temp directory removal). The report files themselves were present and readable.
+
+### Repository validation
+- `python -m pytest -q`
+  - Result: `327 passed, 6 skipped`
+- `C:\Users\JoshMcQueary\SparkPilot\.venv\Scripts\python -m pytest`
+  - Result: `327 passed, 6 skipped`
+- `cd ui && npm run lint`
+  - Result: clean
+- `cd ui && npm audit`
+  - Result: `found 0 vulnerabilities`
+
+### Guarded live AWS truth check preserved
+- Re-checked PR #92 earlier in-session and found green checks in that pass
+- Re-ran the guarded live AWS suites with explicit env mapping:
+  - read-only suite: `4 passed`
+  - mutating trust-policy suite: `1 passed`
+- Skipped live tests were explicitly not counted as passing
+
+## Verification passes recorded
+Two full verification passes were recorded during this execution window:
+1. After the first three UI evidence items
+2. After the CUR + clean-code + demo batch
+
+Both included:
+- full `.venv` pytest
+- UI lint
+- `git diff --stat`
+- secret scan via `git log -5 -p | Select-String "AKIA|sk-|password|secret"`
+
+Observed result of the secret scan in this session:
+- no credential-like secret strings detected; only generic documentation/test references to the word `secret`
+
+## Remaining nuance
+- The progress tracker is complete.
+- The working tree still contains pre-existing unrelated modifications outside the exact files touched for this heartbeat cycle.
+- This report only claims work that is directly backed by current-session output or concrete repo artifacts.
+
+## Artifacts and files updated
 - `PROGRESS.md`
 - `docs/process/aws-validation-log.md`
 - `docs/process/completion-report.md`
+- `src/sparkpilot/cost_center.py`
+- `ui/app/onboarding/aws/page.tsx`
+- `ui/app/auth/callback/page.tsx`
+- `ui/app/environments/page.tsx`
+- `ui/app/layout.tsx`
+- `ui/app/page.tsx`
+- `ui/app/globals.css`
+- `ui/app/styles/tokens.css`
+- `ui/components/top-nav.tsx`
+- `ui/components/theme-toggle.tsx`
+- `ui/eslint.config.mjs`
+- `ui/playwright.config.ts`
+- `ui/tests/e2e/onboarding.spec.ts`
+- `ui/tests/e2e/theme-toggle.spec.ts`
+- `ui/tests/e2e/responsive-onboarding.spec.ts`
+- `ui/scripts/record-demo.mjs`
+- `ui/artifacts/lighthouse-onboarding.report.html`
+- `ui/artifacts/lighthouse-onboarding.report.json`
+- `ui/artifacts/demo/sparkpilot-ui-demo-20260319.webm`
 
 ## Final note
-This completion report reflects only work and validation directly observed or recorded in the repo during this production push window.
+This report reflects the actual evidence-backed state at the end of the 2026-03-19 heartbeat execution window.
