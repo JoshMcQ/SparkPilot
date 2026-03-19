@@ -133,7 +133,8 @@ h3 {
 
 .auth-input,
 .pagination-size,
-.filter-label select {
+.filter-label select,
+.filter-label input {
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
@@ -293,6 +294,51 @@ tbody tr:last-child td {
 
 .col-actions {
   width: 1%;
+  white-space: nowrap;
+}
+
+.queue-hint {
+  display: block;
+  min-width: 210px;
+  white-space: normal;
+  line-height: 1.3;
+  color: var(--text-soft);
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.row-actions-logs {
+  min-width: 150px;
+}
+
+.row-actions-logs .button {
+  min-width: 68px;
+}
+
+.row-actions-main {
+  min-width: 118px;
+}
+
+.row-actions-main .button {
+  min-width: 102px;
+}
+
+.row-action-empty {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px dashed #b7c7cf;
+  background: linear-gradient(180deg, #f6fafb, #edf3f5);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -536,6 +582,16 @@ tbody tr:last-child td {
   grid-column: span 2;
 }
 
+.multiline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .form-grid label {
   display: flex;
   flex-direction: column;
@@ -568,21 +624,63 @@ tbody tr:last-child td {
   line-height: 1.35;
 }
 
+.multiline-field textarea {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  line-height: 1.42;
+}
+
+.json-panel {
+  margin-top: var(--space-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(241, 248, 247, 0.88), rgba(234, 242, 244, 0.9));
+  box-shadow: var(--shadow-inset-top);
+  padding: var(--space-3);
+}
+
+.json-panel .button-row {
+  margin-top: 0;
+}
+
+.json-panel .multiline-field {
+  margin-top: var(--space-2);
+}
+
+.json-textarea {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(239, 247, 246, 0.94));
+  box-shadow: var(--shadow-inset-top);
+  font-family: var(--font-mono), "Consolas", monospace;
+  font-size: 0.83rem;
+  min-height: 280px;
+  width: 100%;
+  resize: vertical;
+}
+
 .form-grid input:hover,
 .form-grid select:hover,
 .form-grid textarea:hover,
+.json-textarea:hover,
 .auth-input:hover,
 .pagination-size:hover,
-.filter-label select:hover {
+.filter-label select:hover,
+.filter-label input:hover {
   border-color: #89a4ae;
 }
 
 .form-grid input:focus-visible,
 .form-grid select:focus-visible,
 .form-grid textarea:focus-visible,
+.json-textarea:focus-visible,
 .auth-input:focus-visible,
 .pagination-size:focus-visible,
-.filter-label select:focus-visible {
+.filter-label select:focus-visible,
+.filter-label input:focus-visible {
   outline: none;
   border-color: var(--accent);
   box-shadow: var(--shadow-focus);
@@ -605,6 +703,93 @@ tbody tr:last-child td {
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
+}
+
+.checkbox-toggle-row {
+  margin-top: var(--space-2);
+}
+
+.checkbox-field-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 0;
+  max-width: 100%;
+  width: fit-content;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(247, 252, 251, 0.95), rgba(236, 245, 245, 0.9));
+  box-shadow: var(--shadow-inset-top);
+}
+
+.checkbox-field-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.checkbox-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex: 0 0 38px;
+  border-radius: 999px;
+  border: 1px solid #9db0b7;
+  background: linear-gradient(180deg, #f2f7f9, #dfe8ed);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition:
+    border-color var(--duration-fast) var(--easing-standard),
+    background var(--duration-fast) var(--easing-standard),
+    box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.checkbox-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #95a9b2;
+  background: linear-gradient(180deg, #ffffff, #e8f0f3);
+  box-shadow: 0 1px 3px rgba(19, 42, 56, 0.23);
+  transition: transform var(--duration-fast) var(--easing-standard);
+}
+
+.checkbox-field-toggle input:checked + .checkbox-switch {
+  border-color: #2b9a77;
+  background: linear-gradient(180deg, #22b384, #17936f);
+}
+
+.checkbox-field-toggle input:checked + .checkbox-switch::after {
+  transform: translateX(16px);
+  border-color: #0f6e53;
+}
+
+.checkbox-field-toggle:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.checkbox-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.checkbox-title {
+  color: var(--text-strong);
+  font-size: 0.94rem;
+  font-weight: 650;
+}
+
+.checkbox-hint {
+  font-size: 0.81rem;
+  line-height: 1.3;
 }
 
 .error-text {
@@ -783,6 +968,7 @@ details.card > summary:focus-visible {
 .filter-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
@@ -1001,6 +1187,16 @@ details.card > summary:focus-visible {
 
   .button-row .button {
     flex: 1 1 auto;
+  }
+
+  .filter-label {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .filter-label input,
+  .filter-label select {
+    width: 100%;
   }
 }
 
