@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type DiagnosticItem,
   Environment,
@@ -93,33 +93,48 @@ export default function RunsPage() {
   }
 
   function queueHint(run: Run): string {
-    if (!["queued", "dispatching", "accepted", "running"].includes(run.state)) {
-      return "-";
-    }
     const util = queueUtilizationByEnvironmentId[run.environment_id];
     if (run.error_message?.trim()) {
       return run.error_message;
     }
-    if (!util) {
-      return run.state === "queued" ? "Queued - capacity details loading..." : run.state;
+    if (!["queued", "dispatching", "accepted", "running"].includes(run.state)) {
+      if (run.state === "succeeded") {
+        return "Completed successfully.";
+      }
+      if (run.state === "cancelled") {
+        return "Cancelled before completion.";
+      }
+      if (run.state === "failed") {
+        return "Failed. Open diagnostics for root-cause details.";
+      }
+      if (run.state === "timed_out") {
+        return "Timed out before completion.";
+      }
+      return `Terminal state: ${run.state}.`;
     }
-    if (util.max_vcpu && util.used_vcpu >= util.max_vcpu) {
-      return `Capacity blocked: ${util.used_vcpu}/${util.max_vcpu} vCPU in use.`;
+    if (!util) {
+      return run.state === "queued" ? "Queued: capacity telemetry loading..." : `${run.state}: capacity telemetry loading...`;
+    }
+    const capacitySummary = util.max_vcpu
+      ? `${util.used_vcpu}/${util.max_vcpu} vCPU in use`
+      : `${util.used_vcpu} vCPU in use`;
+    if (util.max_vcpu && util.used_vcpu >= util.max_vcpu && run.state !== "running") {
+      return `Capacity blocked: ${capacitySummary}.`;
     }
     if (run.state === "queued") {
       const position = queuePositionByRunId[run.id];
-      return `Queued${position ? ` (position ${position})` : ""}: ${util.active_run_count} active run(s), ${util.used_vcpu} vCPU in use.`;
+      return `Queued${position ? ` (position ${position})` : ""}: ${util.active_run_count} active run(s), ${capacitySummary}.`;
     }
     if (run.state === "accepted") {
-      return "Accepted by EMR, waiting for cluster resources.";
+      return `Accepted by EMR, waiting for cluster resources. ${capacitySummary}.`;
     }
     if (run.state === "dispatching") {
-      return "Dispatching request to EMR on EKS.";
+      return `Dispatching request to EMR on EKS. ${capacitySummary}.`;
     }
-    return "Running.";
+    return `Running. ${capacitySummary}.`;
   }
 
-  async function refreshQueueUtilizationForActiveRuns(runRows: Run[]) {
+  const refreshQueueUtilizationForActiveRuns = useCallback(async (runRows: Run[]) => {
     const envIds = Array.from(
       new Set(
         runRows
@@ -140,9 +155,9 @@ export default function RunsPage() {
         }
       })
     );
-  }
+  }, []);
 
-  async function refreshAll() {
+  const refreshAll = useCallback(async () => {
     setRefreshing(true);
     try {
       const [runsPayload, envPayload, jobPayload] = await Promise.all([
@@ -161,9 +176,9 @@ export default function RunsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, [refreshQueueUtilizationForActiveRuns]);
 
-  async function reloadRuns() {
+  const reloadRuns = useCallback(async () => {
     try {
       const data = await fetchRuns();
       setRuns(data);
@@ -172,7 +187,7 @@ export default function RunsPage() {
     } catch (err: unknown) {
       setError(friendlyError(err, "Failed to reload runs"));
     }
-  }
+  }, [refreshQueueUtilizationForActiveRuns]);
 
   async function loadLogs(run: Run) {
     setSelectedRunId(run.id);
@@ -197,7 +212,7 @@ export default function RunsPage() {
     }
   }
 
-  async function refreshSelectedRunLogs(runId: string) {
+  const refreshSelectedRunLogs = useCallback(async (runId: string) => {
     const run = runs.find((item) => item.id === runId);
     if (!run || !run.log_group || !run.log_stream_prefix) {
       return;
@@ -209,7 +224,7 @@ export default function RunsPage() {
     } catch {
       // Keep current log lines if background refresh fails; manual Logs click still surfaces errors.
     }
-  }
+  }, [runs]);
 
   async function requestCancel(run: Run) {
     setCancelRunId(run.id);
@@ -261,7 +276,7 @@ export default function RunsPage() {
   // Initial load
   useEffect(() => {
     void refreshAll();
-  }, []);
+  }, [refreshAll]);
 
   // Auto-refresh: poll every 8 seconds, pause when tab is hidden
   useEffect(() => {
@@ -285,7 +300,7 @@ export default function RunsPage() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       setPolling(false);
     };
-  }, []);
+  }, [reloadRuns]);
 
   useEffect(() => {
     if (runs.length === 0) {
@@ -313,7 +328,7 @@ export default function RunsPage() {
       return;
     }
     void refreshSelectedRunLogs(selectedRunId);
-  }, [runs, selectedRunId]);
+  }, [runs, selectedRunId, refreshSelectedRunLogs]);
 
   const selectedRun = selectedRunId ? runs.find((r) => r.id === selectedRunId) ?? null : null;
   const diagRun = diagRunId ? runs.find((r) => r.id === diagRunId) ?? null : null;
@@ -408,34 +423,41 @@ export default function RunsPage() {
                   <td className="col-hide-mobile"><ShortId value={run.emr_job_run_id} /></td>
                   <td className="col-hide-mobile">{compactTime(run.started_at)}</td>
                   <td className="col-hide-mobile">{compactTime(run.ended_at)}</td>
-                  <td className="col-hide-mobile">{queueHint(run)}</td>
-                  <td>
-                    <button type="button" className="button button-sm" onClick={() => void loadLogs(run)}>
-                      Logs
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-sm button-secondary"
-                      style={{ marginLeft: 4 }}
-                      onClick={() => {
-                        setDiagSelectRunId(run.id);
-                        void loadDiagnostics(run);
-                      }}
-                    >
-                      Diag
-                    </button>
+                  <td className="col-hide-mobile">
+                    <span className="queue-hint">{queueHint(run)}</span>
                   </td>
                   <td>
-                    {CANCELLABLE_STATES.has(run.state) ? (
+                    <div className="row-actions row-actions-logs">
+                      <button type="button" className="button button-sm" onClick={() => void loadLogs(run)}>
+                        Logs
+                      </button>
                       <button
                         type="button"
                         className="button button-sm button-secondary"
-                        disabled={!canCancel(run) || cancelRunId === run.id}
-                        onClick={() => void requestCancel(run)}
+                        onClick={() => {
+                          setDiagSelectRunId(run.id);
+                          void loadDiagnostics(run);
+                        }}
                       >
-                        {cancelRunId === run.id ? "Cancelling..." : run.cancellation_requested ? "Requested" : "Cancel"}
+                        Diag
                       </button>
-                    ) : null}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="row-actions row-actions-main">
+                      {CANCELLABLE_STATES.has(run.state) ? (
+                        <button
+                          type="button"
+                          className="button button-sm button-secondary"
+                          disabled={!canCancel(run) || cancelRunId === run.id}
+                          onClick={() => void requestCancel(run)}
+                        >
+                          {cancelRunId === run.id ? "Cancelling..." : run.cancellation_requested ? "Requested" : "Cancel"}
+                        </button>
+                      ) : (
+                        <span className="subtle row-action-empty">No actions available</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
