@@ -152,26 +152,8 @@ def get_lf_permission_context(
 # Preflight checks
 # ---------------------------------------------------------------------------
 
-def _add_lake_formation_fgac_checks(
-    *,
-    environment: "Environment",
-    db: "Session | None",
-    add_check: Callable[..., None],
-) -> None:
-    """Add Lake Formation FGAC preflight checks when enabled.
 
-    Checks:
-    1. EMR release >= 7.7.0 for FGAC support
-    2. LF service-linked role exists
-    3. Execution role has LF data permissions
-    """
-    if not getattr(environment, "lake_formation_enabled", False):
-        return
-
-    settings = get_settings()
-    configured_release = settings.emr_release_label.strip()
-
-    # Check 1: EMR release compatibility
+def _add_release_compatibility_check(configured_release: str, add_check: Callable[..., None]) -> None:
     if configured_release:
         if _lake_formation_supported_for_label(configured_release):
             add_check(
@@ -180,26 +162,27 @@ def _add_lake_formation_fgac_checks(
                 message=f"EMR release {configured_release} supports Lake Formation FGAC.",
                 details={"emr_release_label": configured_release},
             )
-        else:
-            add_check(
-                code="fgac.emr_release",
-                status_value="fail",
-                message=(
-                    f"EMR release {configured_release} does not support Lake Formation FGAC. "
-                    f"Minimum required: {_MIN_LF_RELEASE}."
-                ),
-                remediation=f"Upgrade EMR release to {_MIN_LF_RELEASE} or later.",
-                details={"emr_release_label": configured_release, "min_required": _MIN_LF_RELEASE},
-            )
-    else:
+            return
         add_check(
             code="fgac.emr_release",
             status_value="fail",
-            message="No EMR release label configured; cannot verify Lake Formation FGAC support.",
-            remediation=f"Set SPARKPILOT_EMR_RELEASE_LABEL to {_MIN_LF_RELEASE} or later.",
+            message=(
+                f"EMR release {configured_release} does not support Lake Formation FGAC. "
+                f"Minimum required: {_MIN_LF_RELEASE}."
+            ),
+            remediation=f"Upgrade EMR release to {_MIN_LF_RELEASE} or later.",
+            details={"emr_release_label": configured_release, "min_required": _MIN_LF_RELEASE},
         )
+        return
+    add_check(
+        code="fgac.emr_release",
+        status_value="fail",
+        message="No EMR release label configured; cannot verify Lake Formation FGAC support.",
+        remediation=f"Set SPARKPILOT_EMR_RELEASE_LABEL to {_MIN_LF_RELEASE} or later.",
+    )
 
-    # Check 2: LF service-linked role
+
+def _add_service_linked_role_check(environment: "Environment", add_check: Callable[..., None]) -> None:
     try:
         slr_result = check_lf_service_linked_role_exists(environment.region)
         if slr_result["exists"]:
@@ -209,19 +192,19 @@ def _add_lake_formation_fgac_checks(
                 message="Lake Formation service-linked role exists.",
                 details={"role_name": slr_result["role_name"]},
             )
-        else:
-            msg = "Lake Formation service-linked role not found."
-            if slr_result["error"]:
-                msg += f" ({slr_result['error']})"
-            add_check(
-                code="fgac.service_linked_role",
-                status_value="fail",
-                message=msg,
-                remediation=(
-                    "Create the service-linked role: aws iam create-service-linked-role "
-                    "--aws-service-name lakeformation.amazonaws.com"
-                ),
-            )
+            return
+        message = "Lake Formation service-linked role not found."
+        if slr_result["error"]:
+            message += f" ({slr_result['error']})"
+        add_check(
+            code="fgac.service_linked_role",
+            status_value="fail",
+            message=message,
+            remediation=(
+                "Create the service-linked role: aws iam create-service-linked-role "
+                "--aws-service-name lakeformation.amazonaws.com"
+            ),
+        )
     except Exception as exc:
         add_check(
             code="fgac.service_linked_role",
@@ -230,55 +213,81 @@ def _add_lake_formation_fgac_checks(
             remediation="Ensure SparkPilot has iam:GetRole permission.",
         )
 
-    # Check 3: Execution role LF permissions
-    execution_role_arn = settings.emr_execution_role_arn
+
+def _add_execution_role_permissions_check(
+    *,
+    environment: "Environment",
+    execution_role_arn: str,
+    add_check: Callable[..., None],
+) -> None:
     catalog_id = getattr(environment, "lf_catalog_id", None)
-    if execution_role_arn:
-        try:
-            perm_result = check_execution_role_lf_permissions(
-                environment.region, execution_role_arn, catalog_id=catalog_id,
-            )
-            if perm_result["error"]:
-                add_check(
-                    code="fgac.lf_permissions",
-                    status_value="warning",
-                    message=f"Could not verify LF permissions: {perm_result['error']}",
-                    remediation="Ensure SparkPilot has lakeformation:ListPermissions permission.",
-                )
-            elif perm_result["has_permissions"]:
-                add_check(
-                    code="fgac.lf_permissions",
-                    status_value="pass",
-                    message=(
-                        f"Execution role has {perm_result['permission_count']} "
-                        f"Lake Formation permission(s)."
-                    ),
-                    details={
-                        "permission_count": perm_result["permission_count"],
-                        "databases": len(perm_result["databases"]),
-                        "tables": len(perm_result["tables"]),
-                    },
-                )
-            else:
-                add_check(
-                    code="fgac.lf_permissions",
-                    status_value="fail",
-                    message="Execution role has no Lake Formation data permissions.",
-                    remediation=(
-                        "Grant Lake Formation permissions to the execution role using the "
-                        "AWS Lake Formation console or grant-permissions CLI command."
-                    ),
-                )
-        except Exception as exc:
-            add_check(
-                code="fgac.lf_permissions",
-                status_value="warning",
-                message=f"Unable to check Lake Formation permissions: {exc}",
-            )
-    else:
+    if not execution_role_arn:
         add_check(
             code="fgac.lf_permissions",
             status_value="warning",
             message="No execution role configured; cannot verify Lake Formation permissions.",
             remediation="Set SPARKPILOT_EMR_EXECUTION_ROLE_ARN.",
         )
+        return
+    try:
+        perm_result = check_execution_role_lf_permissions(
+            environment.region, execution_role_arn, catalog_id=catalog_id,
+        )
+        if perm_result["error"]:
+            add_check(
+                code="fgac.lf_permissions",
+                status_value="warning",
+                message=f"Could not verify LF permissions: {perm_result['error']}",
+                remediation="Ensure SparkPilot has lakeformation:ListPermissions permission.",
+            )
+            return
+        if perm_result["has_permissions"]:
+            add_check(
+                code="fgac.lf_permissions",
+                status_value="pass",
+                message=(
+                    f"Execution role has {perm_result['permission_count']} "
+                    f"Lake Formation permission(s)."
+                ),
+                details={
+                    "permission_count": perm_result["permission_count"],
+                    "databases": len(perm_result["databases"]),
+                    "tables": len(perm_result["tables"]),
+                },
+            )
+            return
+        add_check(
+            code="fgac.lf_permissions",
+            status_value="fail",
+            message="Execution role has no Lake Formation data permissions.",
+            remediation=(
+                "Grant Lake Formation permissions to the execution role using the "
+                "AWS Lake Formation console or grant-permissions CLI command."
+            ),
+        )
+    except Exception as exc:
+        add_check(
+            code="fgac.lf_permissions",
+            status_value="warning",
+            message=f"Unable to check Lake Formation permissions: {exc}",
+        )
+
+
+def _add_lake_formation_fgac_checks(
+    *,
+    environment: "Environment",
+    db: "Session | None",
+    add_check: Callable[..., None],
+) -> None:
+    """Add Lake Formation FGAC preflight checks when enabled."""
+    if not getattr(environment, "lake_formation_enabled", False):
+        return
+
+    settings = get_settings()
+    _add_release_compatibility_check(settings.emr_release_label.strip(), add_check)
+    _add_service_linked_role_check(environment, add_check)
+    _add_execution_role_permissions_check(
+        environment=environment,
+        execution_role_arn=settings.emr_execution_role_arn,
+        add_check=add_check,
+    )

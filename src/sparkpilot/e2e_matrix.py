@@ -226,6 +226,45 @@ class ScenarioBudget:
         )
 
 
+def _parse_expected_preflight_statuses(payload: dict[str, Any], scenario_name: str) -> dict[str, str]:
+    raw_statuses = payload.get("expected_preflight_statuses") or {}
+    if not isinstance(raw_statuses, dict):
+        raise ValueError(f"scenario:{scenario_name}.expected_preflight_statuses must be an object.")
+
+    expected_preflight_statuses: dict[str, str] = {}
+    for check_code, status_value in raw_statuses.items():
+        if not isinstance(check_code, str) or not isinstance(status_value, str):
+            raise ValueError(f"scenario:{scenario_name}.expected_preflight_statuses must map strings to strings.")
+        normalized = status_value.strip().lower()
+        if normalized not in PREFLIGHT_STATUSES:
+            raise ValueError(
+                f"scenario:{scenario_name}.expected_preflight_statuses[{check_code}] "
+                "must be one of pass|warning|fail."
+            )
+        expected_preflight_statuses[check_code] = normalized
+    return expected_preflight_statuses
+
+
+def _parse_security_context(payload: dict[str, Any], scenario_name: str) -> dict[str, str]:
+    security_context_raw = payload.get("security_context") or {}
+    if not isinstance(security_context_raw, dict):
+        raise ValueError(f"scenario:{scenario_name}.security_context must be an object when provided.")
+
+    security_context: dict[str, str] = {}
+    for key, value in security_context_raw.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise ValueError(f"scenario:{scenario_name}.security_context must map strings to strings.")
+        security_context[key] = value
+    return security_context
+
+
+def _parse_mapping_object(payload: dict[str, Any], key: str, scenario_name: str) -> dict[str, Any]:
+    parsed = payload.get(key) or {}
+    if not isinstance(parsed, dict):
+        raise ValueError(f"scenario:{scenario_name}.{key} must be an object when provided.")
+    return dict(parsed)
+
+
 @dataclass(frozen=True)
 class MatrixScenario:
     name: str
@@ -256,83 +295,49 @@ class MatrixScenario:
     def from_dict(cls, payload: dict[str, Any]) -> "MatrixScenario":
         if not isinstance(payload, dict):
             raise ValueError("Each scenario must be an object.")
+
         name = _require_non_empty_string(payload, "name", context="scenario")
-        description = _require_non_empty_string(payload, "description", context=f"scenario:{name}")
-        repeat = _to_positive_int(payload.get("repeat", 1), key=f"scenario:{name}.repeat")
-        submit_run = bool(payload.get("submit_run", True))
-        actor = _optional_string(payload, "actor")
-        args = _optional_string_list(payload, "args")
-        spark_conf = _optional_dict_str_str(payload, "spark_conf")
-        golden_path = _optional_string(payload, "golden_path")
-        requested_resources = RequestedResources.from_dict(payload.get("requested_resources"))
-        timeout_raw = payload.get("timeout_seconds")
-        timeout_seconds = None if timeout_raw is None else _to_positive_int(timeout_raw, key=f"scenario:{name}.timeout_seconds")
-        expect_preflight_ready = bool(payload.get("expect_preflight_ready", True))
-        raw_statuses = payload.get("expected_preflight_statuses") or {}
-        if not isinstance(raw_statuses, dict):
-            raise ValueError(f"scenario:{name}.expected_preflight_statuses must be an object.")
-        expected_preflight_statuses: dict[str, str] = {}
-        for check_code, status_value in raw_statuses.items():
-            if not isinstance(check_code, str) or not isinstance(status_value, str):
-                raise ValueError(f"scenario:{name}.expected_preflight_statuses must map strings to strings.")
-            normalized = status_value.strip().lower()
-            if normalized not in PREFLIGHT_STATUSES:
-                raise ValueError(
-                    f"scenario:{name}.expected_preflight_statuses[{check_code}] "
-                    "must be one of pass|warning|fail."
-                )
-            expected_preflight_statuses[check_code] = normalized
+        expected_preflight_statuses = _parse_expected_preflight_statuses(payload, name)
         expected_run_state = _optional_string(payload, "expected_run_state") or "succeeded"
         if expected_run_state not in RUN_EXPECTED_STATES:
             raise ValueError(f"scenario:{name}.expected_run_state must be one of {sorted(RUN_EXPECTED_STATES)}.")
+
         team_budget_payload = payload.get("team_budget")
-        team_budget = None if team_budget_payload is None else ScenarioBudget.from_dict(team_budget_payload)
-        collect_logs = bool(payload.get("collect_logs", True))
-        collect_diagnostics = bool(payload.get("collect_diagnostics", True))
-        collect_showback = bool(payload.get("collect_showback", True))
-        required_external_evidence = _optional_string_list(payload, "required_external_evidence") or []
-        cluster_mutations_raw = payload.get("cluster_mutations") or {}
-        if not isinstance(cluster_mutations_raw, dict):
-            raise ValueError(f"scenario:{name}.cluster_mutations must be an object when provided.")
-        failure_injection_raw = payload.get("failure_injection") or {}
-        if not isinstance(failure_injection_raw, dict):
-            raise ValueError(f"scenario:{name}.failure_injection must be an object when provided.")
-        security_context_raw = payload.get("security_context") or {}
-        if not isinstance(security_context_raw, dict):
-            raise ValueError(f"scenario:{name}.security_context must be an object when provided.")
-        security_context: dict[str, str] = {}
-        for key, value in security_context_raw.items():
-            if not isinstance(key, str) or not isinstance(value, str):
-                raise ValueError(f"scenario:{name}.security_context must map strings to strings.")
-            security_context[key] = value
         orchestrator_path = _optional_string(payload, "orchestrator_path") or "api"
         if orchestrator_path not in {"api", "cli", "airflow", "dagster", "ui"}:
             raise ValueError(f"scenario:{name}.orchestrator_path must be one of api|cli|airflow|dagster|ui.")
-        integration_requirements = _optional_string_list(payload, "integration_requirements") or []
+
+        timeout_raw = payload.get("timeout_seconds")
+        timeout_seconds = (
+            None
+            if timeout_raw is None
+            else _to_positive_int(timeout_raw, key=f"scenario:{name}.timeout_seconds")
+        )
+
         return cls(
             name=name,
-            description=description,
-            repeat=repeat,
-            submit_run=submit_run,
-            actor=actor,
-            args=args,
-            spark_conf=spark_conf,
-            golden_path=golden_path,
-            requested_resources=requested_resources,
+            description=_require_non_empty_string(payload, "description", context=f"scenario:{name}"),
+            repeat=_to_positive_int(payload.get("repeat", 1), key=f"scenario:{name}.repeat"),
+            submit_run=bool(payload.get("submit_run", True)),
+            actor=_optional_string(payload, "actor"),
+            args=_optional_string_list(payload, "args"),
+            spark_conf=_optional_dict_str_str(payload, "spark_conf"),
+            golden_path=_optional_string(payload, "golden_path"),
+            requested_resources=RequestedResources.from_dict(payload.get("requested_resources")),
             timeout_seconds=timeout_seconds,
-            expect_preflight_ready=expect_preflight_ready,
+            expect_preflight_ready=bool(payload.get("expect_preflight_ready", True)),
             expected_preflight_statuses=expected_preflight_statuses,
             expected_run_state=expected_run_state,
-            team_budget=team_budget,
-            collect_logs=collect_logs,
-            collect_diagnostics=collect_diagnostics,
-            collect_showback=collect_showback,
-            required_external_evidence=required_external_evidence,
-            cluster_mutations=dict(cluster_mutations_raw),
-            failure_injection=dict(failure_injection_raw),
-            security_context=security_context,
+            team_budget=None if team_budget_payload is None else ScenarioBudget.from_dict(team_budget_payload),
+            collect_logs=bool(payload.get("collect_logs", True)),
+            collect_diagnostics=bool(payload.get("collect_diagnostics", True)),
+            collect_showback=bool(payload.get("collect_showback", True)),
+            required_external_evidence=_optional_string_list(payload, "required_external_evidence") or [],
+            cluster_mutations=_parse_mapping_object(payload, "cluster_mutations", name),
+            failure_injection=_parse_mapping_object(payload, "failure_injection", name),
+            security_context=_parse_security_context(payload, name),
             orchestrator_path=orchestrator_path,
-            integration_requirements=integration_requirements,
+            integration_requirements=_optional_string_list(payload, "integration_requirements") or [],
         )
 
 
