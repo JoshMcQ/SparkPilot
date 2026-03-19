@@ -42,6 +42,13 @@ Last updated: 2026-03-18 20:14 ET
 
 - [x] Functions: extract `_job_template_response`, `_interactive_endpoint_response`, and `_compute_active_vcpu` helpers in `api.py` to eliminate three-way response-construction duplication and inline vCPU loop. <!-- completed 2026-03-18; 324 passed, 6 skipped -->
 
+## Phase 4 - Open UI backlog follow-through (2026-03-19)
+
+- [x] #91: tighten JSON-mode error diagnostics (line/column from parser position) and add one-click export of last submitted run payload for deterministic reruns. <!-- completed 2026-03-19 09:22 ET; commit 379ac82 -->
+
+### Blocker log
+- None.
+
 ## Verification passes
 
 ### 2026-03-18 18:20 ET (after 3 completed tasks)
@@ -69,3 +76,11 @@ Last updated: 2026-03-18 20:14 ET
   - Result: includes this pass updates to `ui/app/access/page.tsx`, `ui/lib/access-workflow.ts`, `ui/tests/access-workflow.test.ts`, `ui/package*.json`, plus pre-existing in-progress UI/test files.
 - `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
   - Result: no credential-like secret strings detected.
+
+### 2026-03-19 09:22 ET (#91 incremental follow-through)
+- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
+  - Result: `324 passed, 6 skipped` (36.31s)
+- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
+  - Result: clean (`eslint` completed with no errors/warnings in this run).
+- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm audit`
+  - Result: `found 0 vulnerabilities`.
