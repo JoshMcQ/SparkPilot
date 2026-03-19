@@ -1,45 +1,74 @@
-# Completion Report — Heartbeat Cycle
+# SparkPilot Production Push — Completion Report
 
-Date: 2026-03-18 18:12 ET
-Branch: `chore/closed-issue-audit-v2-20260318`
-Commit: `21b7bb7`
+Date: 2026-03-18
+Owner: Vector
+Scope source: `PROGRESS.md`
 
-## Tasks completed from `PROGRESS.md`
+## Executive summary
+All checklist items in `PROGRESS.md` are now marked complete.
 
-1. Built Issue #66 acceptance-evidence matrix from live artifacts and identified missing scenarios.
-   - Output: `docs/process/issue-66-evidence-gap-20260318.md`
+Completed phases:
+- Phase 0: tracker/bootstrap + live issue evidence mapping comments
+- Phase 1: evidence-gated issue integrity audit and ledger
+- Phase 2: open critical-path evidence/delivery tasks (#3, #7, #75, #81 + #75 unblocking runbook)
 
-2. Posted Issue #66 evidence mapping comment with explicit artifact links and runtime-ID status.
-   - Comment: https://github.com/JoshMcQ/SparkPilot/issues/66#issuecomment-4085805885
-   - Decision: keep #66 open until gap scenarios are captured.
+## Key deliverables
 
-3. Built evidence-gap action list for #58/#59/#60/#75 and attached requirements to each thread.
-   - Output: `docs/process/evidence-gap-auth-security-20260318.md`
-   - Comments:
-     - https://github.com/JoshMcQ/SparkPilot/issues/58#issuecomment-4085809061
-     - https://github.com/JoshMcQ/SparkPilot/issues/59#issuecomment-4085809117
-     - https://github.com/JoshMcQ/SparkPilot/issues/60#issuecomment-4085809179
-     - https://github.com/JoshMcQ/SparkPilot/issues/75#issuecomment-4085809253
+### 1) Evidence integrity audit
+- Closed-issue evidence audit executed and tracked.
+- Evidence ledger produced:
+  - `docs/process/evidence-ledger-20260318.md`
+- Reopen/closure quality gate enforcement applied where evidence was missing.
 
-## Required verification pass (after 3 tasks)
+### 2) Issue #3 preflight IAM/IRSA package
+- Added/posted live fail-path evidence with runtime identifiers.
+- Included scheduler pre-dispatch block behavior and reconciler fallback diagnostic evidence.
 
-- `python -m pytest` — PASS (`310 passed, 1 skipped`)
-- `npm run lint` — warnings present (no hard fail)
-- `npm audit` — fail (`next` moderate advisory; fix path requires out-of-range upgrade)
-- `git diff --stat` — existing unstaged UI/test deltas remain
-- `git log -5 -p | Select-String "AKIA|sk-|password|secret"` — no matches
+### 3) Issue #7 UI mode differentiation package
+- Posted live API-backed evidence for BYOC vs BYOC-Lite differentiation and mode-specific fields.
+- Attached validation artifacts and runtime IDs.
 
-## Git actions
+### 4) Issue #81 access workflow polish package
+- Implemented guided admin workflow + validation/error mapping improvements.
+- Added test coverage for workflow ordering and validation helpers.
+- Posted evidence bundle and closed issue #81.
 
-- Committed task artifacts:
-  - `PROGRESS.md`
-  - `docs/process/issue-66-evidence-gap-20260318.md`
-  - `docs/process/evidence-gap-auth-security-20260318.md`
-- Commit: `21b7bb7`
-- Push: complete to remote branch
+### 5) Issue #75 external IdP completion
+- Produced external IdP (AWS Cognito) auth-code + PKCE evidence bundle:
+  - `artifacts/issue75-cognito-live-evidence-20260318-194720/summary.md`
+  - `.../oidc-auth-code-pkce-trace.json`
+  - `.../auth-me.json`
+  - `.../environments-authorized.json`
+  - `.../admin-endpoint-denied-headers.txt`
+  - `.../admin-endpoint-denied-body.txt`
+- Demonstrated subject mapping and role-scoped API allow/deny behavior.
+- Posted acceptance-mapped evidence and closed issue #75.
 
-## Safety/compliance notes
+## AWS validation and cost safety
+For issue #75 validation run:
+- Resources created (temporary):
+  - Cognito user pool, app client, hosted domain, test user
+  - Temporary API container for external-issuer verifier config
+  - Temporary DB identity/team/scope rows
+- Resources deleted in same run:
+  - All of the above
+- Resources still running:
+  - None from this validation run
+- Estimated cost impact:
+  - Negligible / free-tier-level short-lived metadata usage
 
-- No new AWS resources created in this heartbeat cycle.
-- No secrets introduced in committed files.
-- Evidence-gated issues remain open pending required artifacts.
+Teardown proof artifacts:
+- `artifacts/issue75-cognito-live-evidence-20260318-194720/teardown-summary.txt`
+- `artifacts/issue75-cognito-live-evidence-20260318-194720/teardown-db.csv`
+- `artifacts/issue75-cognito-live-evidence-20260318-194720/teardown-container.txt`
+
+## Validation status snapshot
+Latest recorded verification pass (from `PROGRESS.md`) includes:
+- Backend: `pytest` passing
+- UI: `npm run lint` (warnings only)
+- Security: `npm audit` with known moderate Next.js advisories documented for controlled remediation path
+- Secret scan of recent commits: no credential-like leaks detected
+
+## Notes
+- Completion in this report corresponds to the explicit checklist in `PROGRESS.md`.
+- Evidence references and closure comments are attached in corresponding GitHub issues.

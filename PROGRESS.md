@@ -1,6 +1,6 @@
 # SparkPilot Production Hardening Progress
 
-Last updated: 2026-03-18 19:31 ET
+Last updated: 2026-03-18 20:14 ET
 
 ## Phase 0 - Tracker bootstrap
 
@@ -24,7 +24,7 @@ Last updated: 2026-03-18 19:31 ET
 
 - [x] Complete #3 preflight IAM/IRSA validation evidence and closure package. <!-- completed 2026-03-18 19:03 ET; evidence refresh posted in issue #3 comment with live run.preflight_failed + run.preflight_diagnostic artifacts -->
 - [x] Complete #7 UI BYOC vs BYOC-Lite differentiation and validation package. <!-- completed 2026-03-18 19:06 ET; live evidence bundle + runtime IDs posted in issue #7 comment -->
-- [ ] Complete #75 production IdP login + subject mapping evidence package.
+- [x] Complete #75 production IdP login + subject mapping evidence package. <!-- completed 2026-03-18 20:12 ET; external Cognito auth-code+PKCE + subject-mapped role-scoped API evidence posted and issue closed -->
 - [x] Complete #81 access-page guided workflow polish + validation package. <!-- completed 2026-03-18 19:16 ET; access workflow helpers + inline validation + error mapping tests + live UI evidence posted -->
 - [x] Prepare external IdP evidence-capture runbook and environment template to unblock #75. <!-- completed 2026-03-18 19:31 ET; added docs/process/external-idp-evidence-runbook.md -->
 
@@ -35,6 +35,8 @@ Last updated: 2026-03-18 19:31 ET
 - 2026-03-18 19:17 ET - Posted blocker/evidence request in issue #75 comment (`#issuecomment-4086219182`) listing required external IdP tenant/client/callback config needed to complete acceptance package.
 - 2026-03-18 19:18 ET - Re-checked #75 as first unchecked task this heartbeat; still blocked until external IdP tenant/client config is available. No further closure-grade evidence can be generated in current mock-only setup.
 - 2026-03-18 19:31 ET - Added unblocking runbook `docs/process/external-idp-evidence-runbook.md` and posted issue #75 comment (`#issuecomment-4086293886`) with required external IdP inputs + evidence capture checklist.
+- 2026-03-18 20:12 ET - #75 blocker resolved: captured external AWS Cognito auth-code+PKCE trace + subject-mapped role-scoped API evidence, posted in issue #75 (`#issuecomment-4086498885`), closed issue, and completed full teardown (user pool/domain/client/test user + temp API container + temp DB mapping rows).
+- 2026-03-18 20:14 ET - All checklist items in PROGRESS.md are now checked; wrote `docs/process/completion-report.md` per heartbeat completion rule.
 
 ## Verification passes
 
