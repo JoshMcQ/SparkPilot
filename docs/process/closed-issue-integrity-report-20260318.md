@@ -48,7 +48,7 @@ Updated live issue state after corrective actions:
 
 ## Next steps (continuing)
 
-1. Manual issue-by-issue acceptance audit for the remaining 83 closed issues.
+1. Manual issue-by-issue acceptance audit for the remaining 79 closed issues.
 2. For each issue, record:
    - acceptance criteria present?
    - code proof path(s)

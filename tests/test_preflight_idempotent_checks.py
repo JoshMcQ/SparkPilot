@@ -66,3 +66,26 @@ def test_upsert_preflight_check_does_not_demote_fail() -> None:
     assert checks[0]["status"] == "fail"
     assert checks[0]["message"] == "invalid"
     assert checks[0]["remediation"] == "use dns-1123 name"
+
+
+def test_upsert_preflight_check_keeps_distinct_policy_ids() -> None:
+    checks: list[dict] = []
+
+    _upsert_preflight_check(
+        checks,
+        code="policy.team_budget",
+        status_value="fail",
+        message="team alpha exceeded budget",
+        details={"policy_id": "policy-alpha"},
+    )
+    _upsert_preflight_check(
+        checks,
+        code="policy.team_budget",
+        status_value="fail",
+        message="team beta exceeded budget",
+        details={"policy_id": "policy-beta"},
+    )
+
+    assert len(checks) == 2
+    assert checks[0]["details"]["policy_id"] == "policy-alpha"
+    assert checks[1]["details"]["policy_id"] == "policy-beta"

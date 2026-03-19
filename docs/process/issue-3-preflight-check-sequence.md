@@ -106,4 +106,4 @@ Each check should emit a normalized result:
 
 ## Integration target
 
-For Issue #3 implementation, these checks should be grouped into a dedicated preflight stage (new module or extension in `services/preflight_byoc.py`) and surfaced through API/CLI/UI diagnostics.
+For Issue #3 implementation, these checks are grouped in `src/sparkpilot/services/preflight_checks.py`, wired from `src/sparkpilot/services/preflight.py`, and surfaced through API/CLI/UI diagnostics.

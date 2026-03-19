@@ -3,6 +3,7 @@
 Date: 2026-03-18
 
 ## Objective
+
 Map the exact dispatch path used by scheduler workers and identify where AWS `StartJobRun` is actually invoked.
 
 ## Code Path (current)

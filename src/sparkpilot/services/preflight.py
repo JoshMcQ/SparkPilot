@@ -35,6 +35,14 @@ def _check_status_priority(status: str) -> int:
     return CHECK_STATUS_PRIORITY.get(str(status).lower(), 0)
 
 
+def _preflight_check_merge_key(code: str, details: dict[str, Any] | None) -> str:
+    if code.startswith("policy."):
+        policy_id = (details or {}).get("policy_id")
+        if policy_id not in (None, ""):
+            return f"{code}:{policy_id}"
+    return code
+
+
 def _upsert_preflight_check(
     checks: list[dict[str, Any]],
     *,
@@ -44,10 +52,11 @@ def _upsert_preflight_check(
     remediation: str | None = None,
     details: dict[str, str | int | bool] | None = None,
 ) -> None:
-    """Insert or merge a preflight check by code.
+    """Insert or merge a preflight check by deterministic merge key.
 
     Idempotency rules:
-    - same code emitted repeatedly does not duplicate rows
+    - same check key emitted repeatedly does not duplicate rows
+    - policy checks merge by `policy.<rule_type>:<policy_id>` when policy_id exists
     - higher-severity status wins (`fail` > `warning` > `pass`)
     - for equal severity, keep first message and fill missing remediation/details
     """
@@ -58,9 +67,14 @@ def _upsert_preflight_check(
         "remediation": remediation,
         "details": details or {},
     }
+    incoming_key = _preflight_check_merge_key(code, incoming["details"])
 
     for idx, existing in enumerate(checks):
-        if existing.get("code") != code:
+        existing_key = _preflight_check_merge_key(
+            str(existing.get("code") or ""),
+            existing.get("details") if isinstance(existing.get("details"), dict) else None,
+        )
+        if existing_key != incoming_key:
             continue
 
         existing_priority = _check_status_priority(str(existing.get("status") or ""))

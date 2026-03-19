@@ -33,6 +33,8 @@ test("team validation requires team name and tenant", () => {
 test("scope validation requires team and environment selection", () => {
   assert.equal(validateScopeForm("", "env-1"), "Select both a team and an environment.");
   assert.equal(validateScopeForm("team-1", ""), "Select both a team and an environment.");
+  assert.equal(validateScopeForm("   ", "env-1"), "Select both a team and an environment.");
+  assert.equal(validateScopeForm("team-1", "   "), "Select both a team and an environment.");
   assert.equal(validateScopeForm("team-1", "env-1"), null);
 });
 
@@ -46,14 +48,19 @@ test("budget validation checks positive budget and threshold bounds", () => {
     "Team and a positive monthly budget (USD) are required.",
   );
   assert.equal(
-    validateBudgetForm("team", "100", "0", "101"),
+    validateBudgetForm("team", "100", "80abc", "100"),
     "Thresholds must be integers between 1 and 100.",
+  );
+  assert.equal(
+    validateBudgetForm("team", "100", "90", "80"),
+    "Warn threshold must be lower than block threshold.",
   );
   assert.equal(validateBudgetForm("team", "100", "80", "100"), null);
 });
 
 test("error mapping provides actionable auth/bootstrap guidance", () => {
-  assert.match(mapAccessErrorMessage("401 unauthorized"), /Authentication failed/i);
+  assert.match(mapAccessErrorMessage("401 authentication failed"), /Authentication failed/i);
+  assert.match(mapAccessErrorMessage("401 unauthorized"), /Access denied/i);
   assert.match(mapAccessErrorMessage("403 forbidden"), /Access denied/i);
   assert.match(mapAccessErrorMessage("bootstrap secret invalid"), /Bootstrap failed/i);
   assert.match(mapAccessErrorMessage("422 validation failed"), /Validation failed/i);

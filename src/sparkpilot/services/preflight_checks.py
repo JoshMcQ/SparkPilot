@@ -122,14 +122,28 @@ def _add_issue3_iam_simulation_check(*, environment: Environment, add_check: Cal
         )
         return False
 
+    if not environment.eks_cluster_arn:
+        add_check(
+            code=ISSUE3_CHECK_CODES["simulate"],
+            status_value="fail",
+            message="eks_cluster_arn is required before simulating eks:DescribeCluster permissions.",
+            remediation="Set eks_cluster_arn to the target customer EKS cluster ARN and retry preflight.",
+        )
+        return False
+
     try:
         session = assume_role_session(environment.customer_role_arn, environment.region)
         iam_client = session.client("iam")
 
         dispatch_eval = iam_client.simulate_principal_policy(
             PolicySourceArn=environment.customer_role_arn,
-            ActionNames=[*DISPATCH_SIMULATION_ACTIONS, "eks:DescribeCluster"],
+            ActionNames=[*DISPATCH_SIMULATION_ACTIONS],
             ResourceArns=["*"],
+        )
+        eks_describe_eval = iam_client.simulate_principal_policy(
+            PolicySourceArn=environment.customer_role_arn,
+            ActionNames=["eks:DescribeCluster"],
+            ResourceArns=[environment.eks_cluster_arn],
         )
         pass_role_eval = iam_client.simulate_principal_policy(
             PolicySourceArn=environment.customer_role_arn,
@@ -158,6 +172,11 @@ def _add_issue3_iam_simulation_check(*, environment: Environment, add_check: Cal
         action_name = str(result.get("EvalActionName") or "")
         if str(result.get("EvalDecision") or "").lower() != "allowed":
             denied_actions.append(action_name)
+
+    eks_describe_result = next(iter(eks_describe_eval.get("EvaluationResults", [])), {})
+    eks_describe_allowed = str(eks_describe_result.get("EvalDecision") or "").lower() == "allowed"
+    if not eks_describe_allowed:
+        denied_actions.append("eks:DescribeCluster")
 
     pass_role_result = next(iter(pass_role_eval.get("EvaluationResults", [])), {})
     pass_role_allowed = str(pass_role_result.get("EvalDecision") or "").lower() == "allowed"
@@ -228,6 +247,15 @@ def _add_issue3_eks_describe_cluster_check(*, environment: Environment, add_chec
                 status_value="fail",
                 message="Access denied while calling eks:DescribeCluster for preflight gating.",
                 remediation="Grant customer_role_arn eks:DescribeCluster on the target cluster and retry.",
+                details={"cluster_name": cluster_name},
+            )
+            return False
+        if code == "ResourceNotFoundException":
+            add_check(
+                code=ISSUE3_CHECK_CODES["describe"],
+                status_value="fail",
+                message=f"EKS cluster '{cluster_name}' was not found.",
+                remediation="Verify eks_cluster_arn/cluster name is correct, the cluster exists, and customer_role_arn can access it.",
                 details={"cluster_name": cluster_name},
             )
             return False

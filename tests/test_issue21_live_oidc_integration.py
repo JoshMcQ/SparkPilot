@@ -34,7 +34,9 @@ def test_issue21_live_oidc_detection_real_aws() -> None:
 
     result = EmrEksClient().check_oidc_provider_association(env)
     assert result["associated"] is True
-    assert str(result.get("cluster_name") or "")
-    assert str(result.get("oidc_provider_arn") or "")
+    cluster_name = str(result.get("cluster_name") or "").strip()
+    oidc_provider_arn = str(result.get("oidc_provider_arn") or "").strip()
+    assert cluster_name, "cluster_name should be non-empty"
+    assert oidc_provider_arn, "oidc_provider_arn should be non-empty"
 
     get_settings.cache_clear()

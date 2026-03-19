@@ -2852,7 +2852,7 @@ def test_list_interactive_endpoints_returns_created() -> None:
 
 def _setup_rbac_fixtures(client: TestClient, monkeypatch) -> dict:
     """Create tenant, team, env, operator, and user identities for RBAC tests."""
-    from conftest import issue_test_token
+    from tests.conftest import issue_test_token
 
     tenant = client.post(
         "/v1/tenants",
@@ -3003,7 +3003,7 @@ def test_rbac_cross_team_run_isolation(monkeypatch) -> None:
     This is the core RBAC isolation test: two teams, two environments, two
     users — each should only see runs in their own team-scoped environment.
     """
-    from conftest import issue_test_token
+    from tests.conftest import issue_test_token
 
     def _mock_start(self, environment, job, run):
         return EmrDispatchResult(
@@ -4455,6 +4455,7 @@ def test_matrix_namespace_collision_ignores_env_bound_virtual_cluster(monkeypatc
     env_id = _create_ready_byoc_lite_matrix(client, "ns-collision-own")
     env_payload = client.get(f"/v1/environments/{env_id}").json()
     own_vc_id = env_payload["emr_virtual_cluster_id"]
+    assert own_vc_id is not None
 
     monkeypatch.setattr(
         "sparkpilot.services.preflight_byoc.EmrEksClient.find_namespace_virtual_cluster_collision",
@@ -4611,7 +4612,7 @@ def test_matrix_evidence_artifacts_present(monkeypatch) -> None:
 # OIDC interoperability matrix (#69)
 # ---------------------------------------------------------------------------
 
-from conftest import (
+from tests.conftest import (
     _JWKS_PATH,
     issue_test_token,
     TEST_OIDC_AUDIENCE,

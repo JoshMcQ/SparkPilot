@@ -52,35 +52,48 @@ Last updated: 2026-03-18 20:14 ET
 ## Verification passes
 
 ### 2026-03-18 18:20 ET (after 3 completed tasks)
-- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
+- `python -m pytest (from repo root with venv activated)`
   - Result: `314 passed, 1 skipped` (35.36s)
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
+- `cd ui && npm run lint`
   - Result: completed with warnings (no hard errors):
     - `_cookieOptions` unused (`ui/app/api/auth/session/route.ts`)
     - missing hook deps in `ui/app/costs/page.tsx` and `ui/app/runs/page.tsx`
-- `cd C:\Users\JoshMcQueary\SparkPilot && git diff --stat`
+- `git diff --stat`
   - Result: working tree currently includes local modifications in `ui/*` and `PROGRESS.md` (see diff stat output); no destructive ops performed.
-- `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
+- `git log -5 -p | Select-String "AKIA|sk-|password|secret"`
   - Result: no credential-like secret strings detected (only generic doc/test text references to the word `secret`).
 
 ### 2026-03-18 19:16 ET (after next 3 completed tasks: #3, #7, #81)
-- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
+- `python -m pytest (from repo root with venv activated)`
   - Result: `317 passed, 3 skipped` (35.31s)
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
+- `cd ui && npm run lint`
   - Result: completed with warnings (no hard errors):
     - `_cookieOptions` unused (`ui/app/api/auth/session/route.ts`)
     - missing hook deps in `ui/app/costs/page.tsx` and `ui/app/runs/page.tsx`
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm audit`
+- `cd ui && npm audit`
   - Result: 1 moderate vulnerability in `next` (`GHSA-3x4c-7xq6-9pq8`, `GHSA-ggv3-7p47-pfv8`); fix requires breaking upgrade path (`next@16.2.0`). Logged for controlled remediation (no `--force`).
-- `cd C:\Users\JoshMcQueary\SparkPilot && git diff --stat`
+- `git diff --stat`
   - Result: includes this pass updates to `ui/app/access/page.tsx`, `ui/lib/access-workflow.ts`, `ui/tests/access-workflow.test.ts`, `ui/package*.json`, plus pre-existing in-progress UI/test files.
-- `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
+- `git log -5 -p | Select-String "AKIA|sk-|password|secret"`
   - Result: no credential-like secret strings detected.
 
 ### 2026-03-19 09:22 ET (#91 incremental follow-through)
-- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
+- `python -m pytest (from repo root with venv activated)`
   - Result: `324 passed, 6 skipped` (36.31s)
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
+- `cd ui && npm run lint`
   - Result: clean (`eslint` completed with no errors/warnings in this run).
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm audit`
+- `cd ui && npm audit`
   - Result: `found 0 vulnerabilities`.
+
+### 2026-03-19 09:43 ET (PR #92 review remediation + CI parity)
+- `pytest -q`
+  - Result: `325 passed, 6 skipped` (fixed import-path parity for `pytest` direct invocation via `tests/__init__.py` + `tests.conftest` imports).
+- `python -m pytest -q` (venv)
+  - Result: `325 passed, 6 skipped`.
+- `cd ui && npm run lint`
+  - Result: clean (`eslint` completed with no errors/warnings).
+- `cd ui && npm audit`
+  - Result: `found 0 vulnerabilities`.
+- `cd ui && npm test`
+  - Result: `6 passed` (`tests/access-workflow.test.ts`) after workflow validation hardening updates.
+

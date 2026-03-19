@@ -24,6 +24,8 @@ When provider is missing:
 Optional automation mode is reserved behind:
 - `SPARKPILOT_PREFLIGHT_AUTOFIX_OIDC_PROVIDER=true`
 
+Note: unlike trust-policy automation (`SPARKPILOT_PREFLIGHT_AUTOFIX_TRUST_POLICY`), OIDC provider automation is reserved for future use and currently has no effect.
+
 ## Required Permissions
 
 Minimum permissions for detection:

@@ -62,9 +62,10 @@ Suggested artifacts:
 - `.../manual-token-dev-only-proof.txt`
 
 ## Validation commands to run and include in issue
-- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm audit`
+
+- `python -m pytest` (from repo root with venv activated)
+- `cd ui && npm run lint`
+- `cd ui && npm audit`
 
 If `npm audit` reports advisories requiring breaking upgrades, document the controlled upgrade path; do not run `npm audit fix --force` blindly.
 

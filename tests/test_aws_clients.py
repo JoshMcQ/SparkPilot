@@ -1354,7 +1354,6 @@ def test_scheduler_rejects_unknown_engine(monkeypatch) -> None:
         _dispatch_run(env, job, run)
 
     get_settings.cache_clear()
-    get_settings.cache_clear()
 
 
 def test_find_namespace_virtual_cluster_collision_returns_active_match(monkeypatch) -> None:

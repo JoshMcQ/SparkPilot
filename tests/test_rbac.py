@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-import conftest
+from tests import conftest
 from fastapi.testclient import TestClient
 import pytest
 from sqlalchemy import select

@@ -40,9 +40,13 @@ def test_issue20_live_trust_policy_automation_real_aws() -> None:
 
     assert bool(update_result.get("updated")) is True
     assert bool(update_result.get("already_present")) in {True, False}
-    assert str(update_result.get("role_name") or "")
-    assert str(update_result.get("provider_arn") or "")
-    assert str(trust_result.get("role_name") or "")
-    assert str(trust_result.get("provider_arn") or "")
+    role_name = str(update_result.get("role_name") or "").strip()
+    provider_arn = str(update_result.get("provider_arn") or "").strip()
+    trust_role_name = str(trust_result.get("role_name") or "").strip()
+    trust_provider_arn = str(trust_result.get("provider_arn") or "").strip()
+    assert role_name, "role_name should be non-empty"
+    assert provider_arn, "provider_arn should be non-empty"
+    assert trust_role_name, "trust_result.role_name should be non-empty"
+    assert trust_provider_arn, "trust_result.provider_arn should be non-empty"
 
     get_settings.cache_clear()
