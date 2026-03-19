@@ -10,24 +10,11 @@ from sparkpilot.api import app  # noqa: E402
 from sparkpilot.db import Base, SessionLocal, engine  # noqa: E402
 from sparkpilot.models import Run  # noqa: E402
 from sparkpilot.services import _diagnostics_from_log_lines, process_provisioning_once, process_reconciler_once, process_scheduler_once  # noqa: E402
+from tests.db_test_utils import reset_sqlite_test_db  # noqa: E402
 
 
 def setup_function() -> None:
-    import sparkpilot.models  # noqa: F401 -- register all tables before recreation
-    from pathlib import Path
-    engine.dispose()
-    # Extract SQLite file path from engine URL and delete for a clean slate
-    url_str = str(engine.url)
-    if url_str.startswith("sqlite:///") and ":memory:" not in url_str:
-        db_path = url_str.split(":///", 1)[1]
-        p = Path(db_path)
-        for f in (p, Path(f"{p}-journal"), Path(f"{p}-wal"), Path(f"{p}-shm")):
-            if f.exists():
-                f.unlink()
-    Base.metadata.create_all(bind=engine)
-    from sparkpilot.services import ensure_default_golden_paths as _egp
-    with SessionLocal() as db:
-        _egp(db)
+    reset_sqlite_test_db(base=Base, engine=engine, session_local=SessionLocal)
 
 
 @pytest.mark.parametrize(

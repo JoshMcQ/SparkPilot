@@ -400,7 +400,7 @@ def test_trigger_async_run_yields_success_event(monkeypatch: pytest.MonkeyPatch)
 # ---------- Hook cancel_run ----------
 
 
-def test_hook_cancel_run_sends_idempotency_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def _prepare_cancel_run_test(monkeypatch: pytest.MonkeyPatch) -> tuple[SparkPilotHook, dict[str, object]]:
     conn = _Conn(
         extra_dejson={
             "sparkpilot_url": "http://sparkpilot.local:8000",
@@ -421,7 +421,11 @@ def test_hook_cancel_run_sends_idempotency_key(monkeypatch: pytest.MonkeyPatch) 
         return httpx.Response(200, json={"id": "run-cancel", "state": "cancelled"}, request=request)
 
     monkeypatch.setattr("httpx.request", _fake_request)
-    hook = SparkPilotHook()
+    return SparkPilotHook(), captured
+
+
+def test_hook_cancel_run_sends_idempotency_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    hook, captured = _prepare_cancel_run_test(monkeypatch)
     result = hook.cancel_run(run_id="run-cancel", idempotency_key="idem-cancel-1")
 
     assert result["id"] == "run-cancel"
@@ -434,27 +438,7 @@ def test_hook_cancel_run_sends_idempotency_key(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_hook_cancel_run_generates_idempotency_key_when_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    conn = _Conn(
-        extra_dejson={
-            "sparkpilot_url": "http://sparkpilot.local:8000",
-            "oidc_issuer": "https://issuer.local",
-            "oidc_audience": "sparkpilot-api",
-        },
-        login="airflow-client",
-        password="airflow-secret",
-    )
-    monkeypatch.setattr(SparkPilotHook, "get_connection", classmethod(lambda _cls, _conn_id: conn))
-    monkeypatch.setattr(SparkPilotHook, "_get_access_token", lambda _self, _resolved, force_refresh=False: "access-1")
-
-    captured: dict[str, object] = {}
-
-    def _fake_request(**kwargs):  # noqa: ANN001, ANN202
-        captured.update(kwargs)
-        request = httpx.Request("POST", "http://sparkpilot.local:8000/v1/runs/run-cancel/cancel")
-        return httpx.Response(200, json={"id": "run-cancel", "state": "cancelled"}, request=request)
-
-    monkeypatch.setattr("httpx.request", _fake_request)
-    hook = SparkPilotHook()
+    hook, captured = _prepare_cancel_run_test(monkeypatch)
     hook.cancel_run(run_id="run-cancel")
 
     headers = captured["headers"]

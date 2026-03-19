@@ -1,48 +1,13 @@
 from __future__ import annotations
 
-import os
-from types import SimpleNamespace
-
-import pytest
-
 from sparkpilot.services.preflight_byoc import _add_byoc_lite_configuration_checks
-
-
-def _required(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        pytest.skip(f"Live integration disabled/missing env: {name}")
-    return value
+from tests.live_preflight_test_utils import build_live_byoc_env, make_check_collector, require_live_tests_enabled
 
 
 def test_issue19_live_namespace_checks_real_aws() -> None:
-    if os.getenv("SPARKPILOT_RUN_LIVE_TESTS", "0") != "1":
-        pytest.skip("Set SPARKPILOT_RUN_LIVE_TESTS=1 to execute live AWS integration checks")
-
-    env = SimpleNamespace(
-        id="live-issue19",
-        engine="emr_on_eks",
-        provisioning_mode="byoc_lite",
-        status="ready",
-        customer_role_arn=_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
-        region=os.getenv("SPARKPILOT_LIVE_REGION", "us-east-1"),
-        eks_cluster_arn=_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
-        eks_namespace=_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
-        emr_virtual_cluster_id=os.getenv("SPARKPILOT_LIVE_EMR_VIRTUAL_CLUSTER_ID", "vc-live"),
-    )
-
-    checks: list[dict[str, object]] = []
-
-    def add_check(*, code: str, status_value: str, message: str, remediation: str | None = None, details=None):
-        checks.append(
-            {
-                "code": code,
-                "status": status_value,
-                "message": message,
-                "remediation": remediation,
-                "details": details or {},
-            }
-        )
+    require_live_tests_enabled()
+    env = build_live_byoc_env("issue19")
+    checks, add_check = make_check_collector()
 
     _add_byoc_lite_configuration_checks(
         environment=env,
