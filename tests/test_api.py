@@ -4231,6 +4231,9 @@ def test_matrix_oidc_association_missing_fails(monkeypatch) -> None:
     assert "not associated" in oidc_check["message"].lower()
     assert oidc_check["remediation"] is not None
     assert "eksctl" in oidc_check["remediation"]
+    assert "detect+instruct mode" in oidc_check["remediation"].lower()
+    assert oidc_check.get("details", {}).get("automation_mode") == "detect_only"
+    assert "iam:CreateOpenIDConnectProvider" in str(oidc_check.get("details", {}).get("required_permissions", ""))
     assert resp.json()["ready"] is False
 
 

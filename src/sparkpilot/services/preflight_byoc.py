@@ -185,17 +185,23 @@ def _add_byoc_lite_oidc_association_check(
                 },
             )
             return
+        cluster_name = str(oidc_result.get("cluster_name") or "<cluster-name>")
         add_check(
             code="byoc_lite.oidc_association",
             status_value="fail",
             message="OIDC provider is not associated for target EKS cluster.",
             remediation=(
-                "Run `eksctl utils associate-iam-oidc-provider --cluster <name> "
-                "--region <region> --approve` in the customer account."
+                "Detect+instruct mode (default, no IAM mutation): run "
+                f"`eksctl utils associate-iam-oidc-provider --cluster {cluster_name} "
+                f"--region {environment.region} --approve` in the customer account. "
+                "Optional automation mode can be explicitly enabled later if desired "
+                "(SPARKPILOT_PREFLIGHT_AUTOFIX_OIDC_PROVIDER=true)."
             ),
             details={
                 "oidc_provider_arn": str(oidc_result.get("oidc_provider_arn") or ""),
-                "cluster_name": str(oidc_result.get("cluster_name") or ""),
+                "cluster_name": cluster_name,
+                "required_permissions": "eks:DescribeCluster, iam:GetOpenIDConnectProvider, iam:CreateOpenIDConnectProvider",
+                "automation_mode": "detect_only",
             },
         )
     except ValueError as exc:
@@ -204,9 +210,14 @@ def _add_byoc_lite_oidc_association_check(
             status_value="fail",
             message=str(exc),
             remediation=(
-                "Grant customer_role_arn permissions to describe EKS cluster and read OIDC provider, "
+                "Grant customer_role_arn permissions `eks:DescribeCluster` and `iam:GetOpenIDConnectProvider` "
+                "for detection (plus `iam:CreateOpenIDConnectProvider` if you want optional automation), "
                 "then retry preflight."
             ),
+            details={
+                "required_permissions": "eks:DescribeCluster, iam:GetOpenIDConnectProvider, iam:CreateOpenIDConnectProvider",
+                "automation_mode": "detect_only",
+            },
         )
 
 
