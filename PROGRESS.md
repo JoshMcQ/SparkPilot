@@ -97,3 +97,12 @@ Last updated: 2026-03-18 20:14 ET
 - `cd ui && npm test`
   - Result: `6 passed` (`tests/access-workflow.test.ts`) after workflow validation hardening updates.
 
+### 2026-03-19 09:40 ET (CI follow-up: OIDC cache-expiry parity)
+- Updated `tests/test_oidc.py::test_stale_token_after_oidc_restart_raises_key_rotation_error` to force JWKS cache expiry relative to `time.monotonic()` (`cached_at = now - ttl - 1`) instead of hardcoding `0`, which was non-expired on short-lived CI runners.
+- `pytest -q`
+  - Result: `325 passed, 6 skipped`.
+- `cd ui && npm run lint`
+  - Result: clean (`eslint` completed with no errors/warnings).
+- `cd ui && npm audit`
+  - Result: `found 0 vulnerabilities`.
+

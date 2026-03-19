@@ -255,7 +255,7 @@ def test_stale_token_after_oidc_restart_raises_key_rotation_error(tmp_path) -> N
     time.sleep(0.02)  # ensure throttle interval is satisfied
 
     # Simulate cache expiry (in production this happens after jwks_cache_ttl_seconds)
-    verifier._cached_at_monotonic = 0
+    verifier._cached_at_monotonic = time.monotonic() - verifier.jwks_cache_ttl_seconds - 1
 
     # The stale token should now raise OIDCKeyRotationError
     with pytest.raises(OIDCKeyRotationError, match="[Ss]igning keys have changed"):
