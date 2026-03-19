@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   fetchEnvironments,
   fetchRuns,
+  fetchUsage,
+  type Run,
   USER_ACCESS_TOKEN_CHANGED_EVENT,
   USER_ACCESS_TOKEN_STORAGE_KEY,
 } from "@/lib/api";
@@ -27,10 +29,37 @@ const VALUE_PILLARS = [
   },
 ];
 
+function shortId(value: string): string {
+  if (!value) return "-";
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 8)}…${value.slice(-4)}`;
+}
+
+function formatUsd(value: number | null): string {
+  if (value == null) return "N/A";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+}
+
+function parseTimestamp(run: Run): number {
+  const raw = run.created_at ?? run.updated_at ?? run.started_at ?? run.ended_at ?? "";
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatTimestamp(raw: string | null | undefined): string {
+  if (!raw) return "-";
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) return raw;
+  return new Date(timestamp).toLocaleString();
+}
+
 export default function HomePage() {
   const [environments, setEnvironments] = useState(0);
   const [runs, setRuns] = useState(0);
   const [running, setRunning] = useState(0);
+  const [runRows, setRunRows] = useState<Run[]>([]);
+  const [estimatedCostUsd, setEstimatedCostUsd] = useState<number | null>(null);
+  const [costRangeLabel, setCostRangeLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -41,12 +70,32 @@ export default function HomePage() {
       try {
         setLoading(true);
         const [envData, runData] = await Promise.all([fetchEnvironments(), fetchRuns()]);
+
+        let nextEstimatedCostUsd: number | null = null;
+        let nextCostRangeLabel: string | null = null;
+        if (envData.length > 0) {
+          try {
+            const usage = await fetchUsage(envData[0].tenant_id);
+            nextEstimatedCostUsd = usage.items.reduce(
+              (sum, item) => sum + item.estimated_cost_usd_micros,
+              0
+            ) / 1_000_000;
+            nextCostRangeLabel = `${formatTimestamp(usage.from_ts)} – ${formatTimestamp(usage.to_ts)}`;
+          } catch {
+            nextEstimatedCostUsd = null;
+            nextCostRangeLabel = null;
+          }
+        }
+
         if (cancelled) {
           return;
         }
         setEnvironments(envData.length);
         setRuns(runData.length);
+        setRunRows(runData);
         setRunning(runData.filter((r) => ["accepted", "running", "dispatching"].includes(r.state)).length);
+        setEstimatedCostUsd(nextEstimatedCostUsd);
+        setCostRangeLabel(nextCostRangeLabel);
         setError(null);
       } catch (err: unknown) {
         if (!cancelled) {
@@ -83,6 +132,21 @@ export default function HomePage() {
   const isApiDown =
     !!error && /api is unreachable|backend is running|network|failed to fetch|http 5\d\d/i.test(error);
   const isEmpty = environments === 0 && runs === 0 && !error;
+
+  const terminalRuns = useMemo(
+    () => runRows.filter((run) => ["succeeded", "failed", "cancelled"].includes(run.state)),
+    [runRows]
+  );
+  const succeededRuns = useMemo(
+    () => terminalRuns.filter((run) => run.state === "succeeded").length,
+    [terminalRuns]
+  );
+  const successRatePct = terminalRuns.length > 0 ? Math.round((succeededRuns / terminalRuns.length) * 100) : 0;
+
+  const recentRuns = useMemo(
+    () => [...runRows].sort((a, b) => parseTimestamp(b) - parseTimestamp(a)).slice(0, 5),
+    [runRows]
+  );
 
   return (
     <section className="stack">
@@ -154,7 +218,48 @@ export default function HomePage() {
           <div className="stat-value">{running}</div>
           <div className="subtle">Dispatching / accepted / running</div>
         </article>
+        <article className="card">
+          <h3>Success Rate</h3>
+          <div className="stat-value">{terminalRuns.length > 0 ? `${successRatePct}%` : "N/A"}</div>
+          <div className="subtle">Terminal runs succeeded</div>
+        </article>
+        <article className="card">
+          <h3>Estimated Cost</h3>
+          <div className="stat-value">{formatUsd(estimatedCostUsd)}</div>
+          <div className="subtle">Usage API summary{costRangeLabel ? ` (${costRangeLabel})` : ""}</div>
+        </article>
       </div>
+
+      {recentRuns.length > 0 ? (
+        <div className="card">
+          <div className="card-header-row">
+            <h3>Recent Runs</h3>
+            <Link href="/runs" className="inline-link">Open full run history &rarr;</Link>
+          </div>
+          <div className="table-wrap" style={{ marginTop: 10 }}>
+            <table className="table-compact">
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>State</th>
+                  <th>Environment</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentRuns.map((run) => (
+                  <tr key={run.id}>
+                    <td>{shortId(run.id)}</td>
+                    <td><span className={`badge ${run.state}`}>{run.state}</span></td>
+                    <td>{shortId(run.environment_id)}</td>
+                    <td>{formatTimestamp(run.updated_at ?? run.created_at ?? run.started_at ?? run.ended_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       {isEmpty ? (
         <div className="card">
