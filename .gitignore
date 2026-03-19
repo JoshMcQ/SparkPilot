@@ -21,6 +21,8 @@ out/
 *.tfstate
 *.tfstate.backup
 .env
+.env.*
+*.env
 .claude/
 artifacts/
 output/
