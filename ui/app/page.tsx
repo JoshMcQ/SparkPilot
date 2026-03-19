@@ -157,7 +157,8 @@ export default function HomePage() {
           run operations.
         </p>
         <div className="button-row" style={{ marginTop: 12 }}>
-          <Link href="/environments" className="button">Get Started</Link>
+          <Link href="/onboarding/aws" className="button">Start AWS Onboarding</Link>
+          <Link href="/environments" className="button button-secondary">Open Environments</Link>
           <Link
             href="/runs"
             className="button"

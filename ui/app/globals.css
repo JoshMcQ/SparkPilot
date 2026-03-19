@@ -159,6 +159,90 @@ h3 {
   font-size: 0.83rem;
 }
 
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--accent-strong);
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-chip.success {
+  background: rgba(13, 127, 94, 0.12);
+  color: #0d7f5e;
+}
+
+.status-chip.pending {
+  background: rgba(184, 111, 0, 0.12);
+  color: #8a5300;
+}
+
+.onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.onboarding-step {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.step-index.done {
+  border-color: rgba(13, 127, 94, 0.35);
+  background: rgba(13, 127, 94, 0.12);
+  color: #0d7f5e;
+}
+
+.step-index.pending {
+  border-color: rgba(184, 111, 0, 0.25);
+  background: rgba(184, 111, 0, 0.08);
+  color: #8a5300;
+}
+
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .stack {
   display: flex;
   flex-direction: column;

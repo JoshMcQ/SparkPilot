@@ -4,6 +4,9 @@ import nextTypescript from "eslint-config-next/typescript";
 
 export default defineConfig([
   {
+    ignores: ["playwright-report/**", "test-results/**", ".next/**"],
+  },
+  {
     extends: [...nextCoreWebVitals, ...nextTypescript],
   },
 ]);

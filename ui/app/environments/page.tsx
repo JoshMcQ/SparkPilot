@@ -96,14 +96,17 @@ export default function EnvironmentsPage() {
 
   return (
     <section className="stack">
-      <EnvironmentCreateForm />
       <div className="card">
-        <h3>Tenant Environments</h3>
+        <div className="card-header-row">
+          <h3>Tenant Environments</h3>
+          <Link href="/onboarding/aws" className="inline-link">Open AWS onboarding →</Link>
+        </div>
         <div className="subtle">
           BYOC-Lite uses an existing EKS namespace. Full mode is hidden in UI for this deployment until full-BYOC
           infrastructure is explicitly enabled.
         </div>
       </div>
+      <EnvironmentCreateForm />
 
       {error ? (
         <div className="card error-card">

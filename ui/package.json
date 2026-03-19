@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
-    "test": "node --import tsx --test \"tests/**/*.test.ts\""
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test:e2e:onboarding": "playwright test tests/e2e/onboarding.spec.ts"
   },
   "dependencies": {
     "next": "16.2.0",
@@ -15,11 +16,13 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "22.15.3",
     "@types/react": "18.3.20",
     "@types/react-dom": "18.3.7",
     "eslint": "9.38.0",
     "eslint-config-next": "16.2.0",
+    "playwright": "^1.58.2",
     "tsx": "^4.21.0",
     "typescript": "5.8.3"
   }

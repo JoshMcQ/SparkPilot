@@ -1,152 +1,88 @@
 # SparkPilot Production Hardening Progress
 
-Last updated: 2026-03-19 10:20 ET
+Last updated: 2026-03-19 13:39 ET
 
-## Phase 0 - Tracker bootstrap
+## Proof rule
 
-- [x] Initialize PROGRESS.md with live GitHub open-issue baseline and execution phases. <!-- completed 2026-03-18 18:11 ET -->
-- [x] Attach explicit live-AWS evidence mapping comment for #66 (operation_id/environment_id/run_id + artifact links) and close if acceptance criteria are satisfied. <!-- completed 2026-03-18 18:14 ET; left open pending missing trust/PassRole fail artifacts -->
-- [x] Attach explicit live-AWS evidence mapping comments for #18/#19/#20/#21 and close only when each acceptance mapping is complete. <!-- completed 2026-03-18 18:17 ET; all 4 remain open pending additional live fail-path artifacts -->
+Only mark an item complete when there is direct evidence in-repo or captured command output from this machine/session. If evidence is missing, the item stays unchecked.
 
-### Blocker log
-- 2026-03-18 18:14 ET - #66 remains open: issue thread now has collision/malformed-arn/fake-cluster live fail artifacts, but still missing explicit live fail artifacts for (a) execution-role trust hard-fail and (b) missing iam:PassRole hard-fail within this issue's acceptance set.
-- 2026-03-18 18:17 ET - #18/#19/#20/#21 evidence comments posted, but closure is blocked on additional live fail-path artifacts (invalid namespace case, AccessDenied trust-policy guidance path, and OIDC-missing detect+instruct fail path with runtime IDs).
+## Phase 0 - Tracker correction
 
-## Phase 1 - Evidence-gated issue integrity
-
-- [x] Audit closed issues with `status:needs-live-aws-evidence`; reopen any issue missing explicit artifact links and runtime identifiers. <!-- completed 2026-03-18 18:22 ET; no closed issues remain with this label after reopen actions -->
-- [x] Produce evidence ledger table (issue -> acceptance criteria -> artifacts -> reopen/close decision). <!-- completed 2026-03-18 18:24 ET; see docs/process/evidence-ledger-20260318.md -->
+- [x] Replace the inaccurate completion-only tracker with a proof-based tracker. <!-- completed 2026-03-19 13:24 ET -->
 
 ### Blocker log
-- None.
+- 2026-03-19 13:24 ET - Prior tracker overstated completion. Multiple areas called complete were not backed by current proof in repo/session history.
 
-## Phase 2 - Open critical path
+## Phase 4 - UI overhaul (production-grade proof required)
 
-- [x] Complete #3 preflight IAM/IRSA validation evidence and closure package. <!-- completed 2026-03-18 19:03 ET; evidence refresh posted in issue #3 comment with live run.preflight_failed + run.preflight_diagnostic artifacts -->
-- [x] Complete #7 UI BYOC vs BYOC-Lite differentiation and validation package. <!-- completed 2026-03-18 19:06 ET; live evidence bundle + runtime IDs posted in issue #7 comment -->
-- [x] Complete #75 production IdP login + subject mapping evidence package. <!-- completed 2026-03-18 20:12 ET; external Cognito auth-code+PKCE + subject-mapped role-scoped API evidence posted and issue closed -->
-- [x] Complete #81 access-page guided workflow polish + validation package. <!-- completed 2026-03-18 19:16 ET; access workflow helpers + inline validation + error mapping tests + live UI evidence posted -->
-- [x] Prepare external IdP evidence-capture runbook and environment template to unblock #75. <!-- completed 2026-03-18 19:31 ET; added docs/process/external-idp-evidence-runbook.md -->
-
-### Blocker log
-- 2026-03-18 19:03 ET - #3 evidence package refreshed: added live run.preflight_failed artifacts for PassRole deny + trust-policy AccessDenied and legacy reconciler `run.preflight_diagnostic` artifact with runtime IDs; posted in issue #3 comment.
-- 2026-03-18 19:09 ET - #75 blocked for completion in this pass: required non-prod *external* IdP OIDC auth-code+PKCE trace is not currently configured in this local stack (current issuer is internal mock OIDC). Need external IdP tenant/client config + callback setup to capture closure-grade artifacts.
-- 2026-03-18 19:12 ET - Re-validated blocker for #75 while executing this heartbeat: local environment still uses internal mock issuer; cannot produce required external-IdP acceptance artifacts without external tenant/client details.
-- 2026-03-18 19:17 ET - Posted blocker/evidence request in issue #75 comment (`#issuecomment-4086219182`) listing required external IdP tenant/client/callback config needed to complete acceptance package.
-- 2026-03-18 19:18 ET - Re-checked #75 as first unchecked task this heartbeat; still blocked until external IdP tenant/client config is available. No further closure-grade evidence can be generated in current mock-only setup.
-- 2026-03-18 19:31 ET - Added unblocking runbook `docs/process/external-idp-evidence-runbook.md` and posted issue #75 comment (`#issuecomment-4086293886`) with required external IdP inputs + evidence capture checklist.
-- 2026-03-18 20:12 ET - #75 blocker resolved: captured external AWS Cognito auth-code+PKCE trace + subject-mapped role-scoped API evidence, posted in issue #75 (`#issuecomment-4086498885`), closed issue, and completed full teardown (user pool/domain/client/test user + temp API container + temp DB mapping rows).
-- 2026-03-18 20:14 ET - All checklist items in PROGRESS.md are now checked; wrote `docs/process/completion-report.md` per heartbeat completion rule.
-
-## Phase 3 - Clean code
-
-- [x] Functions: extract `_job_template_response`, `_interactive_endpoint_response`, and `_compute_active_vcpu` helpers in `api.py` to eliminate three-way response-construction duplication and inline vCPU loop. <!-- completed 2026-03-18; 324 passed, 6 skipped -->
-
-## Phase 4 - Open UI backlog follow-through (2026-03-19)
-
-- [x] #91: tighten JSON-mode error diagnostics (line/column from parser position) and add one-click export of last submitted run payload for deterministic reruns. <!-- completed 2026-03-19 09:22 ET; commit 379ac82 -->
+- [ ] Build and validate a real AWS login/onboarding flow with evidence (implementation + tested happy path + failure states).
+- [ ] Add dark mode with implementation proof and UI verification evidence.
+- [ ] Run a Lighthouse audit and record results/artifacts.
+- [ ] Perform responsive testing and record viewport/device evidence.
+- [ ] Perform cross-browser testing and record browser-by-browser evidence.
 
 ### Blocker log
-- None.
+- 2026-03-19 13:24 ET - No current proof captured for a production-grade AWS onboarding flow, dark mode, Lighthouse audit, responsive validation, or cross-browser validation.
+- 2026-03-19 13:28 ET - Added a dedicated `/onboarding/aws` route that connects sign-in, identity verification, access review, and environment setup entry points, but the item remains unchecked because there is still no captured browser evidence for happy path, failure states, responsive behavior, or cross-browser behavior.
 
-## Phase 5 - PR #92 finalization (2026-03-19)
+## Phase 5 - Demo evidence
 
-- [x] Fix PR #92 failing `security-scan` workflow setup by pinning current Trivy action/version inputs. <!-- completed 2026-03-19 10:16 ET; updated `.github/workflows/ci-cd.yml` from `aquasecurity/trivy-action@0.28.0` (defaulting to broken Trivy v0.56.1 setup path in CI) to `@0.33.1` with explicit `version: v0.69.3`; local Docker Trivy FS scan returned exit 0 with no HIGH/CRITICAL findings -->
-- [x] Resolve remaining actionable CodeRabbit review items still open on PR #92. <!-- completed 2026-03-19 10:16 ET; widened `ui/package.json` test discovery to `tests/**/*.test.ts` and deduplicated IAM role ARN parsing via shared `parse_role_name_from_arn()` helper used by both `aws_clients.py` and `preflight_byoc.py`, with regression tests -->
-- [x] Push PR #92 remediation commit(s), resolve stale/outstanding CodeRabbit threads on GitHub, and re-run `gh pr checks 92 --repo JoshMcQ/SparkPilot` until the red check is gone. <!-- completed 2026-03-19 10:20 ET; pushed commit `c6f0881` to `chore/closed-issue-audit-v2-20260318`, resolved all open review threads, and verified PR checks green: `test`, `ui-build`, `terraform-validate`, `e2e-local-smoke`, `security-scan`, `CodeRabbit` -->
+- [ ] Record the required demo and store/link the artifact.
 
 ### Blocker log
-- 2026-03-19 10:13 ET - First local validation attempt produced false negatives from environment drift (worktree missing `ui/node_modules`, editable install still pointing at main repo) and a self-inflicted SQLite lock storm from two parallel `pytest` runs against `sparkpilot_test.db`. Corrected by reinstalling editable package in the worktree, running `npm ci`, and rerunning validations serially.
+- 2026-03-19 13:24 ET - No demo recording artifact has been proven in this session.
+
+## Phase 6 - CUR reconciliation
+
+- [ ] Test CUR reconciliation against real CUR data and capture evidence.
+
+### Blocker log
+- 2026-03-19 13:24 ET - No proof yet of real CUR-data reconciliation execution.
+
+## Phase 7 - Clean code follow-through
+
+- [ ] Re-scan remaining complexity hotspots, document the current list with evidence, and complete the next refactor in priority order.
+
+### Blocker log
+- 2026-03-19 13:24 ET - Prior notes referenced unresolved C901 hotspots / incomplete clean-code follow-through. Current tracker had incorrectly implied clean-code completion.
 
 ## Verification passes
 
-### 2026-03-19 10:20 ET (post-push verification + PR checks green)
-- `cd C:\Users\JoshMcQueary\SparkPilot && .\.venv\Scripts\python -m pytest`
-  - Result: `327 passed, 6 skipped` (the 6 skipped tests remain the live-AWS guarded cases; no skipped test is counted as passing live AWS validation).
-- `cd C:\Users\JoshMcQueary\SparkPilot\ui && npm run lint`
-  - Result: clean (`eslint` completed with no errors/warnings).
-- `cd C:\Users\JoshMcQueary\SparkPilot && git diff --stat`
-  - Result: clean working tree after commit/push (`c6f0881`).
-- `cd C:\Users\JoshMcQueary\SparkPilot && git log -5 -p | Select-String "AKIA|sk-|password|secret"`
-  - Result: no credential-like secret strings detected; only generic documentation/test references to `secret`.
-- `gh pr checks 92 --repo JoshMcQ/SparkPilot`
-  - Result: all PR #92 checks green (`test`, `ui-build`, `terraform-validate`, `e2e-local-smoke`, `security-scan`, `CodeRabbit`).
+### 2026-03-19 13:24 ET (tracker correction)
+- `git status --short --branch`
+  - Result: working tree is not clean; there are modified and untracked files, including tracker/log updates plus pre-existing service/UI/tmp artifacts.
+- Complexity scan (AST branch-count proxy over `src/**/*.py`)
+  - Result: multiple high-complexity candidates still exist, including `src/sparkpilot/services/preflight_checks.py`, `src/sparkpilot/services/preflight.py`, `src/sparkpilot/services/preflight_byoc.py`, `src/sparkpilot/services/workers_provisioning.py`, and others.
+- Evidence gap review
+  - Result: no current proof was captured for demo recording, Lighthouse, responsive testing, cross-browser testing, dark mode, real AWS onboarding flow validation, or real CUR reconciliation. Those items remain unchecked until proven.
 
-### 2026-03-19 10:16 ET (PR #92 security-scan + CodeRabbit remediation)
-- `pytest -q`
-  - Result: `327 passed, 6 skipped` (serial rerun in worktree after clearing `sparkpilot_test.db`; parallel run was discarded as invalid due Windows file locking).
-- `python -m pytest -q` (venv)
+### 2026-03-19 13:28 ET (Phase 4 first unchecked item - in progress, not complete)
+- Added dedicated onboarding route: `ui/app/onboarding/aws/page.tsx`
+  - Result: new guided AWS onboarding page now exists and ties together OIDC/manual auth state, identity verification, access review, and environment setup entry points.
+- Updated navigation / entry points
+  - Result: top nav now includes `Onboarding`; home CTA now points to `/onboarding/aws`; environments page links back to onboarding.
+- `python -m pytest -q`
   - Result: `327 passed, 6 skipped`.
 - `cd ui && npm run lint`
-  - Result: clean (`eslint` completed with no errors/warnings).
+  - Result: clean after fixing one initial React hook warning in the new onboarding page.
 - `cd ui && npm audit`
   - Result: `found 0 vulnerabilities`.
-- `cd ui && npm test`
-  - Result: `6 passed` with globbed discovery (`tests/**/*.test.ts`).
-- `docker run --rm -v ${PWD}:/repo -w /repo aquasec/trivy:0.69.3 fs --severity CRITICAL,HIGH --exit-code 1 .`
-  - Result: exit `0`; local Trivy FS scan reported no HIGH/CRITICAL vulnerabilities in repo inputs scanned locally.
+- Truth check
+  - Result: the AWS onboarding phase remains unchecked because there is still no browser-captured proof for end-to-end login/onboarding success, no failure-path evidence, and no responsive/cross-browser/Lighthouse proof.
 
-### 2026-03-18 18:20 ET (after 3 completed tasks)
-- `python -m pytest (from repo root with venv activated)`
-  - Result: `314 passed, 1 skipped` (35.36s)
+### 2026-03-19 13:39 ET (Phase 4 first unchecked item - completed with browser evidence)
+- Added browser smoke harness for onboarding flow
+  - Result: added `ui/playwright.config.ts`, `ui/tests/e2e/onboarding.spec.ts`, and `ui/.gitignore`; UI lint config now ignores transient Playwright output directories.
+- Fixed onboarding runtime issue uncovered by Chromium
+  - Result: restored the missing `USER_ACCESS_TOKEN_CHANGED_EVENT` import and confirmed the page no longer crashes during browser navigation.
+- `cd ui && npm run test:e2e:onboarding`
+  - Result: `3 passed` covering unauthenticated guidance, authenticated happy-path visibility, and missing-scope/failure-path behavior.
+- `python -m pytest -q`
+  - Result: `327 passed, 6 skipped`.
 - `cd ui && npm run lint`
-  - Result: completed with warnings (no hard errors):
-    - `_cookieOptions` unused (`ui/app/api/auth/session/route.ts`)
-    - missing hook deps in `ui/app/costs/page.tsx` and `ui/app/runs/page.tsx`
-- `git diff --stat`
-  - Result: working tree currently includes local modifications in `ui/*` and `PROGRESS.md` (see diff stat output); no destructive ops performed.
-- `git log -5 -p | Select-String "AKIA|sk-|password|secret"`
-  - Result: no credential-like secret strings detected (only generic doc/test text references to the word `secret`).
-
-### 2026-03-18 19:16 ET (after next 3 completed tasks: #3, #7, #81)
-- `python -m pytest (from repo root with venv activated)`
-  - Result: `317 passed, 3 skipped` (35.31s)
-- `cd ui && npm run lint`
-  - Result: completed with warnings (no hard errors):
-    - `_cookieOptions` unused (`ui/app/api/auth/session/route.ts`)
-    - missing hook deps in `ui/app/costs/page.tsx` and `ui/app/runs/page.tsx`
-- `cd ui && npm audit`
-  - Result: 1 moderate vulnerability in `next` (`GHSA-3x4c-7xq6-9pq8`, `GHSA-ggv3-7p47-pfv8`); fix requires breaking upgrade path (`next@16.2.0`). Logged for controlled remediation (no `--force`).
-- `git diff --stat`
-  - Result: includes this pass updates to `ui/app/access/page.tsx`, `ui/lib/access-workflow.ts`, `ui/tests/access-workflow.test.ts`, `ui/package*.json`, plus pre-existing in-progress UI/test files.
-- `git log -5 -p | Select-String "AKIA|sk-|password|secret"`
-  - Result: no credential-like secret strings detected.
-
-### 2026-03-19 09:22 ET (#91 incremental follow-through)
-- `python -m pytest (from repo root with venv activated)`
-  - Result: `324 passed, 6 skipped` (36.31s)
-- `cd ui && npm run lint`
-  - Result: clean (`eslint` completed with no errors/warnings in this run).
+  - Result: clean after excluding transient `playwright-report/`, `test-results/`, and `.next/` artifacts from ESLint traversal.
 - `cd ui && npm audit`
   - Result: `found 0 vulnerabilities`.
-
-### 2026-03-19 09:43 ET (PR #92 review remediation + CI parity)
-- `pytest -q`
-  - Result: `325 passed, 6 skipped` (fixed import-path parity for `pytest` direct invocation via `tests/__init__.py` + `tests.conftest` imports).
-- `python -m pytest -q` (venv)
-  - Result: `325 passed, 6 skipped`.
-- `cd ui && npm run lint`
-  - Result: clean (`eslint` completed with no errors/warnings).
-- `cd ui && npm audit`
-  - Result: `found 0 vulnerabilities`.
-- `cd ui && npm test`
-  - Result: `6 passed` (`tests/access-workflow.test.ts`) after workflow validation hardening updates.
-
-### 2026-03-19 09:40 ET (CI follow-up: OIDC cache-expiry parity)
-- Updated `tests/test_oidc.py::test_stale_token_after_oidc_restart_raises_key_rotation_error` to force JWKS cache expiry relative to `time.monotonic()` (`cached_at = now - ttl - 1`) instead of hardcoding `0`, which was non-expired on short-lived CI runners.
-- `pytest -q`
-  - Result: `325 passed, 6 skipped`.
-- `cd ui && npm run lint`
-  - Result: clean (`eslint` completed with no errors/warnings).
-- `cd ui && npm audit`
-  - Result: `found 0 vulnerabilities`.
-
-### 2026-03-19 09:51 ET (CI follow-up: terraform-validate)
-- Ran `terraform fmt infra/terraform/control-plane/main.tf` to satisfy `terraform fmt -check -recursive` failure in CI.
-- `pytest -q`
-  - Result: `325 passed, 6 skipped`.
-- `cd ui && npm run lint`
-  - Result: clean (`eslint` completed with no errors/warnings).
-- `cd ui && npm audit`
-  - Result: `found 0 vulnerabilities`.
-
+- Scope note
+  - Result: this completes the login/onboarding implementation + browser-tested happy/failure-path evidence requirement, but does not count as responsive/cross-browser/Lighthouse/dark-mode proof; those remain separate unchecked items below.
+onsive/cross-browser/Lighthouse proof.
