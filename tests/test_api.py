@@ -10,7 +10,7 @@ os.environ.setdefault("SPARKPILOT_DATABASE_URL", "sqlite:///./sparkpilot_test.db
 from sparkpilot.api import app  # noqa: E402
 from sparkpilot.aws_clients import EmrDispatchResult  # noqa: E402
 from sparkpilot.config import get_settings  # noqa: E402
-from sparkpilot.db import Base, SessionLocal, engine, init_db  # noqa: E402
+from sparkpilot.db import Base, SessionLocal, engine  # noqa: E402
 from sparkpilot.models import AuditEvent, EmrRelease, Environment, ProvisioningOperation, Run, UsageRecord  # noqa: E402
 from sparkpilot.services import _record_usage_if_needed, process_provisioning_once, process_reconciler_once, process_scheduler_once, sync_emr_releases_once  # noqa: E402
 from sparkpilot.terraform_orchestrator import TerraformApplyResult, TerraformPlanResult  # noqa: E402
@@ -3200,7 +3200,7 @@ def _create_ready_env_for_policy(client: TestClient, suffix: str = "pol") -> dic
 def test_policy_crud_lifecycle() -> None:
     """Admin can create, list, get, and delete a policy (#39)."""
     client = TestClient(app)
-    fixtures = _create_ready_env_for_policy(client, "crud")
+    _create_ready_env_for_policy(client, "crud")
 
     # Create
     resp = client.post("/v1/policies", json={
@@ -3228,11 +3228,9 @@ def test_policy_crud_lifecycle() -> None:
     assert resp.status_code == 200
     assert resp.json()["id"] == policy["id"]
 
-    # Delete (deactivate)
     resp = client.delete(f"/v1/policies/{policy['id']}")
     assert resp.status_code == 204
 
-    # Verify deactivated
     resp = client.get(f"/v1/policies/{policy['id']}")
     assert resp.status_code == 200
     assert resp.json()["active"] is False
@@ -4614,14 +4612,12 @@ def test_matrix_evidence_artifacts_present(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 from conftest import (
-    _PRIVATE_KEY,
     _JWKS_PATH,
     issue_test_token,
-    TEST_JWT_KID,
     TEST_OIDC_AUDIENCE,
     TEST_OIDC_ISSUER,
 )
-from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
+from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError
 
 
 def _make_verifier(**overrides) -> OIDCTokenVerifier:
@@ -4792,15 +4788,16 @@ def test_oidc_session_cookie_flow() -> None:
 
 def test_oidc_multiple_idp_config_pattern() -> None:
     """Different issuer/audience combos create isolated verifiers (#69)."""
-    import json as json_module
 
     # Verifier 1: primary issuer
     v1 = _make_verifier(issuer="https://cognito.example.com", audience="sparkpilot-api")
     # Verifier 2: different issuer (for multi-IdP)
     v2 = _make_verifier(issuer="https://auth0.example.com", audience="sparkpilot-api")
 
-    # Token for v1 issuer should fail on v2
+    # Token for v1 issuer should validate on v1 but fail on v2
     token_v1 = issue_test_token("multi-user", issuer="https://cognito.example.com")
+    claims_v1 = v1.verify_access_token(token_v1)
+    assert claims_v1.subject == "multi-user"
     with pytest.raises(OIDCValidationError):
         v2.verify_access_token(token_v1)
 

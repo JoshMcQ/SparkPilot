@@ -237,7 +237,6 @@ def test_compat_import_error_caught() -> None:
 
 def test_compat_runtime_exception_not_swallowed() -> None:
     """A RuntimeError raised during import should propagate, not be silenced."""
-    import importlib
     import types
 
     # Simulate a broken dagster module that raises RuntimeError on import

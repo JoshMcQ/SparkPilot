@@ -1582,7 +1582,6 @@ class EmrServerlessClient:
     def describe_job_run(self, application_id: str, job_run_id: str) -> tuple[str, str | None]:
         if self.settings.dry_run_mode:
             return "RUNNING", None
-        session_key = f"{application_id}/{job_run_id}"
         try:
             # We need the environment's role ARN to get the session; callers pass pre-created sessions.
             # This method is intended to be called via the reconciliation path which constructs its

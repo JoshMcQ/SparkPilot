@@ -80,11 +80,6 @@ def _run(
     )
 
 
-# ---------------------------------------------------------------------------
-# test_collect_all_kpis_returns_correct_structure
-# ---------------------------------------------------------------------------
-
-
 def test_collect_all_kpis_returns_correct_structure(db: Session) -> None:
     result = collect_all_kpis(db)
 

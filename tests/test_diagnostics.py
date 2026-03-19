@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("SPARKPILOT_DATABASE_URL", "sqlite:///./sparkpilot_test.db")
 
 from sparkpilot.api import app  # noqa: E402
-from sparkpilot.db import Base, SessionLocal, engine, init_db  # noqa: E402
+from sparkpilot.db import Base, SessionLocal, engine  # noqa: E402
 from sparkpilot.models import Run  # noqa: E402
 from sparkpilot.services import _diagnostics_from_log_lines, process_provisioning_once, process_reconciler_once, process_scheduler_once  # noqa: E402
 

@@ -1,5 +1,4 @@
 """Tests for Databricks dispatch client."""
-import pytest
 import httpx
 from sparkpilot.databricks_client import DatabricksClient, DatabricksDispatchResult
 

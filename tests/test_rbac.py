@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 os.environ.setdefault("SPARKPILOT_DATABASE_URL", "sqlite:///./sparkpilot_test.db")
 
 from sparkpilot.api import app  # noqa: E402
-from sparkpilot.db import Base, SessionLocal, engine, init_db  # noqa: E402
+from sparkpilot.db import Base, SessionLocal, engine  # noqa: E402
 from sparkpilot.models import AuditEvent, UserIdentity  # noqa: E402
 from sparkpilot.services import process_provisioning_once  # noqa: E402
 

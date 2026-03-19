@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from sparkpilot.api import app
 from sparkpilot.config import get_settings
-from sparkpilot.db import Base, SessionLocal, engine, init_db
+from sparkpilot.db import Base, SessionLocal, engine
 
 
 def setup_function() -> None:

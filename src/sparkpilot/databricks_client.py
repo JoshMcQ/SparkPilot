@@ -2,15 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 import logging
-import time
 from typing import Any
 
 import httpx
 
-from sparkpilot.config import get_settings
-from sparkpilot.models import Environment, Job, Run
 
 logger = logging.getLogger(__name__)
 
