@@ -1,304 +1,199 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import {
-  fetchEnvironments,
-  fetchRuns,
-  fetchUsage,
-  type Run,
-  USER_ACCESS_TOKEN_CHANGED_EVENT,
-  USER_ACCESS_TOKEN_STORAGE_KEY,
-} from "@/lib/api";
+import { LandingNav } from "@/components/landing-nav";
+import { LandingFooter } from "@/components/landing-footer";
 
-const VALUE_PILLARS = [
+/* ── Inline SVG icons for feature cards ───────────── */
+function IconShield() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  );
+}
+function IconDollar() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  );
+}
+function IconCompass() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+    </svg>
+  );
+}
+function IconActivity() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+    </svg>
+  );
+}
+function IconLayers() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+    </svg>
+  );
+}
+function IconCloud() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+    </svg>
+  );
+}
+
+const FEATURES = [
   {
-    title: "Fail-fast preflight safety",
-    detail:
-      "SparkPilot blocks bad submissions before dispatch with IAM/IRSA/OIDC diagnostics and remediation steps.",
+    icon: <IconShield />,
+    title: "Preflight Safety Gates",
+    description:
+      "Every run passes IAM, IRSA, OIDC, and resource-quota checks before touching your cluster. Bad submissions are blocked with clear remediation steps — not silent failures.",
   },
   {
-    title: "Cost-aware operations",
-    detail:
-      "Track environment/run usage and connect run execution to accountable cost controls and team ownership.",
+    icon: <IconDollar />,
+    title: "Cost-Aware Operations",
+    description:
+      "CUR-aligned cost attribution by team and environment. Know what each Spark job costs before it runs, and get automated alerts when budgets are at risk.",
   },
   {
-    title: "Operator-first workflows",
-    detail:
-      "Guided access setup, explicit run states, and deterministic log pointers reduce on-call investigation time.",
+    icon: <IconCompass />,
+    title: "Guided Onboarding",
+    description:
+      "A step-by-step wizard connects your AWS account, validates cross-account trust, and provisions your first environment in minutes — not days.",
+  },
+  {
+    icon: <IconActivity />,
+    title: "Run Observability",
+    description:
+      "Deterministic log pointers, EMR virtual cluster IDs, and real-time state tracking. No more hunting through CloudWatch for the right log group.",
+  },
+  {
+    icon: <IconLayers />,
+    title: "Multi-Tenant Isolation",
+    description:
+      "Each environment gets its own namespace, IRSA bindings, and resource quotas. Teams share a cluster without stepping on each other.",
+  },
+  {
+    icon: <IconCloud />,
+    title: "Bring Your Own Cloud",
+    description:
+      "SparkPilot runs in your AWS account with your VPC, your S3 buckets, and your IAM policies. No data leaves your perimeter.",
   },
 ];
 
-function shortId(value: string): string {
-  if (!value) return "-";
-  if (value.length <= 12) return value;
-  return `${value.slice(0, 8)}…${value.slice(-4)}`;
-}
+const HOW_IT_WORKS = [
+  {
+    step: "1",
+    title: "Connect your AWS account",
+    description:
+      "Create a cross-account IAM role with our CloudFormation template. SparkPilot validates the trust relationship and required permissions automatically.",
+  },
+  {
+    step: "2",
+    title: "Provision an environment",
+    description:
+      "Define your EKS cluster, namespace, and resource quotas. SparkPilot handles EMR virtual cluster registration, IRSA setup, and OIDC federation.",
+  },
+  {
+    step: "3",
+    title: "Submit and monitor runs",
+    description:
+      "Push Spark jobs through the API or UI. Every run is preflight-checked, cost-estimated, dispatched, and tracked with deterministic log access.",
+  },
+];
 
-function formatUsd(value: number | null): string {
-  if (value == null) return "N/A";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
-}
-
-function parseTimestamp(run: Run): number {
-  const raw = run.created_at ?? run.updated_at ?? run.started_at ?? run.ended_at ?? "";
-  const parsed = Date.parse(raw);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatTimestamp(raw: string | null | undefined): string {
-  if (!raw) return "-";
-  const timestamp = Date.parse(raw);
-  if (!Number.isFinite(timestamp)) return raw;
-  return new Date(timestamp).toLocaleString();
-}
-
-export default function HomePage() {
-  const [environments, setEnvironments] = useState(0);
-  const [runs, setRuns] = useState(0);
-  const [running, setRunning] = useState(0);
-  const [runRows, setRunRows] = useState<Run[]>([]);
-  const [estimatedCostUsd, setEstimatedCostUsd] = useState<number | null>(null);
-  const [costRangeLabel, setCostRangeLabel] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        setLoading(true);
-        const [envData, runData] = await Promise.all([fetchEnvironments(), fetchRuns()]);
-
-        let nextEstimatedCostUsd: number | null = null;
-        let nextCostRangeLabel: string | null = null;
-        if (envData.length > 0) {
-          try {
-            const usage = await fetchUsage(envData[0].tenant_id);
-            nextEstimatedCostUsd = usage.items.reduce(
-              (sum, item) => sum + item.estimated_cost_usd_micros,
-              0
-            ) / 1_000_000;
-            nextCostRangeLabel = `${formatTimestamp(usage.from_ts)} – ${formatTimestamp(usage.to_ts)}`;
-          } catch {
-            nextEstimatedCostUsd = null;
-            nextCostRangeLabel = null;
-          }
-        }
-
-        if (cancelled) {
-          return;
-        }
-        setEnvironments(envData.length);
-        setRuns(runData.length);
-        setRunRows(runData);
-        setRunning(runData.filter((r) => ["accepted", "running", "dispatching"].includes(r.state)).length);
-        setEstimatedCostUsd(nextEstimatedCostUsd);
-        setCostRangeLabel(nextCostRangeLabel);
-        setError(null);
-      } catch (err: unknown) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load dashboard metrics.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    const onTokenChanged = () => {
-      void load();
-    };
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === USER_ACCESS_TOKEN_STORAGE_KEY) {
-        void load();
-      }
-    };
-
-    window.addEventListener(USER_ACCESS_TOKEN_CHANGED_EVENT, onTokenChanged);
-    window.addEventListener("storage", onStorage);
-    void load();
-    return () => {
-      cancelled = true;
-      window.removeEventListener(USER_ACCESS_TOKEN_CHANGED_EVENT, onTokenChanged);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
-
-  const isAuthError =
-    !!error && /authentication failed|access denied|no user access token|oidc jwt validation failed/i.test(error);
-  const isApiDown =
-    !!error && /api is unreachable|backend is running|network|failed to fetch|http 5\d\d/i.test(error);
-  const isEmpty = environments === 0 && runs === 0 && !error;
-
-  const terminalRuns = useMemo(
-    () => runRows.filter((run) => ["succeeded", "failed", "cancelled"].includes(run.state)),
-    [runRows]
-  );
-  const succeededRuns = useMemo(
-    () => terminalRuns.filter((run) => run.state === "succeeded").length,
-    [terminalRuns]
-  );
-  const successRatePct = terminalRuns.length > 0 ? Math.round((succeededRuns / terminalRuns.length) * 100) : 0;
-
-  const recentRuns = useMemo(
-    () => [...runRows].sort((a, b) => parseTimestamp(b) - parseTimestamp(a)).slice(0, 5),
-    [runRows]
-  );
-
+export default function LandingPage() {
   return (
-    <section className="stack">
-      <div className="card">
-        <h3>SparkPilot</h3>
-        <p className="subtle" style={{ marginTop: 8 }}>
-          Production guardrails for Spark on EKS: preflight gating, reliable dispatch telemetry, and cost-aware
-          run operations.
+    <div className="landing">
+      <LandingNav />
+
+      {/* ── Hero ───────────────────────────────── */}
+      <section className="landing-hero" id="hero">
+        <div className="landing-hero-badge">AWS-first BYOC Platform</div>
+        <h2 className="landing-hero-title">
+          Production guardrails for<br />
+          <span className="landing-hero-accent">Spark on EKS</span>
+        </h2>
+        <p className="landing-hero-sub">
+          SparkPilot gates every Spark job before it runs — validating IAM, OIDC, quotas, and
+          budgets. Your data stays in your AWS account. Your platform team stops firefighting.
         </p>
-        <div className="button-row" style={{ marginTop: 12 }}>
-          <Link href="/onboarding/aws" className="button">Start AWS Onboarding</Link>
-          <Link href="/environments" className="button button-secondary">Open Environments</Link>
-          <Link
-            href="/runs"
-            className="button"
-            style={{ background: "var(--surface)", color: "var(--brand)", border: "1px solid var(--brand)" }}
-          >
-            Explore Run Operations
+        <div className="landing-hero-actions">
+          <Link href="/contact" className="landing-btn landing-btn-primary">
+            Request access
+          </Link>
+          <Link href="/pricing" className="landing-btn landing-btn-secondary">
+            See pricing
           </Link>
         </div>
-      </div>
+        <p className="landing-hero-note">
+          Deploys in your AWS account · No data leaves your perimeter
+        </p>
+      </section>
 
-      <div className="card-grid">
-        {VALUE_PILLARS.map((pillar) => (
-          <article key={pillar.title} className="card">
-            <h3>{pillar.title}</h3>
-            <p className="subtle">{pillar.detail}</p>
-          </article>
-        ))}
-      </div>
-
-      {loading ? (
-        <div className="card">
-          <div className="subtle">Loading dashboard metrics...</div>
-        </div>
-      ) : null}
-
-      {error ? (
-        <div className="card error-card">
-          <strong>{isAuthError ? "Authentication Required" : isApiDown ? "API Unreachable" : "Dashboard Error"}</strong>
-          <div>
-            {isAuthError
-              ? "Your token is missing, expired, or invalid. Apply a fresh bearer token in the auth panel."
-              : isApiDown
-                ? "SparkPilot backend is not responding. Verify the API server is running and check your network connectivity."
-                : error}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="card-grid">
-        <article className="card">
-          <h3>Environments</h3>
-          <div className="stat-value">{environments}</div>
-          <div className="subtle">Dedicated tenant clusters</div>
-          {environments === 0 && !error ? (
-            <Link href="/environments" className="inline-link cta-link">Create your first environment &rarr;</Link>
-          ) : null}
-        </article>
-        <article className="card">
-          <h3>Total Runs</h3>
-          <div className="stat-value">{runs}</div>
-          <div className="subtle">Submitted job runs</div>
-          {runs === 0 && environments > 0 ? (
-            <Link href="/runs" className="inline-link cta-link">Submit your first run &rarr;</Link>
-          ) : null}
-        </article>
-        <article className="card">
-          <h3>In Flight</h3>
-          <div className="stat-value">{running}</div>
-          <div className="subtle">Dispatching / accepted / running</div>
-        </article>
-        <article className="card">
-          <h3>Success Rate</h3>
-          <div className="stat-value">{terminalRuns.length > 0 ? `${successRatePct}%` : "N/A"}</div>
-          <div className="subtle">Terminal runs succeeded</div>
-        </article>
-        <article className="card">
-          <h3>Estimated Cost</h3>
-          <div className="stat-value">{formatUsd(estimatedCostUsd)}</div>
-          <div className="subtle">Usage API summary{costRangeLabel ? ` (${costRangeLabel})` : ""}</div>
-        </article>
-      </div>
-
-      {recentRuns.length > 0 ? (
-        <div className="card">
-          <div className="card-header-row">
-            <h3>Recent Runs</h3>
-            <Link href="/runs" className="inline-link">Open full run history &rarr;</Link>
-          </div>
-          <div className="table-wrap" style={{ marginTop: 10 }}>
-            <table className="table-compact">
-              <thead>
-                <tr>
-                  <th>Run</th>
-                  <th>State</th>
-                  <th>Environment</th>
-                  <th>Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentRuns.map((run) => (
-                  <tr key={run.id}>
-                    <td>{shortId(run.id)}</td>
-                    <td><span className={`badge ${run.state}`}>{run.state}</span></td>
-                    <td>{shortId(run.environment_id)}</td>
-                    <td>{formatTimestamp(run.updated_at ?? run.created_at ?? run.started_at ?? run.ended_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
-      {isEmpty ? (
-        <div className="card">
-          <h3>Getting Started</h3>
-          <p className="subtle">
-            Start by provisioning an environment, then create a job and submit a run. Each run goes through
-            preflight checks before dispatching to EMR on EKS.
+      {/* ── Features ──────────────────────────── */}
+      <section className="landing-section" id="features">
+        <div className="landing-section-header">
+          <div className="landing-section-badge">Features</div>
+          <h2 className="landing-section-title">Everything you need to run Spark safely at scale</h2>
+          <p className="landing-section-sub">
+            From preflight checks to cost reconciliation, SparkPilot handles the operational
+            complexity so your data engineers can focus on building pipelines.
           </p>
-          <div className="button-row">
-            <Link href="/environments" className="button">Create Environment</Link>
-            <Link
-              href="/runs"
-              className="button"
-              style={{ background: "var(--surface)", color: "var(--brand)", border: "1px solid var(--brand)" }}
-            >
-              View Runs
-            </Link>
-          </div>
         </div>
-      ) : null}
+        <div className="landing-features-grid">
+          {FEATURES.map((f) => (
+            <article key={f.title} className="landing-feature-card">
+              <div className="landing-feature-icon">{f.icon}</div>
+              <h3>{f.title}</h3>
+              <p>{f.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
-      <div className="card-grid">
-        <article className="card">
-          <h3>Environment Operations</h3>
-          <p className="subtle">Provisioning state and isolation profile per tenant.</p>
-          <Link href="/environments" className="inline-link">Open environments &rarr;</Link>
-        </article>
-        <article className="card">
-          <h3>Run Operations</h3>
-          <p className="subtle">Run status, EMR IDs, and deterministic log pointers.</p>
-          <Link href="/runs" className="inline-link">Open runs &rarr;</Link>
-        </article>
-        <article className="card">
-          <h3>Cost &amp; Usage</h3>
-          <p className="subtle">CUR-aligned showback and resource usage by team.</p>
-          <Link href="/costs" className="inline-link">Open costs &rarr;</Link>
-        </article>
-      </div>
-    </section>
+      {/* ── How it works ──────────────────────── */}
+      <section className="landing-section" id="how-it-works">
+        <div className="landing-section-header">
+          <div className="landing-section-badge">How It Works</div>
+          <h2 className="landing-section-title">From zero to production in three steps</h2>
+        </div>
+        <div className="landing-steps">
+          {HOW_IT_WORKS.map((s) => (
+            <div key={s.step} className="landing-step">
+              <div className="landing-step-number">{s.step}</div>
+              <div className="landing-step-body">
+                <h3>{s.title}</h3>
+                <p>{s.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── CTA ───────────────────────────────── */}
+      <section className="landing-cta">
+        <h2>Ready to stop firefighting Spark?</h2>
+        <p>
+          Talk to us about your setup. We'll tell you honestly whether SparkPilot is the right fit.
+        </p>
+        <div className="landing-hero-actions">
+          <Link href="/contact" className="landing-btn landing-btn-primary">
+            Talk to us
+          </Link>
+          <Link href="/pricing" className="landing-btn landing-btn-secondary">
+            View pricing
+          </Link>
+        </div>
+      </section>
+
+      <LandingFooter />
+    </div>
   );
 }

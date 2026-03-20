@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from sparkpilot.audit import write_audit_event
 from sparkpilot.aws_clients import EmrEc2Client, EmrEksClient, EmrServerlessClient
+from sparkpilot.error_handling import error_details, error_message, error_type
 from sparkpilot.models import Environment, Run
 from sparkpilot.services._helpers import _now
 from sparkpilot.services.preflight import _build_preflight_cached, _preflight_summary
@@ -27,7 +28,7 @@ def _log_dispatch_failure(run: Run, env: Environment, exc: Exception) -> None:
             run.id,
             env.id,
             run.attempt,
-            type(exc).__name__,
+            error_type(exc),
         )
         return
     logger.exception(
@@ -35,7 +36,7 @@ def _log_dispatch_failure(run: Run, env: Environment, exc: Exception) -> None:
         run.id,
         env.id,
         run.attempt,
-        type(exc).__name__,
+        error_type(exc),
     )
 
 
@@ -55,9 +56,14 @@ def _handle_dispatch_failure(
         run.attempt += 1
         run.state = "queued"
         run.error_message = (
-            f"Transient dispatch failure on attempt {previous_attempt} of {job.retry_max_attempts}: {exc}. "
-            f"Retry scheduled as attempt {run.attempt}."
+            f"Transient dispatch failure on attempt {previous_attempt} of {job.retry_max_attempts}: "
+            f"{error_message(exc)}. Retry scheduled as attempt {run.attempt}."
         )
+        retry_details = error_details(exc)
+        retry_details.update({
+            "attempt": run.attempt,
+            "max_attempts": job.retry_max_attempts,
+        })
         write_audit_event(
             db,
             actor=actor,
@@ -65,18 +71,18 @@ def _handle_dispatch_failure(
             entity_type="run",
             entity_id=run.id,
             tenant_id=env.tenant_id,
-            details={
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-                "attempt": run.attempt,
-                "max_attempts": job.retry_max_attempts,
-            },
+            details=retry_details,
         )
         return
 
     run.state = "failed"
-    run.error_message = str(exc) if isinstance(exc, (ClientError, BotoCoreError)) else f"[{type(exc).__name__}] {exc}"
+    run.error_message = error_message(
+        exc,
+        include_type=not isinstance(exc, (ClientError, BotoCoreError)),
+    )
     run.ended_at = _now()
+    failure_details = error_details(exc)
+    failure_details["transient"] = transient
     write_audit_event(
         db,
         actor=actor,
@@ -84,7 +90,7 @@ def _handle_dispatch_failure(
         entity_type="run",
         entity_id=run.id,
         tenant_id=env.tenant_id,
-        details={"error": str(exc), "error_type": type(exc).__name__, "transient": transient},
+        details=failure_details,
     )
 
 

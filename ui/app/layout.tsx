@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { TopNav } from "@/components/top-nav";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { UserAuthPanel } from "@/components/user-auth-panel";
+import "./marketing-pages.css";
+import { AppShell } from "@/components/app-shell";
 
 const plexSans = IBM_Plex_Sans({
   subsets: ["latin"],
@@ -27,18 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${plexSans.variable} ${jetbrainsMono.variable}`}>
         <main className="page">
-          <header className="header">
-            <div>
-              <h1>SparkPilot</h1>
-              <div className="subtle">AWS-first BYOC Spark runtime control plane</div>
-            </div>
-            <div className="header-actions">
-              <ThemeToggle />
-              <TopNav />
-            </div>
-          </header>
-          <UserAuthPanel />
-          {children}
+          <AppShell>
+            {children}
+          </AppShell>
         </main>
       </body>
     </html>

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import botocore.exceptions
 
 from sparkpilot.config import get_settings
+from sparkpilot.error_handling import error_message
 from sparkpilot.services.emr_releases import _lake_formation_supported_for_label
 
 if TYPE_CHECKING:
@@ -62,9 +63,9 @@ def check_lf_service_linked_role_exists(region: str) -> dict[str, Any]:
         code = exc.response.get("Error", {}).get("Code", "")
         if code == "NoSuchEntity":
             return {"exists": False, "role_name": slr_name, "error": None}
-        return {"exists": False, "role_name": slr_name, "error": str(exc)}
-    except Exception as exc:
-        return {"exists": False, "role_name": slr_name, "error": str(exc)}
+        return {"exists": False, "role_name": slr_name, "error": error_message(exc)}
+    except botocore.exceptions.BotoCoreError as exc:
+        return {"exists": False, "role_name": slr_name, "error": error_message(exc, include_type=True)}
 
 
 def check_execution_role_lf_permissions(
@@ -111,15 +112,15 @@ def check_execution_role_lf_permissions(
             "permission_count": 0,
             "databases": [],
             "tables": [],
-            "error": str(exc),
+            "error": error_message(exc),
         }
-    except Exception as exc:
+    except botocore.exceptions.BotoCoreError as exc:
         return {
             "has_permissions": False,
             "permission_count": 0,
             "databases": [],
             "tables": [],
-            "error": str(exc),
+            "error": error_message(exc, include_type=True),
         }
 
 
@@ -209,7 +210,10 @@ def _add_service_linked_role_check(environment: "Environment", add_check: Callab
         add_check(
             code="fgac.service_linked_role",
             status_value="warning",
-            message=f"Unable to check Lake Formation service-linked role: {exc}",
+            message=(
+                "Unable to check Lake Formation service-linked role: "
+                f"{error_message(exc, include_type=True)}"
+            ),
             remediation="Ensure SparkPilot has iam:GetRole permission.",
         )
 
@@ -269,7 +273,10 @@ def _add_execution_role_permissions_check(
         add_check(
             code="fgac.lf_permissions",
             status_value="warning",
-            message=f"Unable to check Lake Formation permissions: {exc}",
+            message=(
+                "Unable to check Lake Formation permissions: "
+                f"{error_message(exc, include_type=True)}"
+            ),
         )
 
 
