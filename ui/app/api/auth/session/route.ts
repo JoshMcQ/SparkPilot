@@ -12,20 +12,6 @@ import { NextRequest, NextResponse } from "next/server";
 const COOKIE_NAME = "sparkpilot.session";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
-function _cookieOptions(maxAge: number): string {
-  const parts = [
-    `${COOKIE_NAME}=`,
-    `Path=/`,
-    `HttpOnly`,
-    `SameSite=Strict`,
-    `Max-Age=${maxAge}`,
-  ];
-  if (IS_PRODUCTION) {
-    parts.push("Secure");
-  }
-  return parts.join("; ");
-}
-
 /** POST: Store access token in HttpOnly cookie. */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let body: Record<string, unknown>;

@@ -4,10 +4,11 @@ Extracted from preflight.py to keep that module focused on the core builder,
 TTL cache, and summary helpers.
 """
 
+import os
 import re
 from typing import Callable
 
-from sparkpilot.aws_clients import EmrEksClient
+from sparkpilot.aws_clients import EmrEksClient, parse_role_name_from_arn
 from sparkpilot.models import Environment
 
 # ---------------------------------------------------------------------------
@@ -78,6 +79,31 @@ def _eks_cluster_region(eks_cluster_arn: str | None) -> str | None:
     return parts[3]
 
 
+def _dispatch_policy_remediation_command(customer_role_name: str) -> str:
+    return (
+        "aws iam put-role-policy "
+        f"--role-name {customer_role_name} "
+        "--policy-name SparkPilotByocLiteDispatch "
+        "--policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"emr-containers:StartJobRun\",\"emr-containers:DescribeJobRun\",\"emr-containers:CancelJobRun\"],\"Resource\":\"*\"}]}'"
+    )
+
+
+def _pass_role_policy_remediation_command(customer_role_name: str, execution_role_arn: str) -> str:
+    return (
+        "aws iam put-role-policy "
+        f"--role-name {customer_role_name} "
+        "--policy-name SparkPilotByocLitePassRole "
+        "--policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"iam:PassRole\"],\"Resource\":[\""
+        f"{execution_role_arn}"
+        "\"]}]}'"
+    )
+
+
+def _preflight_auto_trust_update_enabled() -> bool:
+    value = os.getenv("SPARKPILOT_PREFLIGHT_AUTOFIX_TRUST_POLICY", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
 # ---------------------------------------------------------------------------
 # Spark conf Spot helpers
 # ---------------------------------------------------------------------------
@@ -130,6 +156,7 @@ def _run_byoc_lite_aws_prechecks(
     _add_byoc_lite_pod_identity_readiness_check(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_access_entry_mode_check(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_dispatch_permission_checks(emr=emr, environment=environment, add_check=add_check)
+    _add_byoc_lite_namespace_collision_check(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_spot_capacity_checks(emr=emr, environment=environment, add_check=add_check)
     _add_byoc_lite_spot_executor_placement_check(spark_conf=spark_conf, add_check=add_check)
 
@@ -150,17 +177,23 @@ def _add_byoc_lite_oidc_association_check(
                 },
             )
             return
+        cluster_name = str(oidc_result.get("cluster_name") or "<cluster-name>")
         add_check(
             code="byoc_lite.oidc_association",
             status_value="fail",
             message="OIDC provider is not associated for target EKS cluster.",
             remediation=(
-                "Run `eksctl utils associate-iam-oidc-provider --cluster <name> "
-                "--region <region> --approve` in the customer account."
+                "Detect+instruct mode (default, no IAM mutation): run "
+                f"`eksctl utils associate-iam-oidc-provider --cluster {cluster_name} "
+                f"--region {environment.region} --approve` in the customer account. "
+                "Optional automation mode can be explicitly enabled later if desired "
+                "(SPARKPILOT_PREFLIGHT_AUTOFIX_OIDC_PROVIDER=true)."
             ),
             details={
                 "oidc_provider_arn": str(oidc_result.get("oidc_provider_arn") or ""),
-                "cluster_name": str(oidc_result.get("cluster_name") or ""),
+                "cluster_name": cluster_name,
+                "required_permissions": "eks:DescribeCluster, iam:GetOpenIDConnectProvider, iam:CreateOpenIDConnectProvider",
+                "automation_mode": "detect_only",
             },
         )
     except ValueError as exc:
@@ -169,9 +202,14 @@ def _add_byoc_lite_oidc_association_check(
             status_value="fail",
             message=str(exc),
             remediation=(
-                "Grant customer_role_arn permissions to describe EKS cluster and read OIDC provider, "
+                "Grant customer_role_arn permissions `eks:DescribeCluster` and `iam:GetOpenIDConnectProvider` "
+                "for detection (plus `iam:CreateOpenIDConnectProvider` if you want optional automation), "
                 "then retry preflight."
             ),
+            details={
+                "required_permissions": "eks:DescribeCluster, iam:GetOpenIDConnectProvider, iam:CreateOpenIDConnectProvider",
+                "automation_mode": "detect_only",
+            },
         )
 
 
@@ -189,7 +227,40 @@ def _add_byoc_lite_execution_role_trust_check(
                 "provider_arn": str(trust_result.get("provider_arn") or ""),
             },
         )
+        return
     except ValueError as exc:
+        if _preflight_auto_trust_update_enabled():
+            try:
+                update_result = emr.update_execution_role_trust_policy(environment)
+                trust_result = emr.check_execution_role_trust_policy(environment)
+                add_check(
+                    code="byoc_lite.execution_role_trust",
+                    status_value="pass",
+                    message="Execution role trust policy was auto-remediated during preflight.",
+                    details={
+                        "auto_remediated": True,
+                        "updated": bool(update_result.get("updated")),
+                        "already_present": bool(update_result.get("already_present")),
+                        "role_name": str(trust_result.get("role_name") or update_result.get("role_name") or ""),
+                        "provider_arn": str(
+                            trust_result.get("provider_arn")
+                            or update_result.get("provider_arn")
+                            or ""
+                        ),
+                    },
+                )
+                return
+            except ValueError as update_exc:
+                add_check(
+                    code="byoc_lite.execution_role_trust",
+                    status_value="fail",
+                    message=(
+                        f"{exc} Auto-remediation attempt failed: {update_exc}"
+                    ),
+                    remediation=str(update_exc),
+                )
+                return
+
         add_check(
             code="byoc_lite.execution_role_trust",
             status_value="fail",
@@ -296,6 +367,9 @@ def _add_byoc_lite_dispatch_permission_checks(
         dispatch_allowed = bool(permissions.get("dispatch_actions_allowed"))
         pass_role_allowed = bool(permissions.get("pass_role_allowed"))
         denied_actions = str(permissions.get("denied_dispatch_actions") or "")
+        execution_role_arn = str(permissions.get("execution_role_arn") or "")
+        customer_role_name = parse_role_name_from_arn(environment.customer_role_arn) or "<customer-role-name>"
+
         add_check(
             code="byoc_lite.customer_role_dispatch",
             status_value="pass" if dispatch_allowed else "fail",
@@ -305,8 +379,8 @@ def _add_byoc_lite_dispatch_permission_checks(
                 else "Customer role is missing required EMR dispatch actions."
             ),
             remediation=(
-                "Allow emr-containers:StartJobRun, emr-containers:DescribeJobRun, and "
-                "emr-containers:CancelJobRun on customer_role_arn."
+                "Add dispatch actions and retry preflight. Command: "
+                + _dispatch_policy_remediation_command(customer_role_name)
             )
             if not dispatch_allowed
             else None,
@@ -321,18 +395,29 @@ def _add_byoc_lite_dispatch_permission_checks(
                 else "Customer role does not allow iam:PassRole for execution role."
             ),
             remediation=(
-                "Allow iam:PassRole on SPARKPILOT_EMR_EXECUTION_ROLE_ARN for customer_role_arn."
+                "Grant iam:PassRole on the execution role and retry preflight. Command: "
+                + _pass_role_policy_remediation_command(
+                    customer_role_name,
+                    execution_role_arn or "<execution-role-arn>",
+                )
             )
             if not pass_role_allowed
             else None,
-            details={"execution_role_arn": str(permissions.get("execution_role_arn") or "")},
+            details={"execution_role_arn": execution_role_arn},
         )
     except ValueError as exc:
+        customer_role_name = parse_role_name_from_arn(environment.customer_role_arn) or "<customer-role-name>"
         add_check(
             code="byoc_lite.customer_role_dispatch",
             status_value="fail",
             message=str(exc),
-            remediation="Grant customer_role_arn IAM simulation permissions or validate dispatch permissions manually.",
+            remediation=(
+                "Allow IAM simulation for the customer role and rerun preflight. Command: "
+                "aws iam put-role-policy "
+                f"--role-name {customer_role_name} "
+                "--policy-name SparkPilotPreflightSimulation "
+                "--policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"iam:SimulatePrincipalPolicy\"],\"Resource\":\"*\"}]}'"
+            ),
             details={"required_actions": ", ".join(BYOC_LITE_CUSTOMER_ROLE_REQUIRED_ACTIONS)},
         )
         add_check(
@@ -340,10 +425,66 @@ def _add_byoc_lite_dispatch_permission_checks(
             status_value="fail",
             message="Unable to validate iam:PassRole due to dispatch permission check failure.",
             remediation=(
-                "Grant customer_role_arn iam:SimulatePrincipalPolicy and rerun preflight, or "
-                "manually confirm iam:PassRole on SPARKPILOT_EMR_EXECUTION_ROLE_ARN."
+                "After enabling IAM simulation, rerun preflight and apply PassRole policy if needed. "
+                "Required action: iam:PassRole on SPARKPILOT_EMR_EXECUTION_ROLE_ARN."
             ),
         )
+
+
+def _add_byoc_lite_namespace_collision_check(
+    *, emr: EmrEksClient, environment: Environment, add_check: Callable[..., None]
+) -> None:
+    try:
+        collision = emr.find_namespace_virtual_cluster_collision(environment)
+    except ValueError as exc:
+        add_check(
+            code="byoc_lite.namespace_collision",
+            status_value="warning",
+            message=f"Unable to evaluate namespace collision status: {exc}",
+            remediation="Grant customer_role_arn emr-containers:ListVirtualClusters permission.",
+        )
+        return
+
+    if not collision:
+        add_check(
+            code="byoc_lite.namespace_collision",
+            status_value="pass",
+            message="No active EMR virtual-cluster collision detected for eks_namespace.",
+            details={"eks_namespace": str(environment.eks_namespace or "")},
+        )
+        return
+
+    collision_id = str(collision.get("id") or "")
+    if environment.emr_virtual_cluster_id and collision_id == str(environment.emr_virtual_cluster_id):
+        add_check(
+            code="byoc_lite.namespace_collision",
+            status_value="pass",
+            message="Namespace maps to this environment's configured EMR virtual cluster.",
+            details={
+                "virtual_cluster_id": collision_id,
+                "virtual_cluster_state": str(collision.get("state") or ""),
+            },
+        )
+        return
+
+    add_check(
+        code="byoc_lite.namespace_collision",
+        status_value="fail",
+        message=(
+            f"Namespace collision detected: eks_namespace '{environment.eks_namespace}' already maps to "
+            f"virtual cluster '{collision_id}' (state={collision.get('state')})."
+        ),
+        remediation=(
+            "Use a unique namespace for this environment, or retire the conflicting virtual cluster. "
+            f"Example: aws emr-containers delete-virtual-cluster --id {collision_id} --region {environment.region}"
+        ),
+        details={
+            "collision_virtual_cluster_id": collision_id,
+            "collision_virtual_cluster_name": str(collision.get("name") or ""),
+            "collision_virtual_cluster_state": str(collision.get("state") or ""),
+            "eks_namespace": str(environment.eks_namespace or ""),
+        },
+    )
 
 
 def _add_byoc_lite_spot_capacity_checks(
@@ -509,6 +650,11 @@ def _add_byoc_lite_skipped_aws_prechecks(*, add_check: Callable[..., None]) -> N
         message="Access entry mode check was skipped because base BYOC-Lite prerequisites are not ready.",
     )
     add_check(
+        code="byoc_lite.namespace_collision",
+        status_value="warning",
+        message="Namespace collision check was skipped because base BYOC-Lite prerequisites are not ready.",
+    )
+    add_check(
         code="byoc_lite.spot_capacity",
         status_value="warning",
         message="Spot capacity check was skipped because base BYOC-Lite prerequisites are not ready.",
@@ -575,7 +721,10 @@ def _add_byoc_lite_cluster_arn_check(*, environment: Environment, add_check: Cal
 
 
 def _add_byoc_lite_namespace_checks(*, environment: Environment, add_check: Callable[..., None]) -> bool:
-    if environment.eks_namespace:
+    namespace = str(environment.eks_namespace or "")
+    namespace_trimmed = namespace.strip()
+
+    if namespace:
         add_check(
             code="byoc_lite.eks_namespace",
             status_value="pass",
@@ -589,14 +738,31 @@ def _add_byoc_lite_namespace_checks(*, environment: Environment, add_check: Call
             remediation="Set eks_namespace when creating the environment.",
         )
 
-    namespace_format_valid = bool(environment.eks_namespace and K8S_NAMESPACE_PATTERN.match(environment.eks_namespace))
+    namespace_trimmed_valid = True
+    if namespace and namespace != namespace_trimmed:
+        namespace_trimmed_valid = False
+        add_check(
+            code="byoc_lite.eks_namespace_normalized",
+            status_value="fail",
+            message="eks_namespace cannot contain leading or trailing whitespace.",
+            remediation="Trim spaces and use a normalized namespace value such as `sparkpilot-team`.",
+            details={"eks_namespace": namespace, "normalized": namespace_trimmed},
+        )
+    elif namespace:
+        add_check(
+            code="byoc_lite.eks_namespace_normalized",
+            status_value="pass",
+            message="eks_namespace is normalized (no leading/trailing whitespace).",
+        )
+
+    namespace_format_valid = bool(namespace_trimmed and K8S_NAMESPACE_PATTERN.match(namespace_trimmed))
     if namespace_format_valid:
         add_check(
             code="byoc_lite.eks_namespace_format",
             status_value="pass",
             message="eks_namespace matches Kubernetes DNS label format.",
         )
-    elif environment.eks_namespace:
+    elif namespace_trimmed:
         add_check(
             code="byoc_lite.eks_namespace_format",
             status_value="fail",
@@ -605,29 +771,29 @@ def _add_byoc_lite_namespace_checks(*, environment: Environment, add_check: Call
                 "Use a namespace like sparkpilot-team. Allowed regex: "
                 "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ (max 63 chars)."
             ),
-            details={"eks_namespace": environment.eks_namespace},
+            details={"eks_namespace": namespace_trimmed},
         )
 
-    namespace_reserved = environment.eks_namespace in RESERVED_BYOC_LITE_NAMESPACES
+    namespace_reserved = namespace_trimmed in RESERVED_BYOC_LITE_NAMESPACES
     if namespace_reserved:
         add_check(
             code="byoc_lite.namespace_bootstrap",
             status_value="fail",
-            message=f"eks_namespace '{environment.eks_namespace}' is reserved and not allowed for BYOC-Lite.",
+            message=f"eks_namespace '{namespace_trimmed}' is reserved and not allowed for BYOC-Lite.",
             remediation=(
                 "Create and use a dedicated namespace for SparkPilot workloads, for example "
                 "'sparkpilot-team'."
             ),
-            details={"eks_namespace": environment.eks_namespace},
+            details={"eks_namespace": namespace_trimmed},
         )
-    elif environment.eks_namespace:
+    elif namespace_trimmed:
         add_check(
             code="byoc_lite.namespace_bootstrap",
             status_value="pass",
             message="eks_namespace is suitable for BYOC-Lite bootstrap.",
         )
 
-    return namespace_format_valid and not namespace_reserved
+    return namespace_trimmed_valid and namespace_format_valid and not namespace_reserved
 
 
 def _add_byoc_lite_cluster_region_check(*, environment: Environment, add_check: Callable[..., None]) -> bool:

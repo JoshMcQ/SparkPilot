@@ -229,15 +229,14 @@ def test_resource_factory_validates_required_fields() -> None:
 def test_compat_import_error_caught() -> None:
     """Importing from _compat must work even when dagster is absent."""
     # The module was already imported, so this just verifies the stubs resolved.
-    from dagster_sparkpilot._compat import Failure as F, RetryRequested as RR  # noqa: F401
+    from dagster_sparkpilot._compat import Failure as FailureClass, RetryRequested as RetryRequestedClass
 
-    assert issubclass(F, Exception)
-    assert issubclass(RR, Exception)
+    assert issubclass(FailureClass, Exception)
+    assert issubclass(RetryRequestedClass, Exception)
 
 
 def test_compat_runtime_exception_not_swallowed() -> None:
     """A RuntimeError raised during import should propagate, not be silenced."""
-    import importlib
     import types
 
     # Simulate a broken dagster module that raises RuntimeError on import

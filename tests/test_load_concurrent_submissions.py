@@ -16,7 +16,6 @@ import os
 import threading
 import time
 import uuid
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -30,7 +29,7 @@ os.environ.setdefault("SPARKPILOT_DATABASE_URL", "sqlite:///./sparkpilot_load_te
 
 from fastapi.testclient import TestClient
 from sparkpilot.api import app
-from sparkpilot.db import Base, SessionLocal, engine, init_db
+from sparkpilot.db import Base, SessionLocal, engine
 from sparkpilot.models import Run
 from sparkpilot.services import process_provisioning_once
 
@@ -282,7 +281,6 @@ def test_concurrent_idempotent_submissions_race_condition() -> None:
     }
 
     results: list[dict] = []
-    errors: list[str] = []
     lock = threading.Lock()
     barrier = threading.Barrier(10)
 

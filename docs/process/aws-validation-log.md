@@ -1,0 +1,34 @@
+# AWS Validation Log
+
+| Date (ET) | Action | Resources Created | Resources Deleted | Cost Estimate | Teardown Proof |
+|---|---|---|---|---|---|
+| 2026-03-18 18:12 | Issue #3 live preflight integration test (`tests/test_issue3_live_preflight_integration.py`) against existing cluster `sparkpilot-live-1` and role `SparkPilotByocLiteRoleAdmin` | none | none | ~$0.00 (STS/IAM simulation/EKS describe only) | No ephemeral resources created; teardown not required |
+| 2026-03-18 18:58 | Issue #18 live prerequisite integration test (`tests/test_issue18_live_prereq_integration.py`) validating BYOC-Lite matrix checks/remediations against `sparkpilot-live-1` | none | none | ~$0.00 (read-only IAM/EKS/EMR preflight APIs) | No ephemeral resources created; teardown not required |
+| 2026-03-18 19:28 | Issue #19 live namespace integration test (`tests/test_issue19_live_namespace_integration.py`) validating namespace normalization/format/bootstrap/collision checks against `sparkpilot-live-1` | none | none | ~$0.00 (read-only EMR virtual-cluster listing + EKS/IAM preflight calls) | No ephemeral resources created; teardown not required |
+| 2026-03-18 20:12 | Issue #20 live trust-policy automation integration (`tests/test_issue20_live_trust_policy_integration.py`) validating update+verify flow for execution role trust policy on `sparkpilot-live-1` / `sparkpilot-demo-2` | none | none | ~$0.00 (IAM/EKS read-write API calls only) | No ephemeral resources created; teardown not required |
+| 2026-03-18 20:23 | Issue #21 live OIDC detection integration (`tests/test_issue21_live_oidc_integration.py`) validating detect-only OIDC association checks on `sparkpilot-live-1` | none | none | ~$0.00 (read-only EKS/IAM OIDC discovery APIs) | No ephemeral resources created; teardown not required |
+| 2026-03-18 22:12 | Phase 5 misconfigured-role preflight validation against `arn:aws:iam::787587782916:role/SparkPilotEKSNodeRole` (expected STS assume-role failure) | none | none | ~$0.00 (STS/IAM preflight APIs only) | No ephemeral resources created; teardown not required |
+| 2026-03-18 22:13 | Phase 5 correctly configured-role preflight validation (`tests/test_issue3_live_preflight_integration.py`) | none | none | ~$0.00 (STS/IAM/EKS preflight APIs only) | No ephemeral resources created; teardown not required |
+| 2026-03-18 22:14 | Phase 5 trust-policy + OIDC validation rerun (`tests/test_issue20_live_trust_policy_integration.py`, `tests/test_issue21_live_oidc_integration.py`) | none | none | ~$0.00 (IAM/EKS APIs only) | No ephemeral resources created; teardown not required |
+| 2026-03-18 22:15 | Final tagged-resource audit (`aws resourcegroupstaggingapi get-resources --tag-filters Key=project,Values=sparkpilot`) | none | none | ~$0.00 | Command returned empty `ResourceTagMappingList`; no tagged resources to teardown |
+| 2026-03-19 10:44 | Re-ran guarded read-only live pytest suite with explicit live env (`tests/test_issue3_live_preflight_integration.py`, `tests/test_issue18_live_prereq_integration.py`, `tests/test_issue19_live_namespace_integration.py`, `tests/test_issue21_live_oidc_integration.py`) | none | none | ~$0.00 (read-only STS/IAM/EKS/EMR APIs) | Observed pytest output `4 passed in 2.79s`; no ephemeral resources created; teardown not required |
+| 2026-03-19 10:45 | First attempt at Issue #20 mutating trust-policy integration (`tests/test_issue20_live_trust_policy_integration.py`) | none | none | ~$0.00 | Failed before AWS write: `SPARKPILOT_EMR_EXECUTION_ROLE_ARN` was unset while `SPARKPILOT_DRY_RUN_MODE=false`; no mutation executed |
+| 2026-03-19 10:45 | Re-ran Issue #20 mutating trust-policy integration with explicit execution role ARN (`arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole`) | none | none | ~$0.00 (IAM trust-policy read/write APIs only) | Observed pytest output `1 passed in 5.77s`; test completed successfully; no node scaling required |
+| 2026-03-19 11:41 | Re-ran guarded read-only live pytest suite with full terminal output capture (`tests/test_issue3_live_preflight_integration.py`, `tests/test_issue18_live_prereq_integration.py`, `tests/test_issue19_live_namespace_integration.py`, `tests/test_issue21_live_oidc_integration.py`) | none | none | ~$0.00 (read-only STS/IAM/EKS/EMR APIs) | Observed pytest output `4 passed in 2.63s`; no ephemeral resources created; teardown not required |
+| 2026-03-19 12:57 | Re-ran guarded read-only live pytest suite after explicitly mapping `SPARKPILOT_TEST_*` inputs into the legacy `SPARKPILOT_LIVE_*` env vars expected by the tests | none | none | ~$0.00 (read-only STS/IAM/EKS/EMR APIs) | Observed pytest output `4 passed in 2.97s`; no ephemeral resources created; teardown not required |
+| 2026-03-19 12:58 | Re-ran Issue #20 mutating trust-policy integration with explicit live env mapping and `SPARKPILOT_EMR_EXECUTION_ROLE_ARN=arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole` | none | none | ~$0.00 (IAM trust-policy read/write APIs only) | Observed pytest output `1 passed in 5.56s`; no node scaling required; teardown completed by test flow |
+
+## Notes
+
+- Live checks executed in sequence: `sts:GetCallerIdentity` → `iam:SimulatePrincipalPolicy` → `eks:DescribeCluster` → IRSA trust validation.
+- All four checks returned `pass` for the tested customer role / cluster / namespace combination.
+- Environment variables for required runtime validation fields were set only for the test process.
+- Issue #18 live run verified presence and non-failing status for prerequisite matrix codes: cluster ARN/namespace/region/account alignment, OIDC association, execution role trust, dispatch permission, and iam:PassRole.
+- Issue #20 live run validated trust-policy automation update path and follow-up trust verification (including list-valued `StringLike` subject handling).
+- Issue #21 live run validated OIDC detect-only path (`associated=true`) and confirms no IAM mutation step is required in default preflight mode.
+- Misconfigured-role validation produced expected `issue3.sts_caller_identity=fail` with explicit remediation and downstream checks skipped.
+- Correctly configured-role validation still passes full Issue #3 preflight gate sequence in live mode.
+- Final tagged-resource audit returned zero rows for `project=sparkpilot`.
+- 2026-03-19 re-validation in this session did not rely on earlier log claims; it used observed pytest output with `SPARKPILOT_RUN_LIVE_TESTS=1` and counted only actual `passed` results.
+- Issue #20 required `SPARKPILOT_EMR_EXECUTION_ROLE_ARN=arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole`; the first rerun failed before any AWS write because that env var was missing, then passed after setting it.
+- No EKS node scaling was needed for the 2026-03-19 trust-policy rerun; therefore no nodegroup scale events occurred in this session.

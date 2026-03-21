@@ -21,7 +21,15 @@ out/
 *.tfstate
 *.tfstate.backup
 .env
+.env.*
+*.env
 .claude/
 artifacts/
 output/
 tools/terraform/
+tmp/
+tmp_*.py
+tmp_*.csv
+tmp_*.json
+tmp_*.md
+*.tsbuildinfo

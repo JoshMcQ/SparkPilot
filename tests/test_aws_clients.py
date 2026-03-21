@@ -14,6 +14,7 @@ from sparkpilot.aws_clients import (
     _emr_job_run_name,
     _emr_sa_pattern,
     _is_sparkpilot_emr_web_identity_statement,
+    parse_role_name_from_arn,
 )
 from sparkpilot.config import get_settings
 from sparkpilot.exceptions import SparkPilotError
@@ -1354,4 +1355,120 @@ def test_scheduler_rejects_unknown_engine(monkeypatch) -> None:
         _dispatch_run(env, job, run)
 
     get_settings.cache_clear()
+
+
+def test_find_namespace_virtual_cluster_collision_returns_active_match(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     get_settings.cache_clear()
+
+    class _FakePaginator:
+        def paginate(self, **kwargs):
+            assert kwargs["containerProviderId"] == "customer-shared"
+            assert kwargs["containerProviderType"] == "EKS"
+            return [
+                {
+                    "virtualClusters": [
+                        {
+                            "id": "vc-terminated",
+                            "name": "old",
+                            "state": "TERMINATED",
+                            "containerProvider": {
+                                "info": {"eksInfo": {"namespace": "sparkpilot-team"}}
+                            },
+                        },
+                        {
+                            "id": "vc-running",
+                            "name": "active",
+                            "state": "RUNNING",
+                            "containerProvider": {
+                                "info": {"eksInfo": {"namespace": "sparkpilot-team"}}
+                            },
+                        },
+                    ]
+                }
+            ]
+
+    class _FakeEmrClient:
+        def get_paginator(self, name):
+            assert name == "list_virtual_clusters"
+            return _FakePaginator()
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr-containers"
+            assert region_name == "us-east-1"
+            return _FakeEmrClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_a, **_k: _FakeSession())
+
+    env = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace="sparkpilot-team",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+
+    collision = EmrEksClient().find_namespace_virtual_cluster_collision(env)
+    assert collision is not None
+    assert collision["id"] == "vc-running"
+    assert collision["state"] == "RUNNING"
+
+    get_settings.cache_clear()
+
+
+def test_find_namespace_virtual_cluster_collision_access_denied(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakePaginator:
+        def paginate(self, **_kwargs):
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "AccessDeniedException",
+                        "Message": "not authorized",
+                    }
+                },
+                "ListVirtualClusters",
+            )
+
+    class _FakeEmrClient:
+        def get_paginator(self, name):
+            assert name == "list_virtual_clusters"
+            return _FakePaginator()
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr-containers"
+            assert region_name == "us-east-1"
+            return _FakeEmrClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_a, **_k: _FakeSession())
+
+    env = SimpleNamespace(
+        eks_cluster_arn="arn:aws:eks:us-east-1:123456789012:cluster/customer-shared",
+        eks_namespace="sparkpilot-team",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+    )
+
+    with pytest.raises(ValueError, match="ListVirtualClusters"):
+        EmrEksClient().find_namespace_virtual_cluster_collision(env)
+
+    get_settings.cache_clear()
+
+
+def test_parse_role_name_from_arn_preserves_role_path_leaf() -> None:
+    assert (
+        parse_role_name_from_arn(
+            "arn:aws:iam::123456789012:role/platform/service/SparkPilotExecutionRole"
+        )
+        == "SparkPilotExecutionRole"
+    )
+
+
+def test_parse_role_name_from_arn_invalid_modes() -> None:
+    assert parse_role_name_from_arn("not-an-arn") is None
+
+    with pytest.raises(ValueError, match="Invalid IAM role ARN"):
+        parse_role_name_from_arn("not-an-arn", raise_on_invalid=True)

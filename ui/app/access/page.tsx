@@ -22,6 +22,14 @@ import {
   fetchEnvironments,
 } from "@/lib/api";
 import { friendlyError } from "@/lib/format";
+import {
+  ACCESS_WORKFLOW_STEPS,
+  mapAccessErrorMessage,
+  validateBudgetForm,
+  validateIdentityForm,
+  validateScopeForm,
+  validateTeamForm,
+} from "@/lib/access-workflow";
 import { ShortId } from "@/components/short-id";
 import { PaginationControls, PaginationState, paginate } from "@/components/pagination";
 import { badgeClass } from "@/lib/badge";
@@ -57,6 +65,10 @@ function ErrorState({ message, onRetry }: { message: string; onRetry?: () => voi
   );
 }
 
+function accessError(err: unknown, fallback: string): string {
+  return mapAccessErrorMessage(friendlyError(err, fallback));
+}
+
 // ── User Identities Section ────────────────────────────────────────────────
 
 function UserIdentitiesSection() {
@@ -83,7 +95,7 @@ function UserIdentitiesSection() {
       setItems(rows);
       setError(null);
     } catch (err: unknown) {
-      setError(friendlyError(err, "Failed to load identities"));
+      setError(accessError(err, "Failed to load identities"));
     } finally {
       setLoading(false);
     }
@@ -118,8 +130,9 @@ function UserIdentitiesSection() {
   async function handleSave() {
     setFormError(null);
     setFormSuccess(null);
-    if (!actor.trim()) {
-      setFormError("Actor (subject identifier) is required.");
+    const validationError = validateIdentityForm(actor);
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
     setSaving(true);
@@ -136,7 +149,7 @@ function UserIdentitiesSection() {
       resetForm();
       await load();
     } catch (err: unknown) {
-      setFormError(friendlyError(err, "Identity save failed"));
+      setFormError(accessError(err, "Identity save failed"));
     } finally {
       setSaving(false);
     }
@@ -154,7 +167,7 @@ function UserIdentitiesSection() {
       });
       await load();
     } catch (err: unknown) {
-      setError(friendlyError(err, `Failed to ${u.active ? "deactivate" : "activate"} identity`));
+      setError(accessError(err, `Failed to ${u.active ? "deactivate" : "activate"} identity`));
     } finally {
       setDeactivatingId(null);
     }
@@ -305,7 +318,7 @@ function TeamsSection() {
       setItems(rows);
       setError(null);
     } catch (err: unknown) {
-      setError(friendlyError(err, "Failed to load teams"));
+      setError(accessError(err, "Failed to load teams"));
     } finally {
       setLoading(false);
     }
@@ -318,8 +331,9 @@ function TeamsSection() {
   async function handleCreate() {
     setFormError(null);
     setFormSuccess(null);
-    if (!name.trim() || !tenantId.trim()) {
-      setFormError("Team name and tenant ID are required.");
+    const validationError = validateTeamForm(name, tenantId);
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
     setCreating(true);
@@ -330,7 +344,7 @@ function TeamsSection() {
       setName("");
       await load();
     } catch (err: unknown) {
-      setFormError(friendlyError(err, "Team creation failed"));
+      setFormError(accessError(err, "Team creation failed"));
     } finally {
       setCreating(false);
     }
@@ -426,7 +440,7 @@ function TeamScopesSection() {
       if (teamRows.length > 0) setSelectedTeamId(teamRows[0].id);
       setError(null);
     } catch (err: unknown) {
-      setError(friendlyError(err, "Failed to load teams/environments"));
+      setError(accessError(err, "Failed to load teams/environments"));
     } finally {
       setLoading(false);
     }
@@ -443,7 +457,7 @@ function TeamScopesSection() {
       const rows = await fetchTeamEnvironmentScopes(teamId);
       setScopes(rows);
     } catch (err: unknown) {
-      setError(friendlyError(err, "Failed to load scopes"));
+      setError(accessError(err, "Failed to load scopes"));
     } finally {
       setScopesLoading(false);
     }
@@ -456,8 +470,9 @@ function TeamScopesSection() {
   async function handleAssign() {
     setFormError(null);
     setFormSuccess(null);
-    if (!selectedTeamId || !selectedEnvId) {
-      setFormError("Select both a team and an environment.");
+    const validationError = validateScopeForm(selectedTeamId, selectedEnvId);
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
     setCreating(true);
@@ -467,7 +482,7 @@ function TeamScopesSection() {
       setSelectedEnvId("");
       await loadScopes(selectedTeamId);
     } catch (err: unknown) {
-      setFormError(friendlyError(err, "Scope assignment failed"));
+      setFormError(accessError(err, "Scope assignment failed"));
     } finally {
       setCreating(false);
     }
@@ -482,7 +497,7 @@ function TeamScopesSection() {
       setFormSuccess("Scope removed.");
       await loadScopes(selectedTeamId);
     } catch (err: unknown) {
-      setFormError(friendlyError(err, "Scope removal failed"));
+      setFormError(accessError(err, "Scope removal failed"));
     } finally {
       setRemovingId(null);
     }
@@ -603,7 +618,7 @@ function TeamBudgetsSection() {
       if (rows.length > 0) setSelectedTeam(rows[0].name);
       setError(null);
     } catch (err: unknown) {
-      setError(friendlyError(err, "Failed to load teams"));
+      setError(accessError(err, "Failed to load teams"));
     } finally {
       setLoading(false);
     }
@@ -622,7 +637,7 @@ function TeamBudgetsSection() {
       const b = await fetchTeamBudget(team);
       setBudget(b);
     } catch (err: unknown) {
-      setBudgetError(friendlyError(err, "No budget configured yet"));
+      setBudgetError(accessError(err, "No budget configured yet"));
     } finally {
       setBudgetLoading(false);
     }
@@ -635,17 +650,15 @@ function TeamBudgetsSection() {
   async function handleSave() {
     setFormError(null);
     setFormSuccess(null);
+    const validationError = validateBudgetForm(selectedTeam, monthlyBudget, warnPct, blockPct);
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+
     const dollars = Number.parseFloat(monthlyBudget);
     const warn = Number.parseInt(warnPct, 10);
     const block = Number.parseInt(blockPct, 10);
-    if (!selectedTeam || Number.isNaN(dollars) || dollars <= 0) {
-      setFormError("Team and a positive monthly budget (USD) are required.");
-      return;
-    }
-    if (Number.isNaN(warn) || warn < 1 || warn > 100 || Number.isNaN(block) || block < 1 || block > 100) {
-      setFormError("Thresholds must be integers between 1 and 100.");
-      return;
-    }
     setCreating(true);
     try {
       const req: TeamBudgetCreateRequest = {
@@ -658,7 +671,7 @@ function TeamBudgetsSection() {
       setFormSuccess(`Budget saved for "${selectedTeam}".`);
       await loadBudget(selectedTeam);
     } catch (err: unknown) {
-      setFormError(friendlyError(err, "Budget save failed"));
+      setFormError(accessError(err, "Budget save failed"));
     } finally {
       setCreating(false);
     }
@@ -751,16 +764,18 @@ export default function AccessPage() {
         </div>
       </div>
       <div className="card">
-        <h3>How To Use This Page</h3>
+        <h3>Guided Admin Workflow</h3>
+        <div className="subtle">Follow this sequence to reduce auth/bootstrap errors and enforce least privilege.</div>
         <ol className="guided-steps">
-          <li>Create or update a user identity first. The Actor must match the JWT subject (`sub`) claim.</li>
-          <li>Create a team for workload ownership under a tenant.</li>
-          <li>Assign team-environment scopes so operators/users only see approved environments.</li>
-          <li>Set a monthly team budget with warn/block thresholds.</li>
+          {ACCESS_WORKFLOW_STEPS.map((step) => (
+            <li key={step.id}>
+              <strong>{step.title}:</strong> {step.description}
+            </li>
+          ))}
         </ol>
         <div className="subtle">
-          Production target: this manual bootstrap flow should be backed by a real IdP (Auth0/Okta/Cognito)
-          and managed identity provisioning.
+          Production target: use real IdP sign-in (Auth0/Okta/Cognito) as the default path and keep manual token input
+          as an explicit dev/bootstrap fallback only.
         </div>
       </div>
 

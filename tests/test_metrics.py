@@ -28,8 +28,8 @@ from sparkpilot.models import AuditEvent, Run
 def db() -> Session:
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
-    session = SessionLocal()
+    session_local = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_local()
     yield session
     session.close()
     engine.dispose()
@@ -78,11 +78,6 @@ def _run(
         started_at=started_at,
         ended_at=ended_at,
     )
-
-
-# ---------------------------------------------------------------------------
-# test_collect_all_kpis_returns_correct_structure
-# ---------------------------------------------------------------------------
 
 
 def test_collect_all_kpis_returns_correct_structure(db: Session) -> None:

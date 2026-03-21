@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sparkpilot.audit import write_audit_event
 from sparkpilot.aws_clients import EmrEksClient
 from sparkpilot.config import get_settings
+from sparkpilot.error_handling import error_details, error_message
 from sparkpilot.exceptions import ProvisioningPermanentError
 from sparkpilot.models import Environment, ProvisioningOperation
 from sparkpilot.terraform_orchestrator import TerraformApplyResult, TerraformOrchestrator, TerraformPlanResult
@@ -276,11 +277,9 @@ def _set_provisioning_failed(
     environment.status = "failed"
     operation.state = "failed"
     operation.step = "failed"
-    operation.message = f"[{type(exc).__name__}] {exc}" if include_error_type else str(exc)
+    operation.message = error_message(exc, include_type=include_error_type)
     operation.ended_at = _now()
-    details: dict[str, str] = {"error": str(exc)}
-    if include_error_type:
-        details["error_type"] = type(exc).__name__
+    details = error_details(exc, include_type=include_error_type)
     write_audit_event(
         db,
         actor=actor,

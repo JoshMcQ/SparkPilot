@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -263,7 +262,6 @@ class TestInitAndWorkspaceIdempotency:
                 _completed(0, "Plan: 0 to add"),          # plan (second call)
             ]
 
-            plan_path_1 = str(tmp_path / f"{context.operation_id}-{context.stage}.tfplan")
             orchestrator.plan(context)
             orchestrator.plan(context)
 

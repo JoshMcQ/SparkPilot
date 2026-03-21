@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Environment,
   Job,
+  PreflightCheck,
   Run,
   RunSubmitRequest,
   fetchEnvironmentPreflight,
@@ -59,15 +60,22 @@ function parsePositiveInt(raw: string, field: string): number {
   return value;
 }
 
-function jsonParseError(err: unknown): string {
+function jsonParseError(err: unknown, input?: string): string {
   if (!(err instanceof Error)) {
     return "Invalid JSON payload.";
   }
   const positionMatch = err.message.match(/position\s+(\d+)/i);
   if (positionMatch?.[1]) {
-    return `Invalid JSON near character ${positionMatch[1]}. ${err.message}`;
+    const position = Number.parseInt(positionMatch[1], 10);
+    if (Number.isFinite(position) && input != null) {
+      const before = input.slice(0, position);
+      const line = before.split(/\r?\n/).length;
+      const column = position - (before.lastIndexOf("\n") + 1) + 1;
+      return `Invalid JSON at line ${line}, column ${column} (character ${position}).`;
+    }
+    return `Invalid JSON near character ${positionMatch[1]}.`;
   }
-  return `Invalid JSON payload. ${err.message}`;
+  return err.message;
 }
 
 function buildJsonFromForm(form: RunSubmitFormState): JsonRunPayload {
@@ -150,9 +158,10 @@ export function RunSubmitCard({
   const [showNonReady, setShowNonReady] = useState(false);
   const [jsonInput, setJsonInput] = useState<string>(() => JSON.stringify(buildJsonFromForm(defaultForm(environments)), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [lastSubmittedPayload, setLastSubmittedPayload] = useState<string | null>(null);
 
   const [preflightReady, setPreflightReady] = useState<boolean | null>(null);
-  const [preflightSummary, setPreflightSummary] = useState<string[]>([]);
+  const [preflightChecks, setPreflightChecks] = useState<PreflightCheck[]>([]);
   const [preflightError, setPreflightError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitBusy, setSubmitBusy] = useState(false);
@@ -172,6 +181,16 @@ export function RunSubmitCard({
     return jobs.filter((j) => j.environment_id === form.environment_id);
   }, [jobs, form.environment_id]);
 
+  const preflightFailChecks = useMemo(
+    () => preflightChecks.filter((check) => check.status === "fail"),
+    [preflightChecks]
+  );
+
+  const preflightWarningChecks = useMemo(
+    () => preflightChecks.filter((check) => check.status === "warning"),
+    [preflightChecks]
+  );
+
   useEffect(() => {
     if (environments.length === 0) {
       return;
@@ -188,7 +207,7 @@ export function RunSubmitCard({
     setForm(nextForm);
     syncJsonFromForm(nextForm);
     setPreflightReady(null);
-    setPreflightSummary([]);
+    setPreflightChecks([]);
   }, [environments, form, readyEnvironmentIds]);
 
   function syncJsonFromForm(nextForm: RunSubmitFormState): void {
@@ -213,7 +232,7 @@ export function RunSubmitCard({
       };
       setForm(nextForm);
       setPreflightReady(null);
-      setPreflightSummary([]);
+      setPreflightChecks([]);
     } catch (err: unknown) {
       setJsonError(err instanceof Error ? err.message : "Unable to apply JSON payload.");
     }
@@ -235,7 +254,7 @@ export function RunSubmitCard({
     setPreflightError(null);
     setSubmitError(null);
     setPreflightReady(null);
-    setPreflightSummary([]);
+    setPreflightChecks([]);
     setJsonError(null);
 
     const environmentId = currentEnvironmentIdForChecks();
@@ -250,7 +269,7 @@ export function RunSubmitCard({
     try {
       const preflight = await fetchEnvironmentPreflight(environmentId);
       setPreflightReady(preflight.ready);
-      setPreflightSummary(preflight.checks.map((c) => `[${c.status}] ${c.code}: ${c.message}`));
+      setPreflightChecks(preflight.checks);
     } catch (err: unknown) {
       setPreflightError(friendlyError(err, "Preflight check failed"));
     }
@@ -300,7 +319,7 @@ export function RunSubmitCard({
       try {
         payload = validateJsonPayload(JSON.parse(jsonInput) as unknown);
       } catch (err: unknown) {
-        setJsonError(err instanceof Error ? err.message : jsonParseError(err));
+        setJsonError(jsonParseError(err, jsonInput));
         setSubmitError("Fix JSON payload errors before submitting.");
         return;
       }
@@ -340,11 +359,21 @@ export function RunSubmitCard({
     setSubmitBusy(true);
     try {
       const run = await submitRun(jobId, request);
+      setLastSubmittedPayload(JSON.stringify({ environment_id: environmentId, job_id: jobId, ...request }, null, 2));
       onRunSubmitted(run);
     } catch (err: unknown) {
       setSubmitError(friendlyError(err, "Run submission failed"));
     } finally {
       setSubmitBusy(false);
+    }
+  }
+
+  async function copyLastSubmittedPayload() {
+    if (!lastSubmittedPayload) return;
+    try {
+      await navigator.clipboard.writeText(lastSubmittedPayload);
+    } catch {
+      setSubmitError("Failed to copy payload to clipboard.");
     }
   }
 
@@ -378,13 +407,21 @@ export function RunSubmitCard({
 
       {editorMode === "form" ? (
         <>
-          <div className="checkbox-field" style={{ marginTop: 10 }}>
-            <input
-              type="checkbox"
-              checked={showNonReady}
-              onChange={(event) => setShowNonReady(event.target.checked)}
-            />
-            <span>Show non-ready environments (disabled)</span>
+          <div className="checkbox-toggle-row">
+            <label className="checkbox-field checkbox-field-toggle">
+              <input
+                type="checkbox"
+                checked={showNonReady}
+                onChange={(event) => setShowNonReady(event.target.checked)}
+              />
+              <span className="checkbox-switch" aria-hidden="true" />
+              <span className="checkbox-copy">
+                <span className="checkbox-title">Show non-ready environments</span>
+                <span className="subtle checkbox-hint">
+                  Visible for context only. Non-ready environments stay disabled until they reach ready status.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="form-grid run-submit-grid">
@@ -397,7 +434,7 @@ export function RunSubmitCard({
                   setForm(next);
                   syncJsonFromForm(next);
                   setPreflightReady(null);
-                  setPreflightSummary([]);
+                  setPreflightChecks([]);
                 }}
               >
                 <option value="">Select environment</option>
@@ -480,7 +517,7 @@ export function RunSubmitCard({
           </div>
         </>
       ) : (
-        <div className="stack" style={{ marginTop: 10 }}>
+        <div className="json-panel stack">
           <div className="button-row">
             <button type="button" className="button button-sm button-secondary" onClick={() => syncJsonFromForm(form)}>
               Export From Form
@@ -492,6 +529,7 @@ export function RunSubmitCard({
           <label className="multiline-field">
             Run Payload JSON
             <textarea
+              className="json-textarea"
               value={jsonInput}
               onChange={(event) => {
                 setJsonInput(event.target.value);
@@ -514,27 +552,52 @@ export function RunSubmitCard({
         <button type="button" className="button" disabled={submitBusy || preflightReady !== true} onClick={handleSubmit}>
           {submitBusy ? "Submitting..." : "Submit Run"}
         </button>
+        <button
+          type="button"
+          className="button button-secondary"
+          disabled={!lastSubmittedPayload}
+          onClick={() => void copyLastSubmittedPayload()}
+          title={lastSubmittedPayload ? "Copy the exact last submitted payload JSON for reruns." : "Submit a run first to enable payload export."}
+        >
+          Copy Last Submitted JSON
+        </button>
       </div>
 
       {preflightError ? <div className="error-text">{preflightError}</div> : null}
       {submitError ? <div className="error-text">{submitError}</div> : null}
 
-      {preflightReady !== null ? (
-        <div className="subtle run-preflight-status">
-          Preflight:
-          <span className={badgeClass(preflightReady ? "ready" : "failed")}>
-            {preflightReady ? "ready" : "not ready"}
-          </span>
-        </div>
-      ) : null}
+      <div className={preflightReady === false ? "json-panel error-card" : "json-panel"}>
+        {preflightReady === null ? (
+          <div className="subtle">
+            Run <strong>Check Preflight</strong> before submission. Submit stays disabled until all blocking checks pass.
+          </div>
+        ) : (
+          <>
+            <div className="subtle run-preflight-status">
+              Preflight:
+              <span className={badgeClass(preflightReady ? "ready" : "failed")}>
+                {preflightReady ? "ready" : "not ready"}
+              </span>
+            </div>
+            {preflightReady ? (
+              <div className="success-text">All blocking checks passed. Submission is enabled.</div>
+            ) : (
+              <div className="error-text">Submission blocked: resolve failing preflight checks, then run preflight again.</div>
+            )}
 
-      {preflightSummary.length > 0 ? (
-        <ul className="preflight-list">
-          {preflightSummary.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      ) : null}
+            {preflightChecks.length > 0 ? (
+              <ul className="preflight-list">
+                {[...preflightFailChecks, ...preflightWarningChecks, ...preflightChecks.filter((c) => c.status === "pass")].map((check, idx) => (
+                  <li key={`${check.code}-${idx}`}>
+                    [{check.status}] {check.code}: {check.message}
+                    {check.remediation ? <div className="subtle">Remediation: {check.remediation}</div> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -77,7 +77,7 @@ def is_valid_iam_role_arn(value: str) -> bool:
     return bool(IAM_ROLE_ARN_PATTERN.match(value.strip()))
 
 
-def validate_runtime_settings(settings: Settings) -> None:
+def _validate_environment_mode(settings: Settings) -> bool:
     environment_name = settings.environment.strip().lower()
     is_dev_like_environment = environment_name in {"dev", "development", "local", "test"}
     if settings.database_url.startswith("sqlite") and not is_dev_like_environment:
@@ -89,6 +89,10 @@ def validate_runtime_settings(settings: Settings) -> None:
         raise ValueError(
             "SPARKPILOT_DRY_RUN_MODE=true is only allowed in development/test environments."
         )
+    return is_dev_like_environment
+
+
+def _validate_numeric_runtime_settings(settings: Settings) -> None:
     if settings.accepted_stale_minutes <= 0:
         raise ValueError("SPARKPILOT_ACCEPTED_STALE_MINUTES must be greater than 0.")
     if settings.submitted_stale_minutes <= 0:
@@ -103,11 +107,10 @@ def validate_runtime_settings(settings: Settings) -> None:
         raise ValueError("SPARKPILOT_PRICING_ARM64_DISCOUNT_PCT must be between 0 and 100.")
     if not (0 <= settings.pricing_mixed_discount_pct <= 100):
         raise ValueError("SPARKPILOT_PRICING_MIXED_DISCOUNT_PCT must be between 0 and 100.")
-    if settings.cost_center_policy_json.strip():
-        try:
-            parse_cost_center_policy(settings.cost_center_policy_json)
-        except ValueError as exc:
-            raise ValueError(f"SPARKPILOT_COST_CENTER_POLICY_JSON is invalid: {exc}") from exc
+
+
+
+def _validate_auth_settings(settings: Settings) -> None:
     if settings.auth_mode != "oidc":
         raise ValueError("AUTH_MODE must be 'oidc'. No legacy auth modes are supported.")
     issuer = settings.oidc_issuer.strip()
@@ -127,6 +130,9 @@ def validate_runtime_settings(settings: Settings) -> None:
             raise ValueError("OIDC_JWKS_URI file:// URL must include a file path.")
     elif parsed_jwks.scheme not in {"http", "https"} or not parsed_jwks.netloc:
         raise ValueError("OIDC_JWKS_URI must be a valid http(s) or file:// URL.")
+
+
+def _validate_security_runtime_settings(settings: Settings) -> None:
     bootstrap_secret = settings.bootstrap_secret.strip()
     if len(bootstrap_secret) < MIN_BOOTSTRAP_SECRET_LENGTH:
         raise ValueError(
@@ -144,8 +150,17 @@ def validate_runtime_settings(settings: Settings) -> None:
             raise ValueError(
                 "SPARKPILOT_CORS_ORIGINS must contain valid http(s) origins in scheme://host[:port] format."
             )
-    if settings.dry_run_mode:
-        return
+
+
+def _validate_cost_center_policy(settings: Settings) -> None:
+    if settings.cost_center_policy_json.strip():
+        try:
+            parse_cost_center_policy(settings.cost_center_policy_json)
+        except ValueError as exc:
+            raise ValueError(f"SPARKPILOT_COST_CENTER_POLICY_JSON is invalid: {exc}") from exc
+
+
+def _validate_live_mode_role_arn(settings: Settings) -> None:
     role_arn = settings.emr_execution_role_arn.strip()
     if not role_arn:
         raise ValueError(
@@ -161,6 +176,17 @@ def validate_runtime_settings(settings: Settings) -> None:
             "SPARKPILOT_EMR_EXECUTION_ROLE_ARN must be a valid IAM role ARN "
             "(arn:aws:iam::<12-digit-account-id>:role/<role-name>)."
         )
+
+
+def validate_runtime_settings(settings: Settings) -> None:
+    _validate_environment_mode(settings)
+    _validate_numeric_runtime_settings(settings)
+    _validate_cost_center_policy(settings)
+    _validate_auth_settings(settings)
+    _validate_security_runtime_settings(settings)
+    if settings.dry_run_mode:
+        return
+    _validate_live_mode_role_arn(settings)
 
 
 @lru_cache

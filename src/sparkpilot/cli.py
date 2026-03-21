@@ -20,6 +20,37 @@ def _print_json(payload: object) -> None:
     typer.echo(json.dumps(payload, indent=2, default=str))
 
 
+def _print_run_preflight(payload: object, *, err: bool = False) -> None:
+    if not isinstance(payload, dict):
+        return
+    preflight = payload.get("preflight")
+    if not isinstance(preflight, dict):
+        return
+
+    typer.echo("\nPreflight snapshot:", err=err)
+    typer.echo(f"  ready: {bool(preflight.get('ready'))}", err=err)
+
+    summary = preflight.get("summary")
+    if summary:
+        typer.echo(f"  summary: {summary}", err=err)
+
+    checks = preflight.get("checks")
+    if not isinstance(checks, list) or not checks:
+        return
+
+    typer.echo("  checks:", err=err)
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        code = str(check.get("code") or "unknown")
+        status = str(check.get("status") or "unknown")
+        message = str(check.get("message") or "")
+        remediation = check.get("remediation")
+        typer.echo(f"    - [{status}] {code}: {message}", err=err)
+        if remediation:
+            typer.echo(f"      remediation: {remediation}", err=err)
+
+
 def _idem(value: str | None) -> str:
     return value or uuid.uuid4().hex
 
@@ -278,7 +309,9 @@ def run_submit(
             headers=_headers(idempotency_key, include_idempotency=True),
         )
         r.raise_for_status()
-        _print_json(r.json())
+        run_payload = r.json()
+        _print_json(run_payload)
+        _print_run_preflight(run_payload, err=True)
 
 
 @app.command("run-list")
@@ -306,7 +339,9 @@ def run_get(
     with _client(base_url) as c:
         r = c.get(f"/v1/runs/{run_id}", headers=_headers())
         r.raise_for_status()
-        _print_json(r.json())
+        run_payload = r.json()
+        _print_json(run_payload)
+        _print_run_preflight(run_payload, err=True)
 
 
 @app.command("run-cancel")
@@ -321,7 +356,9 @@ def run_cancel(
             headers=_headers(idempotency_key, include_idempotency=True),
         )
         r.raise_for_status()
-        _print_json(r.json())
+        run_payload = r.json()
+        _print_json(run_payload)
+        _print_run_preflight(run_payload, err=True)
 
 
 @app.command("run-logs")

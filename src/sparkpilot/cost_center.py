@@ -23,11 +23,28 @@ class CostCenterPolicy:
     default: str | None
 
 
+@dataclass(frozen=True)
+class CostCenterResolutionInputs:
+    tenant_id: str
+    namespace: str
+    virtual_cluster_id: str
+    environment_id: str
+
+
 def _normalize_value(value: str, *, field_name: str) -> str:
     text = str(value).strip()
     if not text:
         raise ValueError(f"{field_name} values must be non-empty strings.")
     return text[:MAX_COST_CENTER_LENGTH]
+
+
+def _normalize_resolution_inputs(environment: Any) -> CostCenterResolutionInputs:
+    return CostCenterResolutionInputs(
+        tenant_id=str(getattr(environment, "tenant_id", "") or "").strip(),
+        namespace=str(getattr(environment, "eks_namespace", "") or "").strip(),
+        virtual_cluster_id=str(getattr(environment, "emr_virtual_cluster_id", "") or "").strip(),
+        environment_id=str(getattr(environment, "id", "") or "").strip(),
+    )
 
 
 def _validate_mapping(payload: Any, *, key_name: str) -> dict[str, str]:
@@ -86,6 +103,25 @@ def parse_cost_center_policy(raw_policy: str) -> CostCenterPolicy:
     return _parse_policy_cached(raw_policy or "")
 
 
+def _resolve_cost_center_from_policy(*, policy: CostCenterPolicy, inputs: CostCenterResolutionInputs) -> str | None:
+    lookups = (
+        (inputs.virtual_cluster_id, policy.by_virtual_cluster_id),
+        (inputs.namespace, policy.by_namespace),
+        (inputs.tenant_id, policy.by_team),
+    )
+    for key, mapping in lookups:
+        if key and key in mapping:
+            return mapping[key]
+    return policy.default
+
+
+def _resolve_cost_center_fallback(inputs: CostCenterResolutionInputs) -> str:
+    for fallback in (inputs.namespace, inputs.virtual_cluster_id, inputs.environment_id):
+        if fallback:
+            return fallback[:MAX_COST_CENTER_LENGTH]
+    return "unmapped"
+
+
 def resolve_cost_center_for_environment(*, settings: Any, environment: Any) -> str:
     """Resolve the effective cost center for an environment.
 
@@ -98,22 +134,6 @@ def resolve_cost_center_for_environment(*, settings: Any, environment: Any) -> s
     """
     policy_raw = str(getattr(settings, "cost_center_policy_json", "") or "")
     policy = parse_cost_center_policy(policy_raw)
+    inputs = _normalize_resolution_inputs(environment)
 
-    tenant_id = str(getattr(environment, "tenant_id", "") or "").strip()
-    namespace = str(getattr(environment, "eks_namespace", "") or "").strip()
-    virtual_cluster_id = str(getattr(environment, "emr_virtual_cluster_id", "") or "").strip()
-    environment_id = str(getattr(environment, "id", "") or "").strip()
-
-    if virtual_cluster_id and virtual_cluster_id in policy.by_virtual_cluster_id:
-        return policy.by_virtual_cluster_id[virtual_cluster_id]
-    if namespace and namespace in policy.by_namespace:
-        return policy.by_namespace[namespace]
-    if tenant_id and tenant_id in policy.by_team:
-        return policy.by_team[tenant_id]
-    if policy.default:
-        return policy.default
-    if namespace:
-        return namespace[:MAX_COST_CENTER_LENGTH]
-    if virtual_cluster_id:
-        return virtual_cluster_id[:MAX_COST_CENTER_LENGTH]
-    return environment_id[:MAX_COST_CENTER_LENGTH] or "unmapped"
+    return _resolve_cost_center_from_policy(policy=policy, inputs=inputs) or _resolve_cost_center_fallback(inputs)

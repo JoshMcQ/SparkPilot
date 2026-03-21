@@ -92,17 +92,21 @@ export default function EnvironmentsPage() {
   }
 
   const visible = paginate(environments, pg);
+  const isEmpty = environments.length === 0;
 
   return (
     <section className="stack">
-      <EnvironmentCreateForm />
       <div className="card">
-        <h3>Tenant Environments</h3>
+        <div className="card-header-row">
+          <h3>Tenant Environments</h3>
+          <Link href="/onboarding/aws" className="inline-link">Open AWS onboarding →</Link>
+        </div>
         <div className="subtle">
           BYOC-Lite uses an existing EKS namespace. Full mode is hidden in UI for this deployment until full-BYOC
           infrastructure is explicitly enabled.
         </div>
       </div>
+      <EnvironmentCreateForm />
 
       {error ? (
         <div className="card error-card">
@@ -125,6 +129,13 @@ export default function EnvironmentsPage() {
       {loading ? (
         <div className="card">
           <div className="subtle">Loading environments...</div>
+        </div>
+      ) : isEmpty ? (
+        <div className="card">
+          <strong>No environments yet</strong>
+          <div className="subtle" style={{ marginTop: 6 }}>
+            Start by creating a BYOC-Lite environment above. Once created, it will appear here with mode, status, and namespace details.
+          </div>
         </div>
       ) : (
         <>
@@ -236,13 +247,6 @@ export default function EnvironmentsPage() {
                     )}
                   </Fragment>
                 ))}
-                {environments.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="subtle">
-                      No environments available.
-                    </td>
-                  </tr>
-                ) : null}
               </tbody>
             </table>
           </div>

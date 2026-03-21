@@ -18,6 +18,7 @@ from sparkpilot.services._helpers import _now, _validate_custom_spark_conf_polic
 from sparkpilot.services.emr_releases import _canonical_release_label
 from sparkpilot.services.finops import _billing_period, _team_key_for_environment, _team_spend_for_period
 from sparkpilot.services.preflight_byoc import _add_byoc_lite_configuration_checks  # noqa: F401
+from sparkpilot.services.preflight_checks import _add_issue3_dispatch_gate_checks
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,79 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PREFLIGHT_AUDIT_ACTIONS = {"run.preflight_passed", "run.preflight_failed", "run.preflight_diagnostic"}
+
+CHECK_STATUS_PRIORITY = {"pass": 0, "warning": 1, "fail": 2}
+
+
+def _check_status_priority(status: str) -> int:
+    return CHECK_STATUS_PRIORITY.get(str(status).lower(), 0)
+
+
+def _preflight_check_merge_key(code: str, details: dict[str, Any] | None) -> str:
+    if code.startswith("policy."):
+        policy_id = (details or {}).get("policy_id")
+        if policy_id not in (None, ""):
+            return f"{code}:{policy_id}"
+    return code
+
+
+def _upsert_preflight_check(
+    checks: list[dict[str, Any]],
+    *,
+    code: str,
+    status_value: str,
+    message: str,
+    remediation: str | None = None,
+    details: dict[str, str | int | bool] | None = None,
+) -> None:
+    """Insert or merge a preflight check by deterministic merge key.
+
+    Idempotency rules:
+    - same check key emitted repeatedly does not duplicate rows
+    - policy checks merge by `policy.<rule_type>:<policy_id>` when policy_id exists
+    - higher-severity status wins (`fail` > `warning` > `pass`)
+    - for equal severity, keep first message and fill missing remediation/details
+    """
+    incoming = {
+        "code": code,
+        "status": status_value,
+        "message": message,
+        "remediation": remediation,
+        "details": details or {},
+    }
+    incoming_key = _preflight_check_merge_key(code, incoming["details"])
+
+    for idx, existing in enumerate(checks):
+        existing_key = _preflight_check_merge_key(
+            str(existing.get("code") or ""),
+            existing.get("details") if isinstance(existing.get("details"), dict) else None,
+        )
+        if existing_key != incoming_key:
+            continue
+
+        existing_priority = _check_status_priority(str(existing.get("status") or ""))
+        incoming_priority = _check_status_priority(status_value)
+
+        if incoming_priority > existing_priority:
+            checks[idx] = incoming
+            return
+
+        if incoming_priority == existing_priority:
+            merged = dict(existing)
+            if not merged.get("message"):
+                merged["message"] = message
+            if remediation and not merged.get("remediation"):
+                merged["remediation"] = remediation
+
+            merged_details = dict(merged.get("details") or {})
+            for key, value in (details or {}).items():
+                merged_details.setdefault(key, value)
+            merged["details"] = merged_details
+
+            checks[idx] = merged
+        return
+
+    checks.append(incoming)
 
 
 # ---------------------------------------------------------------------------
@@ -813,14 +887,13 @@ def _build_preflight(
         remediation: str | None = None,
         details: dict[str, str | int | bool] | None = None,
     ) -> None:
-        checks.append(
-            {
-                "code": code,
-                "status": status_value,
-                "message": message,
-                "remediation": remediation,
-                "details": details or {},
-            }
+        _upsert_preflight_check(
+            checks,
+            code=code,
+            status_value=status_value,
+            message=message,
+            remediation=remediation,
+            details=details,
         )
 
     _add_runtime_and_release_preflight_checks(
@@ -849,6 +922,11 @@ def _build_preflight(
     )
 
     _check_yunikorn_queue_capacity(environment, _run_obj, add_check)
+
+    _add_issue3_dispatch_gate_checks(
+        environment=environment,
+        add_check=add_check,
+    )
 
     _add_byoc_lite_configuration_checks(
         environment=environment,

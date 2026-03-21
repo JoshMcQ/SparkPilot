@@ -10,14 +10,14 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Res
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from botocore.exceptions import BotoCoreError, ClientError
-from sqlalchemy import select, text
+from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session
 
 from sparkpilot.config import get_settings, validate_runtime_settings
 from sparkpilot.db import get_db, init_db
 from sparkpilot.exceptions import SparkPilotError
 from sparkpilot.idempotency import with_idempotency
-from sparkpilot.models import Environment, InteractiveEndpoint, Job, JobTemplate, Run, TeamEnvironmentScope, UserIdentity
+from sparkpilot.models import AuditEvent, Environment, InteractiveEndpoint, Job, JobTemplate, Run, TeamEnvironmentScope, UserIdentity
 from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
 from sparkpilot.schemas import (
     AuthMeResponse,
@@ -339,7 +339,51 @@ def _job_response(payload: dict[str, Any]) -> JobResponse:
     )
 
 
-def _run_response(payload: dict[str, Any], env: Environment | None = None) -> RunResponse:
+def _latest_run_preflight_snapshot(db: Session, run_id: str) -> dict[str, Any] | None:
+    event = db.execute(
+        select(AuditEvent)
+        .where(
+            and_(
+                AuditEvent.entity_type == "run",
+                AuditEvent.entity_id == run_id,
+                AuditEvent.action.in_(["run.preflight_passed", "run.preflight_failed", "run.preflight_diagnostic"]),
+            )
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if event is None:
+        return None
+
+    details = event.details_json if isinstance(event.details_json, dict) else {}
+    ready = details.get("ready")
+    if not isinstance(ready, bool):
+        ready = event.action != "run.preflight_failed"
+
+    summary = details.get("summary")
+    summary_text = str(summary) if summary is not None else None
+
+    checks_raw = details.get("checks")
+    checks: list[dict[str, object]] = []
+    if isinstance(checks_raw, list):
+        for item in checks_raw:
+            if isinstance(item, dict):
+                checks.append(item)
+
+    return {
+        "ready": ready,
+        "summary": summary_text,
+        "generated_at": event.created_at,
+        "checks": checks,
+    }
+
+
+def _run_response(
+    payload: dict[str, Any],
+    env: Environment | None = None,
+    *,
+    preflight: dict[str, Any] | None = None,
+) -> RunResponse:
     spark_ui_uri = payload["spark_ui_uri"]
     spark_history_url: str | None = None
     if spark_ui_uri:
@@ -363,6 +407,7 @@ def _run_response(payload: dict[str, Any], env: Environment | None = None) -> Ru
         driver_log_uri=payload["driver_log_uri"],
         spark_ui_uri=spark_ui_uri,
         spark_history_url=spark_history_url,
+        preflight=preflight,
         created_by_actor=payload.get("created_by_actor"),
         error_message=payload["error_message"],
         started_at=payload["started_at"],
@@ -890,12 +935,13 @@ def post_run(
         scope=f"POST:/v1/jobs/{job_id}/runs",
         key=key,
         payload=req.model_dump(),
-        execute=lambda: _create_run_result(db, job_id, req, actor, source_ip, key),
+        execute=lambda: _create_run_result_with_preflight(db, job_id, req, actor, source_ip, key),
     )
     response.status_code = result.status_code
     if result.replayed:
         response.headers["X-Idempotent-Replay"] = "true"
-    return _run_response(result.body)
+    preflight = result.body.get("preflight") if isinstance(result.body.get("preflight"), dict) else None
+    return _run_response(result.body, preflight=preflight)
 
 
 @app.get("/v1/runs/{run_id}", response_model=RunResponse)
@@ -909,7 +955,8 @@ def get_run_by_id(
     run = get_run(db, run_id)
     env = get_environment(db, run.environment_id)
     _require_run_access(access, run, env)
-    return _run_response(model_to_dict(run), env)
+    preflight = _latest_run_preflight_snapshot(db, run.id)
+    return _run_response(model_to_dict(run), env, preflight=preflight)
 
 
 @app.post("/v1/runs/{run_id}/cancel", response_model=RunResponse)
@@ -931,12 +978,13 @@ def post_cancel_run(
         scope=f"POST:/v1/runs/{run_id}/cancel",
         key=key,
         payload={"run_id": run_id},
-        execute=lambda: _cancel_run_result(db, run_id, actor, source_ip),
+        execute=lambda: _cancel_run_result_with_preflight(db, run_id, actor, source_ip),
     )
     response.status_code = result.status_code
     if result.replayed:
         response.headers["X-Idempotent-Replay"] = "true"
-    return _run_response(result.body)
+    preflight = result.body.get("preflight") if isinstance(result.body.get("preflight"), dict) else None
+    return _run_response(result.body, preflight=preflight)
 
 
 @app.get("/v1/runs/{run_id}/logs", response_model=LogsResponse)
@@ -1102,19 +1150,7 @@ def post_job_template(
     db.add(template)
     db.commit()
     db.refresh(template)
-    return JobTemplateResponse(
-        id=template.id,
-        environment_id=template.environment_id,
-        tenant_id=template.tenant_id,
-        name=template.name,
-        description=template.description,
-        emr_template_id=template.emr_template_id,
-        job_driver=template.job_driver_json,
-        configuration_overrides=template.configuration_overrides_json,
-        tags=template.tags_json,
-        created_at=template.created_at,
-        updated_at=template.updated_at,
-    )
+    return _job_template_response(template)
 
 
 @app.get("/v1/environments/{environment_id}/job-templates", response_model=list[JobTemplateResponse])
@@ -1136,22 +1172,7 @@ def get_job_templates(
         .limit(limit)
         .offset(offset)
     ).scalars().all()
-    return [
-        JobTemplateResponse(
-            id=t.id,
-            environment_id=t.environment_id,
-            tenant_id=t.tenant_id,
-            name=t.name,
-            description=t.description,
-            emr_template_id=t.emr_template_id,
-            job_driver=t.job_driver_json,
-            configuration_overrides=t.configuration_overrides_json,
-            tags=t.tags_json,
-            created_at=t.created_at,
-            updated_at=t.updated_at,
-        )
-        for t in rows
-    ]
+    return [_job_template_response(t) for t in rows]
 
 
 @app.get(
@@ -1171,19 +1192,7 @@ def get_job_template_by_id(
     template = db.get(JobTemplate, template_id)
     if template is None or template.environment_id != environment_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job template not found.")
-    return JobTemplateResponse(
-        id=template.id,
-        environment_id=template.environment_id,
-        tenant_id=template.tenant_id,
-        name=template.name,
-        description=template.description,
-        emr_template_id=template.emr_template_id,
-        job_driver=template.job_driver_json,
-        configuration_overrides=template.configuration_overrides_json,
-        tags=template.tags_json,
-        created_at=template.created_at,
-        updated_at=template.updated_at,
-    )
+    return _job_template_response(template)
 
 
 @app.delete(
@@ -1234,13 +1243,7 @@ def get_queue_utilization(
             Run.state.in_(active_states),
         )
     ).scalars().all()
-    used_vcpu = 0
-    for run in active_runs:
-        resources = run.requested_resources_json or {}
-        driver_vcpu = resources.get("driver_vcpu", 0)
-        executor_vcpu = resources.get("executor_vcpu", 0)
-        executor_instances = resources.get("executor_instances", 0)
-        used_vcpu += driver_vcpu + executor_vcpu * executor_instances
+    used_vcpu = _compute_active_vcpu(list(active_runs))
     utilization_pct: float | None = None
     if env.yunikorn_queue_max_vcpu:
         utilization_pct = round(used_vcpu / env.yunikorn_queue_max_vcpu * 100, 2)
@@ -1298,22 +1301,7 @@ def post_interactive_endpoint(
     db.add(endpoint)
     db.commit()
     db.refresh(endpoint)
-    return InteractiveEndpointResponse(
-        id=endpoint.id,
-        environment_id=endpoint.environment_id,
-        tenant_id=endpoint.tenant_id,
-        name=endpoint.name,
-        emr_endpoint_id=endpoint.emr_endpoint_id,
-        execution_role_arn=endpoint.execution_role_arn,
-        release_label=endpoint.release_label,
-        status=endpoint.status,
-        idle_timeout_minutes=endpoint.idle_timeout_minutes,
-        certificate_arn=endpoint.certificate_arn,
-        endpoint_url=endpoint.endpoint_url,
-        created_by_actor=endpoint.created_by_actor,
-        created_at=endpoint.created_at,
-        updated_at=endpoint.updated_at,
-    )
+    return _interactive_endpoint_response(endpoint)
 
 
 @app.get(
@@ -1338,25 +1326,7 @@ def get_interactive_endpoints(
         .limit(limit)
         .offset(offset)
     ).scalars().all()
-    return [
-        InteractiveEndpointResponse(
-            id=ep.id,
-            environment_id=ep.environment_id,
-            tenant_id=ep.tenant_id,
-            name=ep.name,
-            emr_endpoint_id=ep.emr_endpoint_id,
-            execution_role_arn=ep.execution_role_arn,
-            release_label=ep.release_label,
-            status=ep.status,
-            idle_timeout_minutes=ep.idle_timeout_minutes,
-            certificate_arn=ep.certificate_arn,
-            endpoint_url=ep.endpoint_url,
-            created_by_actor=ep.created_by_actor,
-            created_at=ep.created_at,
-            updated_at=ep.updated_at,
-        )
-        for ep in rows
-    ]
+    return [_interactive_endpoint_response(ep) for ep in rows]
 
 
 @app.get(
@@ -1376,22 +1346,7 @@ def get_interactive_endpoint_by_id(
     endpoint = db.get(InteractiveEndpoint, endpoint_id)
     if endpoint is None or endpoint.environment_id != environment_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interactive endpoint not found.")
-    return InteractiveEndpointResponse(
-        id=endpoint.id,
-        environment_id=endpoint.environment_id,
-        tenant_id=endpoint.tenant_id,
-        name=endpoint.name,
-        emr_endpoint_id=endpoint.emr_endpoint_id,
-        execution_role_arn=endpoint.execution_role_arn,
-        release_label=endpoint.release_label,
-        status=endpoint.status,
-        idle_timeout_minutes=endpoint.idle_timeout_minutes,
-        certificate_arn=endpoint.certificate_arn,
-        endpoint_url=endpoint.endpoint_url,
-        created_by_actor=endpoint.created_by_actor,
-        created_at=endpoint.created_at,
-        updated_at=endpoint.updated_at,
-    )
+    return _interactive_endpoint_response(endpoint)
 
 
 @app.delete(
@@ -1462,6 +1417,27 @@ def _create_run_result(
     return status.HTTP_201_CREATED, model_to_dict(run), "run", run.id
 
 
+def _create_run_result_with_preflight(
+    db: Session,
+    job_id: str,
+    req: RunCreateRequest,
+    actor: str,
+    source_ip: str | None,
+    key: str,
+) -> tuple[int, dict[str, Any], str | None, str | None]:
+    status_code, body, entity_type, entity_id = _create_run_result(
+        db,
+        job_id,
+        req,
+        actor,
+        source_ip,
+        key,
+    )
+    body_with_preflight = dict(body)
+    body_with_preflight["preflight"] = _latest_run_preflight_snapshot(db, body["id"])
+    return status_code, body_with_preflight, entity_type, entity_id
+
+
 def _cancel_run_result(
     db: Session,
     run_id: str,
@@ -1470,6 +1446,61 @@ def _cancel_run_result(
 ) -> tuple[int, dict[str, Any], str | None, str | None]:
     run = cancel_run(db, run_id, actor=actor, source_ip=source_ip, commit=False)
     return status.HTTP_200_OK, model_to_dict(run), "run", run.id
+
+
+def _cancel_run_result_with_preflight(
+    db: Session,
+    run_id: str,
+    actor: str,
+    source_ip: str | None,
+) -> tuple[int, dict[str, Any], str | None, str | None]:
+    status_code, body, entity_type, entity_id = _cancel_run_result(db, run_id, actor, source_ip)
+    body_with_preflight = dict(body)
+    body_with_preflight["preflight"] = _latest_run_preflight_snapshot(db, body["id"])
+    return status_code, body_with_preflight, entity_type, entity_id
+
+
+def _job_template_response(t: JobTemplate) -> JobTemplateResponse:
+    return JobTemplateResponse(
+        id=t.id,
+        environment_id=t.environment_id,
+        tenant_id=t.tenant_id,
+        name=t.name,
+        description=t.description,
+        emr_template_id=t.emr_template_id,
+        job_driver=t.job_driver_json,
+        configuration_overrides=t.configuration_overrides_json,
+        tags=t.tags_json,
+        created_at=t.created_at,
+        updated_at=t.updated_at,
+    )
+
+
+def _interactive_endpoint_response(ep: InteractiveEndpoint) -> InteractiveEndpointResponse:
+    return InteractiveEndpointResponse(
+        id=ep.id,
+        environment_id=ep.environment_id,
+        tenant_id=ep.tenant_id,
+        name=ep.name,
+        emr_endpoint_id=ep.emr_endpoint_id,
+        execution_role_arn=ep.execution_role_arn,
+        release_label=ep.release_label,
+        status=ep.status,
+        idle_timeout_minutes=ep.idle_timeout_minutes,
+        certificate_arn=ep.certificate_arn,
+        endpoint_url=ep.endpoint_url,
+        created_by_actor=ep.created_by_actor,
+        created_at=ep.created_at,
+        updated_at=ep.updated_at,
+    )
+
+
+def _compute_active_vcpu(runs: list[Run]) -> int:
+    total = 0
+    for run in runs:
+        resources = run.requested_resources_json or {}
+        total += resources.get("driver_vcpu", 0) + resources.get("executor_vcpu", 0) * resources.get("executor_instances", 0)
+    return total
 
 
 @app.get("/v1/metrics/kpis")

@@ -8,38 +8,39 @@ import { handleCallback } from "@/lib/oidc-client";
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [error, setError] = useState<string | null>(null);
+  const code = searchParams.get("code");
+  const state = searchParams.get("state");
+  const errorParam = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
+  const callbackError = errorParam
+    ? (errorDescription ?? errorParam)
+    : (!code || !state
+      ? "Missing code or state in callback URL. The login flow may have been interrupted."
+      : null);
+
+  const [asyncError, setAsyncError] = useState<string | null>(null);
 
   useEffect(() => {
-    const code = searchParams.get("code");
-    const state = searchParams.get("state");
-    const errorParam = searchParams.get("error");
-    const errorDescription = searchParams.get("error_description");
-
-    if (errorParam) {
-      setError(errorDescription ?? errorParam);
-      return;
-    }
-
-    if (!code || !state) {
-      setError("Missing code or state in callback URL. The login flow may have been interrupted.");
+    if (callbackError || !code || !state) {
       return;
     }
 
     handleCallback(code, state)
       .then(() => {
-        router.replace("/");
+        router.replace("/onboarding/aws");
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Login failed. Please try again.");
+        setAsyncError(err instanceof Error ? err.message : "Login failed. Please try again.");
       });
-  }, [searchParams, router]);
+  }, [callbackError, code, state, router]);
 
-  if (error) {
+  const effectiveError = asyncError ?? callbackError;
+
+  if (effectiveError) {
     return (
       <div className="card" style={{ padding: "2rem" }}>
         <h2>Login failed</h2>
-        <p style={{ color: "var(--text-muted)" }}>{error}</p>
+        <p style={{ color: "var(--text-muted)" }}>{effectiveError}</p>
         <Link href="/" className="button" style={{ marginTop: "1rem", display: "inline-block" }}>
           Back to home
         </Link>

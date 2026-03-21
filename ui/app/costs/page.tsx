@@ -40,9 +40,6 @@ export default function CostsPage() {
       .then(([envRows, teamRows]) => {
         setEnvironments(envRows);
         setTeams(teamRows);
-        if (!team && teamRows.length > 0) {
-          setTeam(teamRows[0].name);
-        }
       })
       .catch((err: unknown) => {
         setError(friendlyError(err, "Failed to load teams and environments"));
@@ -51,6 +48,12 @@ export default function CostsPage() {
         setInitializing(false);
       });
   }, []);
+
+  useEffect(() => {
+    if (!team && teams.length > 0) {
+      setTeam(teams[0].name);
+    }
+  }, [team, teams]);
 
   // Build a lookup for environment display
   const envMap = useMemo(() => new Map(environments.map((e) => [e.id, e])), [environments]);

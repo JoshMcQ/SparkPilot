@@ -10,7 +10,7 @@ os.environ.setdefault("SPARKPILOT_DATABASE_URL", "sqlite:///./sparkpilot_test.db
 from sparkpilot.api import app  # noqa: E402
 from sparkpilot.aws_clients import EmrDispatchResult  # noqa: E402
 from sparkpilot.config import get_settings  # noqa: E402
-from sparkpilot.db import Base, SessionLocal, engine, init_db  # noqa: E402
+from sparkpilot.db import Base, SessionLocal, engine  # noqa: E402
 from sparkpilot.models import AuditEvent, EmrRelease, Environment, ProvisioningOperation, Run, UsageRecord  # noqa: E402
 from sparkpilot.services import _record_usage_if_needed, process_provisioning_once, process_reconciler_once, process_scheduler_once, sync_emr_releases_once  # noqa: E402
 from sparkpilot.terraform_orchestrator import TerraformApplyResult, TerraformPlanResult  # noqa: E402
@@ -1767,6 +1767,8 @@ def test_scheduler_blocks_dispatch_on_preflight_failure() -> None:
     run_payload = client.get(f"/v1/runs/{run['id']}").json()
     assert run_payload["state"] == "failed"
     assert "Preflight failed" in (run_payload["error_message"] or "")
+    assert isinstance(run_payload.get("preflight"), dict)
+    assert run_payload["preflight"]["ready"] is False
 
 
 def test_scheduler_blocks_dispatch_when_customer_role_dispatch_check_fails(monkeypatch) -> None:
@@ -1825,6 +1827,10 @@ def test_scheduler_blocks_dispatch_when_customer_role_dispatch_check_fails(monke
     run_payload = client.get(f"/v1/runs/{run['id']}").json()
     assert run_payload["state"] == "failed"
     assert "byoc_lite.customer_role_dispatch" in (run_payload["error_message"] or "")
+    assert isinstance(run_payload.get("preflight"), dict)
+    assert run_payload["preflight"]["ready"] is False
+    codes = {item.get("code") for item in run_payload["preflight"].get("checks", []) if isinstance(item, dict)}
+    assert "issue3.iam_simulate_principal_policy" in codes
 
 
 def test_byoc_lite_provisioning_prerequisite_failures_are_actionable() -> None:
@@ -2846,7 +2852,7 @@ def test_list_interactive_endpoints_returns_created() -> None:
 
 def _setup_rbac_fixtures(client: TestClient, monkeypatch) -> dict:
     """Create tenant, team, env, operator, and user identities for RBAC tests."""
-    from conftest import issue_test_token
+    from tests.conftest import issue_test_token
 
     tenant = client.post(
         "/v1/tenants",
@@ -2997,7 +3003,7 @@ def test_rbac_cross_team_run_isolation(monkeypatch) -> None:
     This is the core RBAC isolation test: two teams, two environments, two
     users — each should only see runs in their own team-scoped environment.
     """
-    from conftest import issue_test_token
+    from tests.conftest import issue_test_token
 
     def _mock_start(self, environment, job, run):
         return EmrDispatchResult(
@@ -3194,7 +3200,7 @@ def _create_ready_env_for_policy(client: TestClient, suffix: str = "pol") -> dic
 def test_policy_crud_lifecycle() -> None:
     """Admin can create, list, get, and delete a policy (#39)."""
     client = TestClient(app)
-    fixtures = _create_ready_env_for_policy(client, "crud")
+    _create_ready_env_for_policy(client, "crud")
 
     # Create
     resp = client.post("/v1/policies", json={
@@ -3222,11 +3228,9 @@ def test_policy_crud_lifecycle() -> None:
     assert resp.status_code == 200
     assert resp.json()["id"] == policy["id"]
 
-    # Delete (deactivate)
     resp = client.delete(f"/v1/policies/{policy['id']}")
     assert resp.status_code == 204
 
-    # Verify deactivated
     resp = client.get(f"/v1/policies/{policy['id']}")
     assert resp.status_code == 200
     assert resp.json()["active"] is False
@@ -4225,6 +4229,9 @@ def test_matrix_oidc_association_missing_fails(monkeypatch) -> None:
     assert "not associated" in oidc_check["message"].lower()
     assert oidc_check["remediation"] is not None
     assert "eksctl" in oidc_check["remediation"]
+    assert "detect+instruct mode" in oidc_check["remediation"].lower()
+    assert oidc_check.get("details", {}).get("automation_mode") == "detect_only"
+    assert "iam:CreateOpenIDConnectProvider" in str(oidc_check.get("details", {}).get("required_permissions", ""))
     assert resp.json()["ready"] is False
 
 
@@ -4247,6 +4254,86 @@ def test_matrix_execution_role_trust_fails(monkeypatch) -> None:
     assert "trust" in trust_check["message"].lower()
 
 
+def test_matrix_execution_role_trust_auto_remediates_when_enabled(monkeypatch) -> None:
+    """When trust check fails, preflight can auto-update trust policy and recover (#20)."""
+    monkeypatch.setenv("SPARKPILOT_PREFLIGHT_AUTOFIX_TRUST_POLICY", "true")
+    monkeypatch.setattr("sparkpilot.services.preflight._add_issue3_dispatch_gate_checks", lambda *args, **kwargs: None)
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "trust-auto-remediate")
+
+    calls = {"check": 0}
+
+    def _check(self, env):
+        calls["check"] += 1
+        if calls["check"] == 1:
+            raise ValueError("Execution role trust policy missing EMR web-identity statement.")
+        return {
+            "role_name": "SparkPilotEmrExecutionRole",
+            "provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/ABC123",
+        }
+
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_execution_role_trust_policy",
+        _check,
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.update_execution_role_trust_policy",
+        lambda self, env: {
+            "updated": True,
+            "already_present": False,
+            "role_name": "SparkPilotEmrExecutionRole",
+            "provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/ABC123",
+        },
+    )
+
+    from sparkpilot.services import preflight as preflight_service
+
+    preflight_service._preflight_cache.clear()
+
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    trust_check = checks.get("byoc_lite.execution_role_trust")
+    assert trust_check is not None
+    assert trust_check["status"] == "pass"
+    assert "auto-remediated" in trust_check["message"].lower()
+    assert trust_check.get("details", {}).get("auto_remediated") is True
+
+
+def test_matrix_execution_role_trust_auto_remediation_access_denied(monkeypatch) -> None:
+    """AccessDenied during trust auto-remediation returns actionable failure context (#20)."""
+    monkeypatch.setenv("SPARKPILOT_PREFLIGHT_AUTOFIX_TRUST_POLICY", "true")
+    monkeypatch.setattr("sparkpilot.services.preflight._add_issue3_dispatch_gate_checks", lambda *args, **kwargs: None)
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "trust-auto-denied")
+
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.check_execution_role_trust_policy",
+        lambda self, env: (_ for _ in ()).throw(ValueError("Execution role trust policy missing.")),
+    )
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.update_execution_role_trust_policy",
+        lambda self, env: (_ for _ in ()).throw(
+            ValueError(
+                "Access denied while updating execution role trust policy. Required permissions: iam:GetRole, iam:UpdateAssumeRolePolicy, eks:DescribeCluster, iam:GetOpenIDConnectProvider. Remediation: run aws emr-containers update-role-trust-policy --cluster-name matrix-cluster --namespace sparkpilot-team --role-name SparkPilotEmrExecutionRole --region us-east-1"
+            )
+        ),
+    )
+
+    from sparkpilot.services import preflight as preflight_service
+
+    preflight_service._preflight_cache.clear()
+
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    trust_check = checks.get("byoc_lite.execution_role_trust")
+    assert trust_check is not None
+    assert trust_check["status"] == "fail"
+    assert "auto-remediation attempt failed" in trust_check["message"].lower()
+    assert "update-role-trust-policy" in str(trust_check.get("remediation") or "")
+
+
 def test_matrix_iam_pass_role_missing_fails(monkeypatch) -> None:
     """Missing iam:PassRole permission fails with remediation (#66)."""
     client = TestClient(app)
@@ -4267,6 +4354,8 @@ def test_matrix_iam_pass_role_missing_fails(monkeypatch) -> None:
     assert pass_role_check is not None
     assert pass_role_check["status"] == "fail"
     assert pass_role_check["remediation"] is not None
+    assert "aws iam put-role-policy" in pass_role_check["remediation"]
+    assert "--role-name" in pass_role_check["remediation"]
 
 
 def test_matrix_dispatch_permission_missing_fails(monkeypatch) -> None:
@@ -4291,6 +4380,8 @@ def test_matrix_dispatch_permission_missing_fails(monkeypatch) -> None:
     assert "missing" in dispatch_check["message"].lower()
     assert dispatch_check["remediation"] is not None
     assert "StartJobRun" in dispatch_check["remediation"]
+    assert "aws iam put-role-policy" in dispatch_check["remediation"]
+    assert "--role-name" in dispatch_check["remediation"]
 
 
 def test_matrix_namespace_reserved_fails() -> None:
@@ -4321,6 +4412,61 @@ def test_matrix_namespace_format_invalid_fails() -> None:
     assert fmt_check is not None
     assert fmt_check["status"] == "fail"
     assert "lowercase" in fmt_check["message"].lower() or "regex" in fmt_check["remediation"].lower()
+
+
+def test_matrix_namespace_normalization_whitespace_fails() -> None:
+    """Namespace with leading/trailing spaces fails normalization check (#19)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(
+        client, "ns-space", eks_namespace=" sparkpilot-team "
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    norm_check = checks.get("byoc_lite.eks_namespace_normalized")
+    assert norm_check is not None
+    assert norm_check["status"] == "fail"
+    assert "whitespace" in norm_check["message"].lower()
+
+
+def test_matrix_namespace_collision_fails_with_remediation(monkeypatch) -> None:
+    """Active virtual-cluster collision fails preflight with actionable remediation (#19)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "ns-collision")
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.find_namespace_virtual_cluster_collision",
+        lambda self, env: {"id": "vc-collision", "name": "existing-vc", "state": "RUNNING"},
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    payload = resp.json()
+    checks = {c["code"]: c for c in payload["checks"]}
+    collision_check = checks.get("byoc_lite.namespace_collision")
+    assert collision_check is not None
+    assert collision_check["status"] == "fail"
+    assert "collision" in collision_check["message"].lower()
+    assert "delete-virtual-cluster" in str(collision_check.get("remediation") or "")
+    assert payload["ready"] is False
+
+
+def test_matrix_namespace_collision_ignores_env_bound_virtual_cluster(monkeypatch) -> None:
+    """Collision check passes when detected VC matches environment's configured virtual cluster (#19)."""
+    client = TestClient(app)
+    env_id = _create_ready_byoc_lite_matrix(client, "ns-collision-own")
+    env_payload = client.get(f"/v1/environments/{env_id}").json()
+    own_vc_id = env_payload["emr_virtual_cluster_id"]
+    assert own_vc_id is not None
+
+    monkeypatch.setattr(
+        "sparkpilot.services.preflight_byoc.EmrEksClient.find_namespace_virtual_cluster_collision",
+        lambda self, env: {"id": own_vc_id, "name": "owned-vc", "state": "RUNNING"},
+    )
+    resp = client.get(f"/v1/environments/{env_id}/preflight")
+    assert resp.status_code == 200
+    checks = {c["code"]: c for c in resp.json()["checks"]}
+    collision_check = checks.get("byoc_lite.namespace_collision")
+    assert collision_check is not None
+    assert collision_check["status"] == "pass"
 
 
 def test_matrix_all_checks_pass_flow(monkeypatch) -> None:
@@ -4365,6 +4511,8 @@ def test_matrix_all_checks_pass_flow(monkeypatch) -> None:
         "byoc_lite.access_entry_mode",
         "byoc_lite.customer_role_dispatch",
         "byoc_lite.iam_pass_role",
+        "byoc_lite.namespace_collision",
+        "byoc_lite.eks_namespace_normalized",
     ]:
         assert code in checks, f"Missing check: {code}"
         assert checks[code]["status"] == "pass", f"{code} not passing: {checks[code]}"
@@ -4464,15 +4612,13 @@ def test_matrix_evidence_artifacts_present(monkeypatch) -> None:
 # OIDC interoperability matrix (#69)
 # ---------------------------------------------------------------------------
 
-from conftest import (
-    _PRIVATE_KEY,
+from tests.conftest import (
     _JWKS_PATH,
     issue_test_token,
-    TEST_JWT_KID,
     TEST_OIDC_AUDIENCE,
     TEST_OIDC_ISSUER,
 )
-from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
+from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError
 
 
 def _make_verifier(**overrides) -> OIDCTokenVerifier:
@@ -4643,15 +4789,16 @@ def test_oidc_session_cookie_flow() -> None:
 
 def test_oidc_multiple_idp_config_pattern() -> None:
     """Different issuer/audience combos create isolated verifiers (#69)."""
-    import json as json_module
 
     # Verifier 1: primary issuer
     v1 = _make_verifier(issuer="https://cognito.example.com", audience="sparkpilot-api")
     # Verifier 2: different issuer (for multi-IdP)
     v2 = _make_verifier(issuer="https://auth0.example.com", audience="sparkpilot-api")
 
-    # Token for v1 issuer should fail on v2
+    # Token for v1 issuer should validate on v1 but fail on v2
     token_v1 = issue_test_token("multi-user", issuer="https://cognito.example.com")
+    claims_v1 = v1.verify_access_token(token_v1)
+    assert claims_v1.subject == "multi-user"
     with pytest.raises(OIDCValidationError):
         v2.verify_access_token(token_v1)
 

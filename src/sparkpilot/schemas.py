@@ -235,6 +235,13 @@ class RunCreateRequest(BaseModel):
     timeout_seconds: int | None = Field(default=None, ge=60, le=172800)
 
 
+class RunPreflightResult(BaseModel):
+    ready: bool
+    summary: str | None = None
+    generated_at: datetime | None = None
+    checks: list[dict[str, object]] = Field(default_factory=list)
+
+
 class RunResponse(BaseModel):
     id: str
     job_id: str
@@ -252,6 +259,7 @@ class RunResponse(BaseModel):
     driver_log_uri: str | None
     spark_ui_uri: str | None
     spark_history_url: str | None = None
+    preflight: RunPreflightResult | None = None
     created_by_actor: str | None
     error_message: str | None
     started_at: datetime | None
