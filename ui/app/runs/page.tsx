@@ -262,13 +262,19 @@ export default function RunsPage() {
 
   const refreshSelectedRunLogs = useCallback(async (runId: string) => {
     const run = runs.find((item) => item.id === runId);
-    if (!run || !run.log_group || !run.log_stream_prefix) {
+    if (!run) return;
+    if (!run.log_group || !run.log_stream_prefix) {
+      // Log pointers not yet recorded — surface a state-aware hint instead of staying silent.
+      const activeStates = new Set(["queued", "dispatching", "accepted", "running"]);
+      if (activeStates.has(run.state)) {
+        setLogsHint("Waiting for CloudWatch log pointers — EMR assigns these once the job is accepted. Refreshing...");
+      }
       return;
     }
     try {
       const payload = await fetchRunLogs(run.id, { limit: LOG_TAIL_LINES });
       setLogs(payload.lines);
-      setLogsHint(payload.lines.length > 0 ? "" : "No log lines available yet. The run may still be starting.");
+      setLogsHint(payload.lines.length > 0 ? "" : "No log lines in the last 30 minutes. The run may still be initializing.");
     } catch {
       // Keep current log lines if background refresh fails; manual Logs click still surfaces errors.
     }
