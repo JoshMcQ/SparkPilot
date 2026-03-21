@@ -545,7 +545,7 @@ export function RunSubmitCard({
         </div>
       )}
 
-      <div className="button-row">
+      <div className="button-row run-submit-actions">
         <button type="button" className="button" onClick={checkPreflight}>
           Check Preflight
         </button>
@@ -563,18 +563,18 @@ export function RunSubmitCard({
         </button>
       </div>
 
-      {preflightError ? <div className="error-text">{preflightError}</div> : null}
-      {submitError ? <div className="error-text">{submitError}</div> : null}
+      {preflightError ? <div className="error-text run-submit-feedback">{preflightError}</div> : null}
+      {submitError ? <div className="error-text run-submit-feedback">{submitError}</div> : null}
 
-      <div className={preflightReady === false ? "json-panel error-card" : "json-panel"}>
+      <div className={preflightReady === false ? "json-panel error-card run-preflight-panel" : "json-panel run-preflight-panel"}>
         {preflightReady === null ? (
           <div className="subtle">
             Run <strong>Check Preflight</strong> before submission. Submit stays disabled until all blocking checks pass.
           </div>
         ) : (
           <>
-            <div className="subtle run-preflight-status">
-              Preflight:
+            <div className="run-preflight-status">
+              <span className="subtle">Preflight</span>
               <span className={badgeClass(preflightReady ? "ready" : "failed")}>
                 {preflightReady ? "ready" : "not ready"}
               </span>

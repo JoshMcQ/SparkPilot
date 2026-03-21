@@ -688,8 +688,30 @@ tbody tr:last-child td {
   margin-top: var(--space-2);
 }
 
-.run-preflight-status {
+.run-submit-actions {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.run-submit-feedback {
   margin-top: var(--space-2);
+}
+
+.run-preflight-panel {
+  margin-top: var(--space-3);
+}
+
+.run-preflight-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.preflight-list li {
+  margin-top: var(--space-2);
+  line-height: 1.5;
 }
 
 .form-grid {
