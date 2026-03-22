@@ -503,6 +503,38 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Learn More ───────────────────────────────── */}
+      <section className="landing-section" id="learn-more">
+        <div className="landing-section-header">
+          <div className="landing-section-badge">Still evaluating?</div>
+          <h2 className="landing-section-title">Common questions, honest answers</h2>
+          <p className="landing-section-sub">
+            We document the real tradeoffs. No marketing spin — so you can make the right
+            call for your team.
+          </p>
+        </div>
+        <div className="landing-learnmore-grid">
+          <Link href="/why-not-diy" className="landing-learnmore-card">
+            <div className="landing-learnmore-icon">🔧</div>
+            <h3>Why not build it yourself?</h3>
+            <p>
+              130–250 hours to reach parity. 40–80 hours of ongoing maintenance per month.
+              An honest cost accounting of DIY EMR on EKS.
+            </p>
+            <span className="landing-learnmore-link">Read the breakdown →</span>
+          </Link>
+          <Link href="/why-not-serverless" className="landing-learnmore-card">
+            <div className="landing-learnmore-icon">☁️</div>
+            <h3>Why not EMR Serverless?</h3>
+            <p>
+              Cold-start latency, no persistent clusters, no YuniKorn, no BYOC. When
+              Serverless is the right answer — and when it isn&apos;t.
+            </p>
+            <span className="landing-learnmore-link">Read the tradeoffs →</span>
+          </Link>
+        </div>
+      </section>
+
       {/* ── CTA ──────────────────────────────────────── */}
       <section className="landing-cta">
         <h2>Ready to stop firefighting Spark?</h2>

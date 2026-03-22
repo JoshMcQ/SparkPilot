@@ -33,6 +33,8 @@ export function LandingFooter() {
             Changelog
           </Link>
           <Link href="/security">Security</Link>
+          <Link href="/why-not-diy">Why Not DIY?</Link>
+          <Link href="/why-not-serverless">Why Not Serverless?</Link>
         </div>
       </div>
       <div className="landing-footer-bottom">
