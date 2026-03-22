@@ -858,7 +858,7 @@ export async function createPolicy(req: PolicyCreateRequest): Promise<Policy> {
 export async function deletePolicy(policyId: string): Promise<void> {
   const response = await fetch(`${API_PREFIX}/v1/policies/${policyId}`, {
     method: "DELETE",
-    headers: _headers(true),
+    headers: _headers(false),
   });
   if (!response.ok) {
     throw new Error(await _extractDetail(response, "Failed to delete policy"));

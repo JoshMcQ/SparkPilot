@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Environment, EmrRelease, EmrReleaseLifecycleStatus, deleteEnvironment, fetchEnvironments, fetchEmrReleases, retryEnvironmentProvisioning } from "@/lib/api";
@@ -37,7 +37,12 @@ function EmrReleasesSection() {
   }, []);
 
   const warnCount = releases.filter((r) => r.lifecycle_status !== "current").length;
-  const visible = showAll ? releases : releases.filter((r) => r.lifecycle_status !== "current" || releases.indexOf(r) < 10);
+  const visible = useMemo(() => {
+    if (showAll) return releases;
+    const nonCurrent = releases.filter((r) => r.lifecycle_status !== "current");
+    const currentSlice = releases.filter((r) => r.lifecycle_status === "current").slice(0, 10);
+    return [...nonCurrent, ...currentSlice];
+  }, [showAll, releases]);
 
   return (
     <div className="card">

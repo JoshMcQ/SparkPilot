@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Policy,
   PolicyCreateRequest,
@@ -87,20 +87,20 @@ function configSummary(ruleType: PolicyRuleType, config: Record<string, unknown>
       return `limit: ${config.limit}`;
     }
     if (ruleType === "required_tags") {
-      const tags = config.tags as string[];
-      return tags?.length ? tags.join(", ") : "—";
+      const tags = config.tags;
+      return Array.isArray(tags) && tags.length > 0 ? (tags as string[]).join(", ") : "—";
     }
     if (ruleType === "allowed_golden_paths") {
-      const paths = config.paths as string[];
-      return paths?.length ? paths.join(", ") : "—";
+      const paths = config.paths;
+      return Array.isArray(paths) && paths.length > 0 ? (paths as string[]).join(", ") : "—";
     }
     if (ruleType === "allowed_release_labels") {
-      const labels = config.labels as string[];
-      return labels?.length ? labels.join(", ") : "—";
+      const labels = config.labels;
+      return Array.isArray(labels) && labels.length > 0 ? (labels as string[]).join(", ") : "—";
     }
     if (ruleType === "allowed_instance_types") {
-      const types = config.types as string[];
-      return types?.length ? types.join(", ") : "—";
+      const types = config.types;
+      return Array.isArray(types) && types.length > 0 ? (types as string[]).join(", ") : "—";
     }
     return JSON.stringify(config);
   } catch {
@@ -136,6 +136,10 @@ function CreatePolicyForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
+  const uniqueTenants = useMemo(
+    () => Array.from(new Map(teams.map((t) => [t.tenant_id, t])).values()),
+    [teams]
+  );
 
   function handleRuleTypeChange(rt: PolicyRuleType) {
     setForm((f) => ({ ...f, rule_type: rt }));
@@ -162,6 +166,10 @@ function CreatePolicyForm({
     e.preventDefault();
     const config = validateConfig();
     if (!config) return;
+    if (form.scope !== "global" && !form.scope_id) {
+      setError(`A ${form.scope} must be selected when scope is not global.`);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -242,7 +250,7 @@ function CreatePolicyForm({
               onChange={(e) => setForm((f) => ({ ...f, scope_id: e.target.value || null }))}
             >
               <option value="">Select tenant</option>
-              {Array.from(new Map(teams.map((t) => [t.tenant_id, t])).values()).map((t) => (
+              {uniqueTenants.map((t) => (
                 <option key={t.tenant_id} value={t.tenant_id}>
                   {t.tenant_id.slice(0, 8)} ({t.name})
                 </option>
