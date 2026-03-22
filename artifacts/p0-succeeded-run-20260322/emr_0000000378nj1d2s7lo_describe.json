@@ -1,0 +1,43 @@
+{
+    "jobRun": {
+        "id": "0000000378nj1d2s7lo",
+        "name": "cur-reconcile-evidence-sparkpi-20260322-713398061344",
+        "virtualClusterId": "580dfmy1wqym1dz7nkksxhzpp",
+        "arn": "arn:aws:emr-containers:us-east-1:787587782916:/virtualclusters/580dfmy1wqym1dz7nkksxhzpp/jobruns/0000000378nj1d2s7lo",
+        "state": "COMPLETED",
+        "clientToken": "8a28e047-4264-4541-aef6-dfaa4a1c2805",
+        "executionRoleArn": "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole",
+        "releaseLabel": "emr-7.10.0-latest",
+        "configurationOverrides": {
+            "monitoringConfiguration": {
+                "persistentAppUI": "ENABLED",
+                "cloudWatchMonitoringConfiguration": {
+                    "logGroupName": "/sparkpilot/runs/69be1cb6-1cfd-45dc-a1de-4345f612001e",
+                    "logStreamNamePrefix": "328ba1b7-8b0d-41fa-a9e8-713398061344/attempt-1"
+                }
+            }
+        },
+        "jobDriver": {
+            "sparkSubmitJobDriver": {
+                "entryPoint": "s3://sparkpilot-live-787587782916-20260224203702/scripts/sparkpi.py",
+                "entryPointArguments": [
+                    "10"
+                ],
+                "sparkSubmitParameters": "--conf spark.driver.cores=1 --conf spark.driver.memory=1g --conf spark.executor.instances=1 --conf spark.executor.cores=1 --conf spark.executor.memory=1g --conf spark.kubernetes.executor.request.cores=500m --conf spark.kubernetes.driver.request.cores=500m --conf spark.kubernetes.driver.label.sparkpilot-run-id=328ba1b7-8b0d-41fa-a9e8-713398061344 --conf spark.kubernetes.executor.label.sparkpilot-run-id=328ba1b7-8b0d-41fa-a9e8-713398061344 --conf spark.kubernetes.driver.label.sparkpilot-team=89b43f2d-2a48-4be6-9723-9732b0df8223 --conf spark.kubernetes.executor.label.sparkpilot-team=89b43f2d-2a48-4be6-9723-9732b0df8223 --conf spark.kubernetes.driver.label.sparkpilot-project=sparkpilot-demo-2 --conf spark.kubernetes.executor.label.sparkpilot-project=sparkpilot-demo-2 --conf spark.kubernetes.driver.label.sparkpilot-cost-center=sparkpilot-demo-2 --conf spark.kubernetes.executor.label.sparkpilot-cost-center=sparkpilot-demo-2"
+            }
+        },
+        "createdAt": "2026-03-22T22:09:13Z",
+        "createdBy": "arn:aws:sts::787587782916:assumed-role/SparkPilotByocLiteRoleAdmin/sparkpilot-53d8b69e",
+        "finishedAt": "2026-03-22T22:10:47Z",
+        "stateDetails": "JobRun completed successfully. It ran for 43 Seconds",
+        "tags": {
+            "sparkpilot:namespace": "sparkpilot-demo-2",
+            "sparkpilot:cost_center": "sparkpilot-demo-2",
+            "sparkpilot:run_id": "328ba1b7-8b0d-41fa-a9e8-713398061344",
+            "sparkpilot:environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+            "sparkpilot:project": "sparkpilot-demo-2",
+            "sparkpilot:virtual_cluster_id": "580dfmy1wqym1dz7nkksxhzpp",
+            "sparkpilot:team": "89b43f2d-2a48-4be6-9723-9732b0df8223"
+        }
+    }
+}

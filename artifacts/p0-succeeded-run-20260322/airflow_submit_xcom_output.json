@@ -1,0 +1,49 @@
+{
+  "id": "be986fac-1945-4a44-9d00-bd0de89ebec8",
+  "status": "queued",
+  "cost_usd_micros": null,
+  "duration_seconds": null,
+  "log_url": null,
+  "run": {
+    "id": "be986fac-1945-4a44-9d00-bd0de89ebec8",
+    "job_id": "dd87754d-bbef-45fb-bf84-e6686c4b990e",
+    "environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+    "state": "queued",
+    "attempt": 1,
+    "requested_resources": {
+      "driver_vcpu": 1,
+      "driver_memory_gb": 1,
+      "executor_vcpu": 1,
+      "executor_memory_gb": 2,
+      "executor_instances": 1
+    },
+    "args": [
+      "10"
+    ],
+    "spark_conf": {
+      "spark.driver.cores": "1",
+      "spark.driver.memory": "1g",
+      "spark.executor.instances": "1",
+      "spark.executor.cores": "1",
+      "spark.executor.memory": "2g",
+      "spark.kubernetes.driver.request.cores": "500m",
+      "spark.kubernetes.executor.request.cores": "500m"
+    },
+    "timeout_seconds": 1800,
+    "emr_job_run_id": null,
+    "cancellation_requested": false,
+    "log_group": null,
+    "log_stream_prefix": null,
+    "driver_log_uri": null,
+    "spark_ui_uri": null,
+    "spark_history_url": null,
+    "preflight": null,
+    "created_by_actor": "service:sparkpilot-cli",
+    "error_message": null,
+    "started_at": null,
+    "last_heartbeat_at": null,
+    "ended_at": null,
+    "created_at": "2026-03-22T22:48:50.005988Z",
+    "updated_at": "2026-03-22T22:48:50.005989Z"
+  }
+}
