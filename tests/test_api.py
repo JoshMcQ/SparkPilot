@@ -2455,7 +2455,7 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
 
     log_calls: list[dict[str, object]] = []
 
-    def _fetch_lines(_self, *, role_arn, region, log_group, log_stream_prefix, limit):
+    def _fetch_lines(_self, *, role_arn, region, log_group, log_stream_prefix, limit, start_time_ms=None):
         log_calls.append(
             {
                 "role_arn": role_arn,
@@ -2463,6 +2463,7 @@ def test_multi_tenant_concurrent_runs_enforce_isolation_invariants(monkeypatch) 
                 "log_group": log_group,
                 "log_stream_prefix": log_stream_prefix,
                 "limit": limit,
+                "start_time_ms": start_time_ms,
             }
         )
         return [f"{log_stream_prefix} line 1"]
