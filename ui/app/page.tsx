@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";
 
@@ -372,7 +372,7 @@ export default function LandingPage() {
             <article
               key={f.title}
               className="landing-feature-card reveal"
-              style={{ animationDelay: `${(i % 3) * 60}ms` } as React.CSSProperties}
+              style={{ transitionDelay: `${(i % 3) * 60}ms` } as React.CSSProperties}
             >
               <div className="landing-feature-icon">{f.icon}</div>
               <h3>{f.title}</h3>
@@ -417,7 +417,7 @@ export default function LandingPage() {
         </div>
         <div className="landing-steps landing-steps-5">
           {HOW_IT_WORKS.map((s, i) => (
-            <div key={s.step} className="landing-step reveal" style={{ animationDelay: `${i * 70}ms` } as React.CSSProperties}>
+            <div key={s.step} className="landing-step reveal" style={{ transitionDelay: `${i * 70}ms` } as React.CSSProperties}>
               <div className="landing-step-number">{s.step}</div>
               <div className="landing-step-body">
                 <h3>{s.title}</h3>

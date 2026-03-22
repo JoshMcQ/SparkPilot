@@ -13,7 +13,7 @@ export function LandingNav() {
         <strong>SparkPilot</strong>
       </Link>
       <div className="landing-nav-links">
-        <Link href="/#features" className={pathname === "/" ? "" : ""}>
+        <Link href="/#features">
           Features
         </Link>
         <Link href="/#integrations">
