@@ -266,7 +266,7 @@ export default function RunsPage() {
       // Run was removed from the list (cancelled/purged) — clear stale log output
       // so the panel does not show lines belonging to a different run.
       setLogs([]);
-      setLogsHint(null);
+      setLogsHint("");
       return;
     }
     if (!run.log_group || !run.log_stream_prefix) {
