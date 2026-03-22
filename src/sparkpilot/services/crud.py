@@ -38,6 +38,7 @@ from sparkpilot.schemas import (
 )
 from sparkpilot.terraform_orchestrator import FULL_BYOC_TERRAFORM_ROOT
 from sparkpilot.services._helpers import (
+    ACTIVE_RUN_STATES,
     TERMINAL_RUN_STATES,
     _now,
     _require_environment,
@@ -859,7 +860,6 @@ def get_usage(
     return list(db.execute(stmt).scalars())
 
 
-_ACTIVE_RUN_STATES = frozenset({"queued", "dispatching", "accepted", "running"})
 # For active or recently finished runs, restrict CloudWatch query to a rolling window
 # to avoid paginating from the beginning of the log stream (which exhausts the page
 # budget before reaching current output on long-running or slow-starting jobs).
@@ -871,7 +871,7 @@ def fetch_run_logs(db: Session, run_id: str, limit: int = 200) -> tuple[Run, lis
     env = _require_environment(db, run.environment_id)
 
     start_time_ms: int | None = None
-    if run.state in _ACTIVE_RUN_STATES:
+    if run.state in ACTIVE_RUN_STATES:
         # Active run: look back from now so pagination starts near the tail.
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
         start_time_ms = now_ms - (_LOG_TAIL_WINDOW_SECONDS * 1000)

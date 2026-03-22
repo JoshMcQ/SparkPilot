@@ -3,12 +3,6 @@
   row-gap: 14px;
 }
 
-.run-preflight-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-}
 
 .preflight-list {
   margin: 8px 0 0;

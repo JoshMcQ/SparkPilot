@@ -62,6 +62,11 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v aws >/dev/null 2>&1; then
+  echo "::error::aws CLI is required but was not found in PATH." >&2
+  exit 1
+fi
+
 terraform_root="${TERRAFORM_DIR:-infra/terraform/control-plane}"
 if [[ ! -d "${terraform_root}" ]]; then
   echo "::error::Terraform directory not found: ${terraform_root}" >&2
@@ -119,6 +124,8 @@ dynamodb_table = "${TF_LOCK_TABLE}"
 encrypt        = true
 EOF
 
+# bootstrap_secret is intentionally excluded from Terraform vars. It is written
+# directly to Secrets Manager after apply so the value never enters TF state.
 jq -n \
   --arg environment "${SPARKPILOT_ENVIRONMENT}" \
   --arg region "${AWS_REGION}" \
@@ -131,7 +138,6 @@ jq -n \
   --arg oidc_issuer "${OIDC_ISSUER}" \
   --arg oidc_audience "${OIDC_AUDIENCE}" \
   --arg oidc_jwks_uri "${OIDC_JWKS_URI}" \
-  --arg bootstrap_secret "${BOOTSTRAP_SECRET}" \
   --argjson dry_run_mode "${dry_run_mode}" \
   --argjson enable_full_byoc_mode "${enable_full_byoc_mode}" \
   --arg emr_execution_role_arn "${EMR_EXECUTION_ROLE_ARN}" \
@@ -160,7 +166,6 @@ jq -n \
     oidc_issuer: $oidc_issuer,
     oidc_audience: $oidc_audience,
     oidc_jwks_uri: $oidc_jwks_uri,
-    bootstrap_secret: $bootstrap_secret,
     dry_run_mode: $dry_run_mode,
     enable_full_byoc_mode: $enable_full_byoc_mode,
     emr_execution_role_arn: $emr_execution_role_arn,
@@ -188,6 +193,65 @@ terraform -chdir="${terraform_root}" init -input=false -reconfigure -backend-con
 terraform -chdir="${terraform_root}" validate
 terraform -chdir="${terraform_root}" plan -input=false -lock-timeout=10m -out="${plan_file}" -var-file="${tfvars_file}"
 terraform -chdir="${terraform_root}" apply -input=false -lock-timeout=10m -auto-approve "${plan_file}"
+
+# ---------------------------------------------------------------------------
+# Post-apply: write secret values to Secrets Manager.
+#
+# Secret contents are intentionally never passed to Terraform — keeping them
+# out of TF state entirely. The deploy script writes them directly via the
+# AWS CLI after apply, using the Terraform-provisioned secret container ARNs.
+# ---------------------------------------------------------------------------
+
+postgres_address="$(terraform -chdir="${terraform_root}" output -raw postgres_address 2>/dev/null || true)"
+db_name="$(terraform -chdir="${terraform_root}" output -raw postgres_db_name 2>/dev/null || echo "sparkpilot")"
+db_username="$(terraform -chdir="${terraform_root}" output -raw postgres_db_username 2>/dev/null || echo "sparkpilot")"
+database_url_secret_arn="$(terraform -chdir="${terraform_root}" output -raw database_url_secret_arn 2>/dev/null || true)"
+bootstrap_secret_arn="$(terraform -chdir="${terraform_root}" output -raw bootstrap_secret_arn 2>/dev/null || true)"
+ecs_cluster_name="$(terraform -chdir="${terraform_root}" output -raw ecs_cluster_name 2>/dev/null || true)"
+ecs_api_service_name="$(terraform -chdir="${terraform_root}" output -raw ecs_api_service_name 2>/dev/null || true)"
+
+if [[ -z "${database_url_secret_arn}" ]]; then
+  echo "::error::Terraform output 'database_url_secret_arn' is empty." >&2
+  exit 1
+fi
+if [[ -z "${bootstrap_secret_arn}" ]]; then
+  echo "::error::Terraform output 'bootstrap_secret_arn' is empty." >&2
+  exit 1
+fi
+if [[ -z "${postgres_address}" ]]; then
+  echo "::error::Terraform output 'postgres_address' is empty." >&2
+  exit 1
+fi
+
+# Construct the database URL from the RDS endpoint now that it is known.
+db_url="postgresql+psycopg://$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe='')); " "${db_username}"):$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe='')); " "${DB_PASSWORD}")@${postgres_address}:5432/${db_name}"
+
+echo "Writing database URL to Secrets Manager..."
+aws secretsmanager put-secret-value \
+  --secret-id "${database_url_secret_arn}" \
+  --secret-string "${db_url}" \
+  --region "${AWS_REGION}" \
+  --output none
+
+echo "Writing bootstrap secret to Secrets Manager..."
+aws secretsmanager put-secret-value \
+  --secret-id "${bootstrap_secret_arn}" \
+  --secret-string "${BOOTSTRAP_SECRET}" \
+  --region "${AWS_REGION}" \
+  --output none
+
+echo "Secrets written. Forcing ECS service update to pull AWSCURRENT versions..."
+if [[ -n "${ecs_cluster_name}" && -n "${ecs_api_service_name}" ]]; then
+  aws ecs update-service \
+    --cluster "${ecs_cluster_name}" \
+    --service "${ecs_api_service_name}" \
+    --force-new-deployment \
+    --region "${AWS_REGION}" \
+    --output none
+  echo "ECS API service update triggered."
+else
+  echo "::warning::Could not determine ECS cluster/service name; skipping force-update."
+fi
 
 api_base_url="$(terraform -chdir="${terraform_root}" output -raw api_base_url 2>/dev/null || true)"
 if [[ -z "${api_base_url}" ]]; then

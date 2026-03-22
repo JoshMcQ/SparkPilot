@@ -691,7 +691,7 @@ tbody tr:last-child td {
 .run-submit-actions {
   margin-top: var(--space-4);
   padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 
 .run-submit-feedback {

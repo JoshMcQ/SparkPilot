@@ -16,15 +16,19 @@ def _required(name: str) -> str:
     return value
 
 
-def test_issue20_live_trust_policy_automation_real_aws() -> None:
+def test_issue20_live_trust_policy_automation_real_aws(monkeypatch: pytest.MonkeyPatch) -> None:
     if os.getenv("SPARKPILOT_RUN_LIVE_TESTS", "0") != "1":
         pytest.skip("Set SPARKPILOT_RUN_LIVE_TESTS=1 to execute live AWS integration checks")
 
-    emr_execution_role_arn = os.getenv("SPARKPILOT_LIVE_EMR_EXECUTION_ROLE_ARN", "").strip()
-    if not emr_execution_role_arn:
-        emr_execution_role_arn = "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole"
-    os.environ["SPARKPILOT_EMR_EXECUTION_ROLE_ARN"] = emr_execution_role_arn
-    os.environ["SPARKPILOT_DRY_RUN_MODE"] = "false"
+    # Require the EMR execution role ARN — no silent fallback to a hardcoded real
+    # account ARN. A missing env var means the test is not configured, not that it
+    # should silently run against a production account.
+    emr_execution_role_arn = _required("SPARKPILOT_LIVE_EMR_EXECUTION_ROLE_ARN")
+
+    # monkeypatch.setenv restores the original value (or removes the key) after the
+    # test automatically, preventing env var state from leaking into subsequent tests.
+    monkeypatch.setenv("SPARKPILOT_EMR_EXECUTION_ROLE_ARN", emr_execution_role_arn)
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     get_settings.cache_clear()
     if get_settings().dry_run_mode:
         pytest.skip("SPARKPILOT_DRY_RUN_MODE must be false for live trust-policy automation validation")

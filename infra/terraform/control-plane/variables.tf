@@ -277,15 +277,10 @@ variable "oidc_jwks_uri" {
   }
 }
 
-variable "bootstrap_secret" {
-  type        = string
-  description = "Bootstrap secret for identity bootstrap endpoint."
-  sensitive   = true
-  validation {
-    condition     = length(trimspace(var.bootstrap_secret)) >= 16
-    error_message = "bootstrap_secret must be at least 16 characters."
-  }
-}
+# bootstrap_secret is no longer a Terraform variable.
+# The deploy script (scripts/terraform/deploy_control_plane.sh) writes the value
+# directly to the aws_secretsmanager_secret.bootstrap container via AWS CLI after
+# Terraform apply. This keeps the secret out of Terraform state entirely.
 
 variable "emr_execution_role_arn" {
   type        = string

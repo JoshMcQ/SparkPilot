@@ -262,7 +262,13 @@ export default function RunsPage() {
 
   const refreshSelectedRunLogs = useCallback(async (runId: string) => {
     const run = runs.find((item) => item.id === runId);
-    if (!run) return;
+    if (!run) {
+      // Run was removed from the list (cancelled/purged) — clear stale log output
+      // so the panel does not show lines belonging to a different run.
+      setLogs([]);
+      setLogsHint(null);
+      return;
+    }
     if (!run.log_group || !run.log_stream_prefix) {
       // Log pointers not yet recorded — surface a state-aware hint instead of staying silent.
       const activeStates = new Set(["queued", "dispatching", "accepted", "running"]);
