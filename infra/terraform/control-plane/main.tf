@@ -44,6 +44,7 @@ locals {
 
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
+  https_enabled  = trimspace(var.acm_certificate_arn) != ""
   db_url         = "postgresql+psycopg://${urlencode(var.db_username)}:${urlencode(var.db_password)}@${aws_db_instance.postgres.address}:5432/${var.db_name}"
 
   api_task_name = substr(replace("${local.name_prefix}-api", "_", "-"), 0, 32)
@@ -58,16 +59,17 @@ locals {
     "4096" = [for memory in range(8192, 30720 + 1024, 1024) : memory]
   }
 
+  # Non-sensitive runtime environment variables — credentials are injected via
+  # Secrets Manager references in common_runtime_secrets so they never appear in
+  # plaintext in the ECS task definition or the ECS console.
   common_runtime_env = [
     { name = "SPARKPILOT_ENVIRONMENT", value = var.environment },
-    { name = "SPARKPILOT_DATABASE_URL", value = local.db_url },
     { name = "SPARKPILOT_DRY_RUN_MODE", value = tostring(var.dry_run_mode) },
     { name = "SPARKPILOT_ENABLE_FULL_BYOC_MODE", value = tostring(var.enable_full_byoc_mode) },
     { name = "SPARKPILOT_AUTH_MODE", value = "oidc" },
     { name = "SPARKPILOT_OIDC_ISSUER", value = var.oidc_issuer },
     { name = "SPARKPILOT_OIDC_AUDIENCE", value = var.oidc_audience },
     { name = "SPARKPILOT_OIDC_JWKS_URI", value = var.oidc_jwks_uri },
-    { name = "SPARKPILOT_BOOTSTRAP_SECRET", value = var.bootstrap_secret },
     { name = "SPARKPILOT_AWS_REGION", value = var.region },
     { name = "SPARKPILOT_POLL_INTERVAL_SECONDS", value = tostring(var.poll_interval_seconds) },
     { name = "SPARKPILOT_CORS_ORIGINS", value = join(",", var.cors_origins) },
@@ -79,6 +81,19 @@ locals {
     { name = "SPARKPILOT_CUR_RUN_ID_COLUMN", value = var.cur_run_id_column },
     { name = "SPARKPILOT_CUR_COST_COLUMN", value = var.cur_cost_column },
     { name = "SPARKPILOT_COST_CENTER_POLICY_JSON", value = var.cost_center_policy_json },
+  ]
+
+  # Sensitive values fetched from Secrets Manager at container start.
+  # The ECS task execution role is granted GetSecretValue for these ARNs.
+  common_runtime_secrets = [
+    {
+      name      = "SPARKPILOT_DATABASE_URL"
+      valueFrom = aws_secretsmanager_secret.database_url.arn
+    },
+    {
+      name      = "SPARKPILOT_BOOTSTRAP_SECRET"
+      valueFrom = aws_secretsmanager_secret.bootstrap.arn
+    },
   ]
 
   worker_specs = {
@@ -140,6 +155,13 @@ check "cur_reconciliation_configuration_complete" {
   }
 }
 
+check "https_required_for_non_dev" {
+  assert {
+    condition     = local.is_dev_environment || local.alb_internal || local.https_enabled
+    error_message = "For internet-facing staging/prod deployments, set acm_certificate_arn to enable HTTPS. HTTP-only exposes credentials in transit."
+  }
+}
+
 resource "aws_kms_key" "control_plane" {
   description             = "KMS key for SparkPilot ${var.environment} control plane"
   deletion_window_in_days = 7
@@ -150,6 +172,30 @@ resource "aws_kms_key" "control_plane" {
 resource "aws_kms_alias" "control_plane" {
   name          = "alias/${local.name_prefix}-control-plane"
   target_key_id = aws_kms_key.control_plane.key_id
+}
+
+resource "aws_secretsmanager_secret" "database_url" {
+  name                    = "${local.name_prefix}-database-url"
+  kms_key_id              = aws_kms_key.control_plane.arn
+  recovery_window_in_days = local.is_dev_environment ? 0 : 7
+  tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "database_url" {
+  secret_id     = aws_secretsmanager_secret.database_url.id
+  secret_string = local.db_url
+}
+
+resource "aws_secretsmanager_secret" "bootstrap" {
+  name                    = "${local.name_prefix}-bootstrap-secret"
+  kms_key_id              = aws_kms_key.control_plane.arn
+  recovery_window_in_days = local.is_dev_environment ? 0 : 7
+  tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "bootstrap" {
+  secret_id     = aws_secretsmanager_secret.bootstrap.id
+  secret_string = var.bootstrap_secret
 }
 
 resource "aws_cloudwatch_log_group" "api" {
@@ -223,6 +269,16 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   to_port           = 80
   cidr_ipv4         = "0.0.0.0/0"
   description       = "Allow HTTP ingress to SparkPilot API ALB"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "alb_https" {
+  count             = local.https_enabled ? 1 : 0
+  security_group_id = aws_security_group.alb.id
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  cidr_ipv4         = "0.0.0.0/0"
+  description       = "Allow HTTPS ingress to SparkPilot API ALB"
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_all" {
@@ -336,6 +392,38 @@ resource "aws_lb_listener" "api_http" {
   load_balancer_arn = aws_lb.api.arn
   port              = 80
   protocol          = "HTTP"
+
+  # When HTTPS is configured, redirect all HTTP traffic to HTTPS.
+  # When HTTP-only (dev/internal), forward directly.
+  dynamic "default_action" {
+    for_each = local.https_enabled ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = local.https_enabled ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.api.arn
+    }
+  }
+}
+
+resource "aws_lb_listener" "api_https" {
+  count             = local.https_enabled ? 1 : 0
+  load_balancer_arn = aws_lb.api.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.acm_certificate_arn
+
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.api.arn
@@ -363,6 +451,34 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_managed" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+data "aws_iam_policy_document" "ecs_task_execution_secrets" {
+  statement {
+    sid = "AllowSecretsManagerRead"
+    actions = [
+      "secretsmanager:GetSecretValue",
+    ]
+    resources = [
+      aws_secretsmanager_secret.database_url.arn,
+      aws_secretsmanager_secret.bootstrap.arn,
+    ]
+  }
+
+  statement {
+    sid = "AllowKmsDecryptForSecrets"
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey",
+    ]
+    resources = [aws_kms_key.control_plane.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
+  name   = "${local.name_prefix}-ecs-task-execution-secrets"
+  role   = aws_iam_role.ecs_task_execution.id
+  policy = data.aws_iam_policy_document.ecs_task_execution_secrets.json
+}
+
 data "aws_iam_policy_document" "ecs_task_runtime" {
   statement {
     sid = "AllowSqsControlPlaneQueues"
@@ -383,12 +499,22 @@ data "aws_iam_policy_document" "ecs_task_runtime" {
   }
 
   statement {
-    sid = "AllowAssumeCustomerRoles"
+    sid = "AllowGetCallerIdentity"
     actions = [
-      "sts:AssumeRole",
       "sts:GetCallerIdentity",
     ]
     resources = ["*"]
+  }
+
+  statement {
+    sid = "AllowAssumeCustomerRoles"
+    actions = [
+      "sts:AssumeRole",
+    ]
+    # Constrained to IAM roles only — prevents assuming users, groups, or
+    # non-IAM principals. Customer role ARNs are validated per-environment at
+    # provisioning time; this boundary prevents lateral movement to non-role ARNs.
+    resources = ["arn:aws:iam::*:role/*"]
   }
 }
 
@@ -425,6 +551,7 @@ resource "aws_ecs_task_definition" "api" {
         }
       ]
       environment = local.common_runtime_env
+      secrets     = local.common_runtime_secrets
       healthCheck = {
         command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)\""]
         interval    = 30
@@ -461,6 +588,7 @@ resource "aws_ecs_task_definition" "worker" {
       essential   = true
       command     = each.value
       environment = local.common_runtime_env
+      secrets     = local.common_runtime_secrets
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -481,7 +609,7 @@ resource "aws_ecs_service" "api" {
   desired_count                      = var.api_desired_count
   launch_type                        = "FARGATE"
   health_check_grace_period_seconds  = 60
-  enable_execute_command             = true
+  enable_execute_command             = var.enable_ecs_exec
   deployment_minimum_healthy_percent = 50
   deployment_maximum_percent         = 200
 
@@ -513,7 +641,7 @@ resource "aws_ecs_service" "worker" {
   task_definition                    = aws_ecs_task_definition.worker[each.key].arn
   desired_count                      = lookup(var.worker_desired_count_by_service, each.key, var.worker_desired_count)
   launch_type                        = "FARGATE"
-  enable_execute_command             = true
+  enable_execute_command             = var.enable_ecs_exec
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 100
 

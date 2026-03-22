@@ -1,6 +1,6 @@
 """Entity CRUD operations: tenants, teams, users, environments, jobs, runs."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 import logging
 import uuid
 from typing import Any
@@ -873,7 +873,7 @@ def fetch_run_logs(db: Session, run_id: str, limit: int = 200) -> tuple[Run, lis
     start_time_ms: int | None = None
     if run.state in _ACTIVE_RUN_STATES:
         # Active run: look back from now so pagination starts near the tail.
-        now_ms = int(datetime.utcnow().timestamp() * 1000)
+        now_ms = int(datetime.now(UTC).timestamp() * 1000)
         start_time_ms = now_ms - (_LOG_TAIL_WINDOW_SECONDS * 1000)
     elif run.finished_at:
         # Recently finished: anchor window at (finished_at - window) to capture
