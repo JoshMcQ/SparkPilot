@@ -783,3 +783,114 @@ export async function fetchRunDiagnostics(runId: string): Promise<DiagnosticsRes
   const body = await response.json();
   return _asObject(body, "Run diagnostics fetch") as DiagnosticsResponse;
 }
+
+// ---------------------------------------------------------------------------
+// Policy Engine (#39)
+// ---------------------------------------------------------------------------
+
+export type PolicyScope = "global" | "tenant" | "environment";
+export type PolicyEnforcement = "hard" | "soft";
+export type PolicyRuleType =
+  | "max_runtime_seconds"
+  | "max_vcpu"
+  | "max_memory_gb"
+  | "required_tags"
+  | "allowed_golden_paths"
+  | "allowed_release_labels"
+  | "allowed_instance_types"
+  | "allowed_security_configurations";
+
+export type Policy = {
+  id: string;
+  name: string;
+  scope: PolicyScope;
+  scope_id: string | null;
+  rule_type: PolicyRuleType;
+  config: Record<string, unknown>;
+  enforcement: PolicyEnforcement;
+  active: boolean;
+  created_by_actor: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PolicyCreateRequest = {
+  name: string;
+  scope?: PolicyScope;
+  scope_id?: string | null;
+  rule_type: PolicyRuleType;
+  config: Record<string, unknown>;
+  enforcement?: PolicyEnforcement;
+  active?: boolean;
+};
+
+export async function fetchPolicies(params?: {
+  scope?: PolicyScope;
+  scope_id?: string;
+  active_only?: boolean;
+  limit?: number;
+}): Promise<Policy[]> {
+  const qs = new URLSearchParams();
+  if (params?.scope) qs.set("scope", params.scope);
+  if (params?.scope_id) qs.set("scope_id", params.scope_id);
+  if (params?.active_only !== undefined) qs.set("active_only", String(params.active_only));
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  const url = `${API_PREFIX}/v1/policies${qs.size ? `?${qs}` : ""}`;
+  const response = await fetch(url, { cache: "no-store", headers: _headers(false) });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load policies"));
+  }
+  return _asObjectArray(await response.json(), "Policies fetch") as Policy[];
+}
+
+export async function createPolicy(req: PolicyCreateRequest): Promise<Policy> {
+  const response = await fetch(`${API_PREFIX}/v1/policies`, {
+    method: "POST",
+    headers: _headers(true),
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to create policy"));
+  }
+  return _asObject(await response.json(), "Policy create") as Policy;
+}
+
+export async function deletePolicy(policyId: string): Promise<void> {
+  const response = await fetch(`${API_PREFIX}/v1/policies/${policyId}`, {
+    method: "DELETE",
+    headers: _headers(true),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to delete policy"));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// EMR Release Lifecycle (#40)
+// ---------------------------------------------------------------------------
+
+export type EmrReleaseLifecycleStatus = "current" | "deprecated" | "end_of_life";
+
+export type EmrRelease = {
+  id: string;
+  release_label: string;
+  lifecycle_status: EmrReleaseLifecycleStatus;
+  graviton_supported: boolean;
+  lake_formation_supported: boolean;
+  upgrade_target: string | null;
+  source: string;
+  last_synced_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function fetchEmrReleases(params?: { limit?: number }): Promise<EmrRelease[]> {
+  const qs = new URLSearchParams();
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  const url = `${API_PREFIX}/v1/emr-releases${qs.size ? `?${qs}` : ""}`;
+  const response = await fetch(url, { cache: "no-store", headers: _headers(false) });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load EMR releases"));
+  }
+  return _asObjectArray(await response.json(), "EMR releases fetch") as EmrRelease[];
+}

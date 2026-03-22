@@ -123,6 +123,30 @@ export default function CostsPage() {
         <div className="subtle">
           CUR-aligned showback and resource usage by team and billing period.
         </div>
+        <div className="cur-explainer" style={{ marginTop: 12 }}>
+          <div className="cur-explainer-item">
+            <span className="badge reconciled">Reconciled</span>
+            <span>
+              SparkPilot matched this run&apos;s estimated cost against a real AWS Cost and Usage Report
+              (CUR) line item via Athena. The <strong>Actual</strong> column reflects your real AWS bill.
+            </span>
+          </div>
+          <div className="cur-explainer-item">
+            <span className="badge cur_pending">CUR pending</span>
+            <span>
+              The run completed but AWS has not yet published a CUR line item for it. CUR data
+              typically lags 24–48 hours. SparkPilot will reconcile automatically when the data
+              arrives.
+            </span>
+          </div>
+          <div className="cur-explainer-item">
+            <span className="badge estimated_only">Estimated only</span>
+            <span>
+              No CUR reconciliation configured for this environment. The cost shown is SparkPilot&apos;s
+              pre-run estimate based on vCPU and memory pricing — not actual AWS billing.
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="card">

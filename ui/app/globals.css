@@ -505,10 +505,15 @@ tbody tr:last-child td {
 .badge.queued,
 .badge.dispatching,
 .badge.warning,
-.badge.timed_out {
+.badge.timed_out,
+.badge-warning {
   background: linear-gradient(180deg, #fff1dc, #ffe6bf);
   color: #855100;
   border-color: #efc98b;
+}
+
+.row-warn td {
+  background: #fffbf2;
 }
 
 .badge.byoc_lite {
@@ -674,10 +679,47 @@ tbody tr:last-child td {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 8px 15px rgba(140, 39, 39, 0.24);
 }
 
+.button-danger-outline {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+  background: transparent;
+}
+
+.button-danger-outline:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
 .button-sm {
   min-height: 28px;
   padding: 4px 9px;
   font-size: 0.78rem;
+}
+
+/* ── CUR reconciliation explainer ────────────────────── */
+
+.cur-explainer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+}
+
+.cur-explainer-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.cur-explainer-item .badge {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .button-row {
@@ -2375,10 +2417,15 @@ details.card > summary:focus-visible {
 :root[data-theme="dark"] .badge.queued,
 :root[data-theme="dark"] .badge.dispatching,
 :root[data-theme="dark"] .badge.warning,
-:root[data-theme="dark"] .badge.timed_out {
+:root[data-theme="dark"] .badge.timed_out,
+:root[data-theme="dark"] .badge-warning {
   background: linear-gradient(180deg, rgba(240, 178, 87, 0.18), rgba(240, 178, 87, 0.1));
   color: var(--warning);
   border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+:root[data-theme="dark"] .row-warn td {
+  background: rgba(240, 178, 87, 0.06);
 }
 
 :root[data-theme="dark"] .badge.byoc_lite {
