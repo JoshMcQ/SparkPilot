@@ -1,0 +1,24 @@
+{
+  "id": "46af56b4-a183-4bd3-aa61-813e7206bca5",
+  "run_id": "f781400e-93b3-4235-aeff-a05923ce5bc2",
+  "environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+  "tenant_id": "89b43f2d-2a48-4be6-9723-9732b0df8223",
+  "team": "89b43f2d-2a48-4be6-9723-9732b0df8223",
+  "cost_center": "sparkpilot-demo-2",
+  "billing_period": "2026-03",
+  "estimated_vcpu_seconds": 1864,
+  "estimated_memory_gb_seconds": 3728,
+  "estimated_cost_usd_micros": 19805,
+  "actual_cost_usd_micros": 19805,
+  "cur_reconciled_at": "2026-03-22 19:27:53.859009",
+  "spot_cost_usd_micros": null,
+  "ondemand_cost_usd_micros": null,
+  "spot_savings_usd_micros": null,
+  "created_at": "2026-03-22 19:25:39.711568",
+  "updated_at": "2026-03-22 19:27:53.864219",
+  "_changes": {
+    "actual_cost_usd_micros": {"before": null, "after": 19805},
+    "cur_reconciled_at": {"before": null, "after": "2026-03-22 19:27:53.859009"}
+  },
+  "_cur_table_note": "CUR reconciliation used Athena table sparkpilot_r03_evidence.cur_live_evidence_20260322 backed by S3 at s3://sparkpilot-live-787587782916-20260224203702/cur-integration/20260322-live/. The table contains the actual run_id f781400e-93b3-4235-aeff-a05923ce5bc2 with cost $0.019805. The CUR data is simulated (uploaded CSV) because EMR on EKS workloads appear in CUR 24-48 hours after execution."
+}

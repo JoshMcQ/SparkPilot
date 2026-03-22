@@ -1,0 +1,22 @@
+{
+  "team": "89b43f2d-2a48-4be6-9723-9732b0df8223",
+  "period": "2026-03",
+  "total_estimated_cost_usd_micros": 19805,
+  "total_actual_cost_usd_micros": 19805,
+  "total_effective_cost_usd_micros": 19805,
+  "items": [
+    {
+      "run_id": "f781400e-93b3-4235-aeff-a05923ce5bc2",
+      "environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+      "team": "89b43f2d-2a48-4be6-9723-9732b0df8223",
+      "cost_center": "sparkpilot-demo-2",
+      "estimated_cost_usd_micros": 19805,
+      "actual_cost_usd_micros": 19805,
+      "effective_cost_usd_micros": 19805,
+      "billing_period": "2026-03",
+      "cur_reconciled_at": "2026-03-22T19:27:53.859009"
+    }
+  ],
+  "_request": "GET /v1/costs?team=89b43f2d-2a48-4be6-9723-9732b0df8223&period=2026-03",
+  "_timestamp": "2026-03-22T19:28:00Z"
+}
