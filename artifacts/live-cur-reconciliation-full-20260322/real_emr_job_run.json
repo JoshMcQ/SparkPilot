@@ -1,0 +1,43 @@
+{
+    "jobRun": {
+        "id": "0000000378nc2aque5r",
+        "name": "cur-reconcile-evidence-sparkpi-20260322-04c29f53ac71",
+        "virtualClusterId": "580dfmy1wqym1dz7nkksxhzpp",
+        "arn": "arn:aws:emr-containers:us-east-1:787587782916:/virtualclusters/580dfmy1wqym1dz7nkksxhzpp/jobruns/0000000378nc2aque5r",
+        "state": "CANCELLED",
+        "clientToken": "3629a4d7-2802-4956-a637-9014b79b9f20",
+        "executionRoleArn": "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole",
+        "releaseLabel": "emr-7.10.0-latest",
+        "configurationOverrides": {
+            "monitoringConfiguration": {
+                "persistentAppUI": "ENABLED",
+                "cloudWatchMonitoringConfiguration": {
+                    "logGroupName": "/sparkpilot/runs/69be1cb6-1cfd-45dc-a1de-4345f612001e",
+                    "logStreamNamePrefix": "80bd269d-c5e6-4887-a2d4-04c29f53ac71/attempt-1"
+                }
+            }
+        },
+        "jobDriver": {
+            "sparkSubmitJobDriver": {
+                "entryPoint": "s3://sparkpilot-live-787587782916-20260224203702/scripts/sparkpi.py",
+                "entryPointArguments": [
+                    "10"
+                ],
+                "sparkSubmitParameters": "--conf spark.kubernetes.driver.label.sparkpilot-run-id=80bd269d-c5e6-4887-a2d4-04c29f53ac71 --conf spark.kubernetes.executor.label.sparkpilot-run-id=80bd269d-c5e6-4887-a2d4-04c29f53ac71 --conf spark.kubernetes.driver.label.sparkpilot-team=89b43f2d-2a48-4be6-9723-9732b0df8223 --conf spark.kubernetes.executor.label.sparkpilot-team=89b43f2d-2a48-4be6-9723-9732b0df8223 --conf spark.kubernetes.driver.label.sparkpilot-project=sparkpilot-demo-2 --conf spark.kubernetes.executor.label.sparkpilot-project=sparkpilot-demo-2 --conf spark.kubernetes.driver.label.sparkpilot-cost-center=sparkpilot-demo-2 --conf spark.kubernetes.executor.label.sparkpilot-cost-center=sparkpilot-demo-2"
+            }
+        },
+        "createdAt": "2026-03-22T21:08:19Z",
+        "createdBy": "arn:aws:sts::787587782916:assumed-role/SparkPilotByocLiteRoleAdmin/sparkpilot-37bf1223",
+        "finishedAt": "2026-03-22T21:38:38Z",
+        "stateDetails": "JobRun CANCELLED successfully.",
+        "tags": {
+            "sparkpilot:namespace": "sparkpilot-demo-2",
+            "sparkpilot:cost_center": "sparkpilot-demo-2",
+            "sparkpilot:run_id": "80bd269d-c5e6-4887-a2d4-04c29f53ac71",
+            "sparkpilot:environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+            "sparkpilot:project": "sparkpilot-demo-2",
+            "sparkpilot:virtual_cluster_id": "580dfmy1wqym1dz7nkksxhzpp",
+            "sparkpilot:team": "89b43f2d-2a48-4be6-9723-9732b0df8223"
+        }
+    }
+}

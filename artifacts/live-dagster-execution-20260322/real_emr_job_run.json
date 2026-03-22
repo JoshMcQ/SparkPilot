@@ -1,0 +1,44 @@
+{
+    "jobRun": {
+        "id": "0000000378ndnln0oek",
+        "name": "cur-reconcile-evidence-sparkpi-20260322-fb667a851992",
+        "virtualClusterId": "580dfmy1wqym1dz7nkksxhzpp",
+        "arn": "arn:aws:emr-containers:us-east-1:787587782916:/virtualclusters/580dfmy1wqym1dz7nkksxhzpp/jobruns/0000000378ndnln0oek",
+        "state": "FAILED",
+        "clientToken": "81faccd3-fd4b-49f2-b2ad-3cfe9e01289c",
+        "executionRoleArn": "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole",
+        "releaseLabel": "emr-7.10.0-latest",
+        "configurationOverrides": {
+            "monitoringConfiguration": {
+                "persistentAppUI": "ENABLED",
+                "cloudWatchMonitoringConfiguration": {
+                    "logGroupName": "/sparkpilot/runs/69be1cb6-1cfd-45dc-a1de-4345f612001e",
+                    "logStreamNamePrefix": "3a808369-f338-4d2e-9342-fb667a851992/attempt-1"
+                }
+            }
+        },
+        "jobDriver": {
+            "sparkSubmitJobDriver": {
+                "entryPoint": "s3://sparkpilot-live-787587782916-20260224203702/scripts/sparkpi.py",
+                "entryPointArguments": [
+                    "10"
+                ],
+                "sparkSubmitParameters": "--conf spark.kubernetes.driver.label.sparkpilot-run-id=3a808369-f338-4d2e-9342-fb667a851992 --conf spark.kubernetes.executor.label.sparkpilot-run-id=3a808369-f338-4d2e-9342-fb667a851992 --conf spark.kubernetes.driver.label.sparkpilot-team=89b43f2d-2a48-4be6-9723-9732b0df8223 --conf spark.kubernetes.executor.label.sparkpilot-team=89b43f2d-2a48-4be6-9723-9732b0df8223 --conf spark.kubernetes.driver.label.sparkpilot-project=sparkpilot-demo-2 --conf spark.kubernetes.executor.label.sparkpilot-project=sparkpilot-demo-2 --conf spark.kubernetes.driver.label.sparkpilot-cost-center=sparkpilot-demo-2 --conf spark.kubernetes.executor.label.sparkpilot-cost-center=sparkpilot-demo-2"
+            }
+        },
+        "createdAt": "2026-03-22T21:22:53Z",
+        "createdBy": "arn:aws:sts::787587782916:assumed-role/SparkPilotByocLiteRoleAdmin/sparkpilot-3e9e2f8b",
+        "finishedAt": "2026-03-22T21:38:10Z",
+        "stateDetails": "JobRun timed out before job controller pod started running due to lack of cluster resources. Last event from default-scheduler: FailedScheduling, message: 0/2 nodes are available: 2 Insufficient cpu. no new claims to deallocate, preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.",
+        "failureReason": "USER_ERROR",
+        "tags": {
+            "sparkpilot:namespace": "sparkpilot-demo-2",
+            "sparkpilot:cost_center": "sparkpilot-demo-2",
+            "sparkpilot:run_id": "3a808369-f338-4d2e-9342-fb667a851992",
+            "sparkpilot:environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+            "sparkpilot:project": "sparkpilot-demo-2",
+            "sparkpilot:virtual_cluster_id": "580dfmy1wqym1dz7nkksxhzpp",
+            "sparkpilot:team": "89b43f2d-2a48-4be6-9723-9732b0df8223"
+        }
+    }
+}
