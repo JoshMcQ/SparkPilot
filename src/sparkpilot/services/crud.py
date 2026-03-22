@@ -875,10 +875,10 @@ def fetch_run_logs(db: Session, run_id: str, limit: int = 200) -> tuple[Run, lis
         # Active run: look back from now so pagination starts near the tail.
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
         start_time_ms = now_ms - (_LOG_TAIL_WINDOW_SECONDS * 1000)
-    elif run.finished_at:
-        # Recently finished: anchor window at (finished_at - window) to capture
+    elif run.ended_at:
+        # Recently finished: anchor window at (ended_at - window) to capture
         # late-arriving CloudWatch events without scanning the whole stream.
-        finished_ms = int(run.finished_at.timestamp() * 1000)
+        finished_ms = int(run.ended_at.timestamp() * 1000)
         start_time_ms = finished_ms - (_LOG_TAIL_WINDOW_SECONDS * 1000)
 
     proxy = CloudWatchLogsProxy()
