@@ -203,11 +203,12 @@ terraform -chdir="${terraform_root}" apply -input=false -lock-timeout=10m -auto-
 # ---------------------------------------------------------------------------
 
 postgres_address="$(terraform -chdir="${terraform_root}" output -raw postgres_address 2>/dev/null || true)"
-db_name="$(terraform -chdir="${terraform_root}" output -raw postgres_db_name 2>/dev/null || echo "sparkpilot")"
-db_username="$(terraform -chdir="${terraform_root}" output -raw postgres_db_username 2>/dev/null || echo "sparkpilot")"
+db_name="$(terraform -chdir="${terraform_root}" output -raw postgres_db_name 2>/dev/null || true)"
+db_username="$(terraform -chdir="${terraform_root}" output -raw postgres_db_username 2>/dev/null || true)"
 database_url_secret_arn="$(terraform -chdir="${terraform_root}" output -raw database_url_secret_arn 2>/dev/null || true)"
 bootstrap_secret_arn="$(terraform -chdir="${terraform_root}" output -raw bootstrap_secret_arn 2>/dev/null || true)"
 ecs_cluster_name="$(terraform -chdir="${terraform_root}" output -raw ecs_cluster_name 2>/dev/null || true)"
+ecs_worker_service_names_json="$(terraform -chdir="${terraform_root}" output -json ecs_worker_service_names 2>/dev/null || echo '{}')"
 ecs_api_service_name="$(terraform -chdir="${terraform_root}" output -raw ecs_api_service_name 2>/dev/null || true)"
 
 if [[ -z "${database_url_secret_arn}" ]]; then
@@ -222,9 +223,17 @@ if [[ -z "${postgres_address}" ]]; then
   echo "::error::Terraform output 'postgres_address' is empty." >&2
   exit 1
 fi
+if [[ -z "${db_name}" ]]; then
+  echo "::error::Terraform output 'postgres_db_name' is empty." >&2
+  exit 1
+fi
+if [[ -z "${db_username}" ]]; then
+  echo "::error::Terraform output 'postgres_db_username' is empty." >&2
+  exit 1
+fi
 
 # Construct the database URL from the RDS endpoint now that it is known.
-db_url="postgresql+psycopg://$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe='')); " "${db_username}"):$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe='')); " "${DB_PASSWORD}")@${postgres_address}:5432/${db_name}"
+db_url="postgresql+psycopg://$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "${db_username}"):$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "${DB_PASSWORD}")@${postgres_address}:5432/${db_name}"
 
 echo "Writing database URL to Secrets Manager..."
 aws secretsmanager put-secret-value \
@@ -249,6 +258,20 @@ if [[ -n "${ecs_cluster_name}" && -n "${ecs_api_service_name}" ]]; then
     --region "${AWS_REGION}" \
     --output none
   echo "ECS API service update triggered."
+
+  # Redeploy worker services — they consume the same secrets and must also pick
+  # up AWSCURRENT after secret values change.
+  worker_service_names="$(echo "${ecs_worker_service_names_json}" | jq -r 'values[]' 2>/dev/null || true)"
+  while IFS= read -r worker_svc; do
+    [[ -z "${worker_svc}" ]] && continue
+    aws ecs update-service \
+      --cluster "${ecs_cluster_name}" \
+      --service "${worker_svc}" \
+      --force-new-deployment \
+      --region "${AWS_REGION}" \
+      --output none
+    echo "ECS worker service update triggered: ${worker_svc}"
+  done <<< "${worker_service_names}"
 else
   echo "::warning::Could not determine ECS cluster/service name; skipping force-update."
 fi
