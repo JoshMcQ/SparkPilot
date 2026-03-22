@@ -39,8 +39,13 @@ output "api_load_balancer_dns_name" {
 }
 
 output "api_base_url" {
-  value       = "http://${aws_lb.api.dns_name}"
-  description = "SparkPilot API base URL."
+  value       = local.https_enabled ? "https://${aws_lb.api.dns_name}" : "http://${aws_lb.api.dns_name}"
+  description = "SparkPilot API base URL. Uses https:// when acm_certificate_arn is set, http:// otherwise."
+}
+
+output "https_enabled" {
+  value       = local.https_enabled
+  description = "Whether HTTPS is enabled on the API ALB."
 }
 
 output "api_load_balancer_arn" {

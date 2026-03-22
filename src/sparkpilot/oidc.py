@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import logging
 import os
+import re
+import threading
 import time
 from pathlib import Path
-import re
 from typing import Any
 from urllib.parse import unquote, urlparse
 
 import httpx
 import jwt
 
+logger = logging.getLogger(__name__)
 
 SUPPORTED_JWT_ALGORITHMS = {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}
 
@@ -57,12 +60,6 @@ def _read_uri_json(uri: str, *, timeout_seconds: float) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise OIDCValidationError("OIDC metadata response must be a JSON object.")
     return payload
-
-
-import logging
-import threading
-
-logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # JWKS refresh throttle defaults

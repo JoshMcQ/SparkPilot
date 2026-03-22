@@ -232,9 +232,9 @@ variable "worker_desired_count_by_service" {
   validation {
     condition = alltrue([
       for service_name, desired_count in var.worker_desired_count_by_service :
-      contains(["provisioner", "scheduler", "reconciler"], service_name) && desired_count >= 0
+      contains(["provisioner", "scheduler", "reconciler", "cur_reconciliation"], service_name) && desired_count >= 0
     ])
-    error_message = "worker_desired_count_by_service keys must be provisioner/scheduler/reconciler and values must be >= 0."
+    error_message = "worker_desired_count_by_service keys must be provisioner/scheduler/reconciler/cur_reconciliation and values must be >= 0."
   }
 }
 
@@ -409,4 +409,23 @@ variable "cost_center_policy_json" {
     )
     error_message = "cost_center_policy_json must be empty or valid JSON."
   }
+}
+
+variable "acm_certificate_arn" {
+  type        = string
+  description = "ACM certificate ARN for HTTPS on the API ALB. When set, HTTP redirects to HTTPS and the API is served on port 443. Leave empty for HTTP-only (dev/internal use)."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.acm_certificate_arn) == "" ||
+      can(regex("^arn:aws:acm:[a-z0-9-]+:[0-9]{12}:certificate/[a-f0-9-]+$", trimspace(var.acm_certificate_arn)))
+    )
+    error_message = "acm_certificate_arn must be empty or a valid ACM certificate ARN."
+  }
+}
+
+variable "enable_ecs_exec" {
+  type        = bool
+  description = "Enable ECS Exec (SSM shell access to containers). Disable in production to reduce attack surface."
+  default     = false
 }

@@ -1,6 +1,6 @@
 """Entity CRUD operations: tenants, teams, users, environments, jobs, runs."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 import logging
 import uuid
 from typing import Any
@@ -859,9 +859,28 @@ def get_usage(
     return list(db.execute(stmt).scalars())
 
 
+_ACTIVE_RUN_STATES = frozenset({"queued", "dispatching", "accepted", "running"})
+# For active or recently finished runs, restrict CloudWatch query to a rolling window
+# to avoid paginating from the beginning of the log stream (which exhausts the page
+# budget before reaching current output on long-running or slow-starting jobs).
+_LOG_TAIL_WINDOW_SECONDS = 1800  # 30 minutes
+
+
 def fetch_run_logs(db: Session, run_id: str, limit: int = 200) -> tuple[Run, list[str]]:
     run = _require_run(db, run_id)
     env = _require_environment(db, run.environment_id)
+
+    start_time_ms: int | None = None
+    if run.state in _ACTIVE_RUN_STATES:
+        # Active run: look back from now so pagination starts near the tail.
+        now_ms = int(datetime.now(UTC).timestamp() * 1000)
+        start_time_ms = now_ms - (_LOG_TAIL_WINDOW_SECONDS * 1000)
+    elif run.ended_at:
+        # Recently finished: anchor window at (ended_at - window) to capture
+        # late-arriving CloudWatch events without scanning the whole stream.
+        finished_ms = int(run.ended_at.timestamp() * 1000)
+        start_time_ms = finished_ms - (_LOG_TAIL_WINDOW_SECONDS * 1000)
+
     proxy = CloudWatchLogsProxy()
     lines = proxy.fetch_lines(
         role_arn=env.customer_role_arn,
@@ -869,5 +888,6 @@ def fetch_run_logs(db: Session, run_id: str, limit: int = 200) -> tuple[Run, lis
         log_group=run.log_group,
         log_stream_prefix=run.log_stream_prefix,
         limit=limit,
+        start_time_ms=start_time_ms,
     )
     return run, lines

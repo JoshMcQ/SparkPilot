@@ -261,6 +261,8 @@ jobs:
           CUR_RUN_ID_COLUMN: ${{ vars.DEV_CUR_RUN_ID_COLUMN || 'resource_tags_user_sparkpilot_run_id' }}
           CUR_COST_COLUMN: ${{ vars.DEV_CUR_COST_COLUMN || 'line_item_unblended_cost' }}
           COST_CENTER_POLICY_JSON: ${{ vars.DEV_COST_CENTER_POLICY_JSON || '' }}
+          ACM_CERTIFICATE_ARN: ${{ secrets.DEV_ACM_CERTIFICATE_ARN || '' }}
+          ENABLE_ECS_EXEC: ${{ vars.DEV_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (dev)
@@ -369,6 +371,8 @@ jobs:
           CUR_RUN_ID_COLUMN: ${{ vars.STAGING_CUR_RUN_ID_COLUMN || 'resource_tags_user_sparkpilot_run_id' }}
           CUR_COST_COLUMN: ${{ vars.STAGING_CUR_COST_COLUMN || 'line_item_unblended_cost' }}
           COST_CENTER_POLICY_JSON: ${{ vars.STAGING_COST_CENTER_POLICY_JSON || '' }}
+          ACM_CERTIFICATE_ARN: ${{ secrets.STAGING_ACM_CERTIFICATE_ARN || '' }}
+          ENABLE_ECS_EXEC: ${{ vars.STAGING_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (staging)
@@ -477,6 +481,8 @@ jobs:
           CUR_RUN_ID_COLUMN: ${{ vars.PROD_CUR_RUN_ID_COLUMN || 'resource_tags_user_sparkpilot_run_id' }}
           CUR_COST_COLUMN: ${{ vars.PROD_CUR_COST_COLUMN || 'line_item_unblended_cost' }}
           COST_CENTER_POLICY_JSON: ${{ vars.PROD_COST_CENTER_POLICY_JSON || '' }}
+          ACM_CERTIFICATE_ARN: ${{ secrets.PROD_ACM_CERTIFICATE_ARN || '' }}
+          ENABLE_ECS_EXEC: ${{ vars.PROD_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (prod)

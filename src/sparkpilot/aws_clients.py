@@ -1920,10 +1920,13 @@ class CloudWatchLogsProxy:
         log_group: str,
         log_stream_prefix: str | None,
         limit: int,
+        start_time_ms: int | None = None,
     ) -> list[dict[str, Any]]:
-        request_base: dict[str, Any] = {"logGroupName": log_group}
+        request_base: dict[str, Any] = {"logGroupName": log_group, "interleaved": True}
         if log_stream_prefix:
             request_base["logStreamNamePrefix"] = log_stream_prefix
+        if start_time_ms is not None:
+            request_base["startTime"] = start_time_ms
 
         events: list[dict[str, Any]] = []
         next_token: str | None = None
@@ -2032,6 +2035,7 @@ class CloudWatchLogsProxy:
         log_group: str | None,
         log_stream_prefix: str | None,
         limit: int = 200,
+        start_time_ms: int | None = None,
     ) -> list[str]:
         if not log_group:
             return []
@@ -2046,6 +2050,7 @@ class CloudWatchLogsProxy:
                 log_group=log_group,
                 log_stream_prefix=log_stream_prefix,
                 limit=limit,
+                start_time_ms=start_time_ms,
             )
             return self._normalize_log_events(events, limit)
         except ClientError as exc:

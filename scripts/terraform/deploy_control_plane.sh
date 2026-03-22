@@ -84,6 +84,8 @@ fi
 dry_run_mode="$(normalize_bool "${DRY_RUN_MODE:-false}")"
 enable_full_byoc_mode="$(normalize_bool "${ENABLE_FULL_BYOC_MODE:-false}")"
 allow_unsafe_rds_configuration="$(normalize_bool "${ALLOW_UNSAFE_RDS_CONFIGURATION:-false}")"
+enable_ecs_exec="$(normalize_bool "${ENABLE_ECS_EXEC:-false}")"
+acm_certificate_arn="$(echo "${ACM_CERTIFICATE_ARN:-}" | xargs)"
 rds_deletion_protection="$(normalize_nullable_bool "${RDS_DELETION_PROTECTION:-}")"
 rds_skip_final_snapshot="$(normalize_nullable_bool "${RDS_SKIP_FINAL_SNAPSHOT:-}")"
 cur_athena_database="$(echo "${CUR_ATHENA_DATABASE:-}" | xargs)"
@@ -144,6 +146,8 @@ jq -n \
   --arg cur_run_id_column "${cur_run_id_column}" \
   --arg cur_cost_column "${cur_cost_column}" \
   --arg cost_center_policy_json "${cost_center_policy_json}" \
+  --arg acm_certificate_arn "${acm_certificate_arn}" \
+  --argjson enable_ecs_exec "${enable_ecs_exec}" \
   '{
     environment: $environment,
     region: $region,
@@ -170,7 +174,9 @@ jq -n \
     cur_athena_output_location: $cur_athena_output_location,
     cur_run_id_column: $cur_run_id_column,
     cur_cost_column: $cur_cost_column,
-    cost_center_policy_json: $cost_center_policy_json
+    cost_center_policy_json: $cost_center_policy_json,
+    acm_certificate_arn: $acm_certificate_arn,
+    enable_ecs_exec: $enable_ecs_exec
   }' > "${tfvars_file}"
 
 echo "Deploying control-plane Terraform for environment '${SPARKPILOT_ENVIRONMENT}'"
