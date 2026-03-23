@@ -98,6 +98,26 @@ output "postgres_address" {
   description = "RDS endpoint address."
 }
 
+output "database_url_secret_arn" {
+  value       = aws_secretsmanager_secret.database_url.arn
+  description = "Secrets Manager ARN for the SPARKPILOT_DATABASE_URL secret. The deploy script writes the actual value here after apply."
+}
+
+output "bootstrap_secret_arn" {
+  value       = aws_secretsmanager_secret.bootstrap.arn
+  description = "Secrets Manager ARN for the SPARKPILOT_BOOTSTRAP_SECRET secret. The deploy script writes the actual value here after apply."
+}
+
+output "postgres_db_name" {
+  value       = var.db_name
+  description = "RDS database name (used by deploy script to construct the database URL)."
+}
+
+output "postgres_db_username" {
+  value       = var.db_username
+  description = "RDS master username (used by deploy script to construct the database URL)."
+}
+
 output "postgres_instance_arn" {
   value       = aws_db_instance.postgres.arn
   description = "RDS instance ARN."

@@ -45,7 +45,6 @@ locals {
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
   https_enabled  = trimspace(var.acm_certificate_arn) != ""
-  db_url         = "postgresql+psycopg://${urlencode(var.db_username)}:${urlencode(var.db_password)}@${aws_db_instance.postgres.address}:5432/${var.db_name}"
 
   api_task_name = substr(replace("${local.name_prefix}-api", "_", "-"), 0, 32)
   api_tg_name   = substr(replace("${local.name_prefix}-api-tg", "_", "-"), 0, 32)
@@ -181,11 +180,6 @@ resource "aws_secretsmanager_secret" "database_url" {
   tags                    = local.tags
 }
 
-resource "aws_secretsmanager_secret_version" "database_url" {
-  secret_id     = aws_secretsmanager_secret.database_url.id
-  secret_string = local.db_url
-}
-
 resource "aws_secretsmanager_secret" "bootstrap" {
   name                    = "${local.name_prefix}-bootstrap-secret"
   kms_key_id              = aws_kms_key.control_plane.arn
@@ -193,10 +187,11 @@ resource "aws_secretsmanager_secret" "bootstrap" {
   tags                    = local.tags
 }
 
-resource "aws_secretsmanager_secret_version" "bootstrap" {
-  secret_id     = aws_secretsmanager_secret.bootstrap.id
-  secret_string = var.bootstrap_secret
-}
+# Secret values are written by the deploy script (scripts/terraform/deploy_control_plane.sh)
+# AFTER Terraform apply, once the RDS endpoint is available. Terraform only owns the
+# secret containers so that secret contents never appear in Terraform state. The deploy
+# script calls `aws secretsmanager put-secret-value` and then forces an ECS service
+# update to pick up the new AWSCURRENT version.
 
 resource "aws_cloudwatch_log_group" "api" {
   name              = "/${local.name_prefix}/api"
@@ -630,7 +625,10 @@ resource "aws_ecs_service" "api" {
     container_port   = 8000
   }
 
-  depends_on = [aws_lb_listener.api_http]
+  # Include the HTTPS listener in depends_on so the ECS service waits for the
+  # full listener binding before registering targets. api_https is count-based
+  # (zero when no cert is configured) so Terraform resolves it correctly.
+  depends_on = [aws_lb_listener.api_http, aws_lb_listener.api_https]
   tags       = local.tags
 }
 
