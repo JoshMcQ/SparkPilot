@@ -1948,7 +1948,10 @@ details.card > summary:focus-visible {
 
 /* ── Scroll-reveal animation ───────────────────────────── */
 
-.reveal {
+/* Reveal animation: only active when JS has confirmed it can run.
+   Without the js-reveal-ready class (no JS / SSR), elements are
+   visible by default — no content is ever hidden by CSS alone. */
+.js-reveal-ready .reveal {
   opacity: 0;
   transform: translateY(18px);
   transition:
@@ -1956,20 +1959,13 @@ details.card > summary:focus-visible {
     transform 0.48s var(--easing-out);
 }
 
-.reveal.revealed {
+.js-reveal-ready .reveal.revealed {
   opacity: 1;
   transform: translateY(0);
 }
 
-/* Fallback: make content visible if JS hasn't loaded */
-noscript ~ * .reveal,
-.no-js .reveal {
-  opacity: 1;
-  transform: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .reveal {
+  .js-reveal-ready .reveal {
     opacity: 1;
     transform: none;
     transition: none;
@@ -2159,7 +2155,7 @@ noscript ~ * .reveal,
 
 .landing-integrations-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 20px;
   max-width: 800px;
   margin: 0 auto 20px;

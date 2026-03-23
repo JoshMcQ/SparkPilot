@@ -36,12 +36,17 @@ function EmrReleasesSection() {
       .finally(() => setLoading(false));
   }, []);
 
-  const warnCount = releases.filter((r) => r.lifecycle_status !== "current").length;
-  const visible = useMemo(() => {
-    if (showAll) return releases;
-    const nonCurrent = releases.filter((r) => r.lifecycle_status !== "current");
-    const currentSlice = releases.filter((r) => r.lifecycle_status === "current").slice(0, 10);
-    return [...nonCurrent, ...currentSlice];
+  const { warnCount, visible } = useMemo(() => {
+    const nonCurrent: typeof releases = [];
+    const current: typeof releases = [];
+    for (const r of releases) {
+      if (r.lifecycle_status === "current") current.push(r);
+      else nonCurrent.push(r);
+    }
+    return {
+      warnCount: nonCurrent.length,
+      visible: showAll ? releases : [...nonCurrent, ...current.slice(0, 10)],
+    };
   }, [showAll, releases]);
 
   return (

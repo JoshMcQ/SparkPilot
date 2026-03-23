@@ -23,6 +23,9 @@ import {
 /* ── Scroll-reveal hook ─────────────────────────────── */
 function useReveal(selector: string) {
   useEffect(() => {
+    // Mark document as JS-ready so CSS transitions activate.
+    // Without this class, .reveal elements remain visible (safe fallback).
+    document.documentElement.classList.add("js-reveal-ready");
     const els = document.querySelectorAll<HTMLElement>(selector);
     if (!els.length) return;
     const io = new IntersectionObserver(

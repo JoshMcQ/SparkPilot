@@ -88,19 +88,19 @@ function configSummary(ruleType: PolicyRuleType, config: Record<string, unknown>
     }
     if (ruleType === "required_tags") {
       const tags = config.tags;
-      return Array.isArray(tags) && tags.length > 0 ? (tags as string[]).join(", ") : "—";
+      return Array.isArray(tags) && tags.length > 0 ? tags.map(String).join(", ") : "—";
     }
     if (ruleType === "allowed_golden_paths") {
       const paths = config.paths;
-      return Array.isArray(paths) && paths.length > 0 ? (paths as string[]).join(", ") : "—";
+      return Array.isArray(paths) && paths.length > 0 ? paths.map(String).join(", ") : "—";
     }
     if (ruleType === "allowed_release_labels") {
       const labels = config.labels;
-      return Array.isArray(labels) && labels.length > 0 ? (labels as string[]).join(", ") : "—";
+      return Array.isArray(labels) && labels.length > 0 ? labels.map(String).join(", ") : "—";
     }
     if (ruleType === "allowed_instance_types") {
       const types = config.types;
-      return Array.isArray(types) && types.length > 0 ? (types as string[]).join(", ") : "—";
+      return Array.isArray(types) && types.length > 0 ? types.map(String).join(", ") : "—";
     }
     return JSON.stringify(config);
   } catch {
@@ -184,7 +184,7 @@ function CreatePolicyForm({
     }
   }
 
-  const selectedRuleType = form.rule_type as PolicyRuleType;
+  const selectedRuleType = form.rule_type;
 
   return (
     <form onSubmit={handleSubmit}>
