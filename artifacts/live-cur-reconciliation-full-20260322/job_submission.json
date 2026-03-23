@@ -1,0 +1,80 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:8000/v1/jobs/dd87754d-bbef-45fb-bf84-e6686c4b990e/runs",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer <redacted>",
+      "Idempotency-Key": "cur-reconcile-evidence-run-20260322"
+    },
+    "body": {
+      "requested_resources": {
+        "driver_vcpu": 1,
+        "driver_memory_gb": 2,
+        "executor_vcpu": 1,
+        "executor_memory_gb": 2,
+        "executor_instances": 1
+      },
+      "timeout_seconds": 1800
+    }
+  },
+  "job_creation_response": {
+    "id": "dd87754d-bbef-45fb-bf84-e6686c4b990e",
+    "environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+    "name": "cur-reconcile-evidence-sparkpi-20260322",
+    "artifact_uri": "s3://sparkpilot-live-787587782916-20260224203702/scripts/sparkpi.py",
+    "artifact_digest": "sha256:sparkpi-evidence-20260322",
+    "entrypoint": "sparkpi.py",
+    "args": ["10"],
+    "spark_conf": {},
+    "retry_max_attempts": 1,
+    "timeout_seconds": 1800,
+    "created_at": "2026-03-22T18:42:54.561742Z",
+    "updated_at": "2026-03-22T18:42:54.561744Z"
+  },
+  "run_submission_response": {
+    "id": "f781400e-93b3-4235-aeff-a05923ce5bc2",
+    "job_id": "dd87754d-bbef-45fb-bf84-e6686c4b990e",
+    "environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+    "state": "queued",
+    "attempt": 1,
+    "requested_resources": {
+      "driver_vcpu": 1,
+      "driver_memory_gb": 2,
+      "executor_vcpu": 1,
+      "executor_memory_gb": 2,
+      "executor_instances": 1
+    },
+    "args": ["10"],
+    "spark_conf": {},
+    "timeout_seconds": 1800,
+    "emr_job_run_id": null,
+    "cancellation_requested": false,
+    "log_group": null,
+    "log_stream_prefix": null,
+    "driver_log_uri": null,
+    "spark_ui_uri": null,
+    "spark_history_url": null,
+    "preflight": null,
+    "created_by_actor": "service:sparkpilot-cli",
+    "error_message": null,
+    "started_at": null,
+    "last_heartbeat_at": null,
+    "ended_at": null,
+    "created_at": "2026-03-22T18:42:59.964990Z",
+    "updated_at": "2026-03-22T18:42:59.964991Z"
+  },
+  "environment": {
+    "id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+    "tenant_id": "89b43f2d-2a48-4be6-9723-9732b0df8223",
+    "cloud": "aws",
+    "region": "us-east-1",
+    "engine": "emr_on_eks",
+    "provisioning_mode": "byoc_lite",
+    "status": "ready",
+    "customer_role_arn": "arn:aws:iam::787587782916:role/SparkPilotByocLiteRoleAdmin",
+    "eks_cluster_arn": "arn:aws:eks:us-east-1:787587782916:cluster/sparkpilot-live-1",
+    "eks_namespace": "sparkpilot-demo-2",
+    "emr_virtual_cluster_id": "580dfmy1wqym1dz7nkksxhzpp"
+  }
+}

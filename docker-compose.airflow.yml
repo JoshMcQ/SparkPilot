@@ -1,0 +1,93 @@
+# SparkPilot Airflow Integration docker-compose
+# Issue #36 — Airflow Provider real DAG execution evidence
+#
+# Usage:
+#   docker-compose -f docker-compose.airflow.yml up -d
+#   docker-compose -f docker-compose.airflow.yml logs -f airflow-webserver
+#
+# Ports:
+#   8081 -> Airflow webserver (avoids conflict with existing :8080 mock OIDC)
+#
+# Authentication:
+#   admin / <AIRFLOW_ADMIN_PASSWORD env var>
+#
+# Required env vars (generate before first run):
+#   AIRFLOW_FERNET_KEY       — python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#   AIRFLOW_WEBSERVER_SECRET_KEY — python -c "import secrets; print(secrets.token_urlsafe(32))"
+#   AIRFLOW_ADMIN_PASSWORD   — password for the Airflow admin user
+#
+# Notes:
+#   - Uses SQLite as Airflow metadata DB (dev/evidence mode; no extra postgres needed)
+#   - Mounts providers/airflow as an editable install source
+#   - Mounts dags/ directory for pre-loaded SparkPilot DAGs
+#   - SparkPilot API connection is configured via environment variable
+#   - SPARKPILOT_API_BASE_URL must point to a running SparkPilot API
+#   - NEVER commit secrets to this file — use env vars or .env
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.3-python3.11
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY:-}
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+    AIRFLOW__WEBSERVER__BASE_URL: "http://localhost:8081"
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+    # SparkPilot connection — Airflow JSON connection format with OIDC extras.
+    # JSON format ensures oidc_issuer / oidc_audience extras are preserved.
+    AIRFLOW_CONN_SPARKPILOT_DEFAULT: >-
+      {"conn_type": "http", "host": "host.docker.internal", "port": 8000,
+      "login": "sparkpilot-cli", "password": "sparkpilot-cli-secret",
+      "extra": {"oidc_issuer": "http://host.docker.internal:8080",
+      "oidc_audience": "sparkpilot-api",
+      "oidc_token_endpoint": "http://host.docker.internal:8080/oauth/token"}}
+    # SparkPilot provider config passed through
+    SPARKPILOT_API_BASE_URL: "${SPARKPILOT_API_BASE_URL:-http://host.docker.internal:8000}"
+    SPARKPILOT_EXAMPLE_JOB_ID: "${SPARKPILOT_EXAMPLE_JOB_ID:-}"
+    SPARKPILOT_EXAMPLE_JOB_SPARK_CONF: "${SPARKPILOT_EXAMPLE_JOB_SPARK_CONF:-}"
+  volumes:
+    - airflow_data:/opt/airflow
+    - ./dags:/opt/airflow/dags:ro
+    - ./providers/airflow:/opt/sparkpilot-airflow-provider:ro
+
+services:
+  airflow-init:
+    <<: *airflow-common
+    # Copy provider source to writable temp location to avoid egg-info permission issues with the mounted volume
+    command: bash -c "cp -r /opt/sparkpilot-airflow-provider /tmp/sparkpilot-provider && pip install --quiet /tmp/sparkpilot-provider && airflow db migrate && airflow users create --username admin --password \"$${AIRFLOW_ADMIN_PASSWORD:-admin}\" --firstname SparkPilot --lastname Admin --role Admin --email admin@sparkpilot.local && airflow connections add sparkpilot_default --conn-type http --conn-host host.docker.internal --conn-port 8000 --conn-login sparkpilot-cli --conn-password \"$${SPARKPILOT_CLI_SECRET:-sparkpilot-cli-secret}\" || true"
+    restart: "no"
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: bash -c "cp -r /opt/sparkpilot-airflow-provider /tmp/sparkpilot-provider && pip install --quiet /tmp/sparkpilot-provider && airflow scheduler"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: bash -c "cp -r /opt/sparkpilot-airflow-provider /tmp/sparkpilot-provider && pip install --quiet /tmp/sparkpilot-provider && airflow webserver --port 8080"
+    ports:
+      - "8081:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+volumes:
+  airflow_data:

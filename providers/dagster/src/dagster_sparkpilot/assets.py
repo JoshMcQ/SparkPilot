@@ -23,15 +23,15 @@ def _normalized_asset_config(context: AssetExecutionContext) -> dict[str, Any]:
 
 
 @asset(required_resource_keys={"sparkpilot"}, config_schema=SUBMIT_RUN_OP_CONFIG_SCHEMA)
-def sparkpilot_submit_asset(context: AssetExecutionContext) -> dict[str, Any]:
+def sparkpilot_submit_asset(context) -> dict[str, Any]:  # noqa: ANN001
     client = _resolve_sparkpilot_client(context)
     config = SubmitRunOpConfig.from_mapping(_normalized_asset_config(context))
     return submit_run_with_client(client, config)
 
 
 @asset(required_resource_keys={"sparkpilot"}, config_schema=WAIT_RUN_OP_CONFIG_SCHEMA)
-def sparkpilot_wait_asset(
-    context: AssetExecutionContext, sparkpilot_submit_asset: dict[str, Any]
+def sparkpilot_wait_asset(  # noqa: ANN001
+    context, sparkpilot_submit_asset: dict[str, Any]
 ) -> dict[str, Any]:
     client = _resolve_sparkpilot_client(context)
     config = WaitRunOpConfig.from_mapping(_normalized_asset_config(context))
@@ -39,8 +39,8 @@ def sparkpilot_wait_asset(
 
 
 @asset(required_resource_keys={"sparkpilot"}, config_schema=CANCEL_RUN_OP_CONFIG_SCHEMA)
-def sparkpilot_cancel_asset(
-    context: AssetExecutionContext, sparkpilot_submit_asset: dict[str, Any]
+def sparkpilot_cancel_asset(  # noqa: ANN001
+    context, sparkpilot_submit_asset: dict[str, Any]
 ) -> dict[str, Any]:
     client = _resolve_sparkpilot_client(context)
     config = CancelRunOpConfig.from_mapping(_normalized_asset_config(context))
@@ -55,7 +55,7 @@ RUN_LIFECYCLE_ASSET_CONFIG_SCHEMA: dict[str, Any] = {
 
 
 @asset(required_resource_keys={"sparkpilot"}, config_schema=RUN_LIFECYCLE_ASSET_CONFIG_SCHEMA)
-def sparkpilot_run_lifecycle_asset(context: AssetExecutionContext) -> dict[str, Any]:
+def sparkpilot_run_lifecycle_asset(context) -> dict[str, Any]:  # noqa: ANN001
     client = _resolve_sparkpilot_client(context)
     normalized = _normalized_asset_config(context)
     submit_config = SubmitRunOpConfig.from_mapping(normalized)

@@ -5,7 +5,15 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
-from dagster_sparkpilot._compat import Field, In, OpExecutionContext, Out, op
+from dagster_sparkpilot._compat import (
+    Field,
+    In,
+    OpExecutionContext,
+    Out,
+    _LocalTestOpContext,
+    _build_op_context_fn,
+    op,
+)
 from dagster_sparkpilot.client import SparkPilotClient
 from dagster_sparkpilot.common import TERMINAL_STATES, build_run_metadata, normalize_op_config
 from dagster_sparkpilot.errors import SparkPilotError, map_sparkpilot_error_to_dagster
@@ -380,7 +388,7 @@ def _normalized_op_config(context: OpExecutionContext) -> dict[str, Any]:
     out=Out(dict, description="Normalized SparkPilot run metadata."),
     config_schema=SUBMIT_RUN_OP_CONFIG_SCHEMA,
 )
-def sparkpilot_submit_run_op(context: OpExecutionContext) -> dict[str, Any]:
+def sparkpilot_submit_run_op(context) -> dict[str, Any]:  # noqa: ANN001
     client = _resolve_sparkpilot_client(context)
     config = SubmitRunOpConfig.from_mapping(_normalized_op_config(context))
     try:
@@ -397,8 +405,8 @@ def sparkpilot_submit_run_op(context: OpExecutionContext) -> dict[str, Any]:
     out=Out(dict, description="Terminal SparkPilot run metadata."),
     config_schema=WAIT_RUN_OP_CONFIG_SCHEMA,
 )
-def sparkpilot_wait_for_run_op(
-    context: OpExecutionContext, run_metadata: dict[str, Any]
+def sparkpilot_wait_for_run_op(  # noqa: ANN001
+    context, run_metadata: dict[str, Any]
 ) -> dict[str, Any]:
     client = _resolve_sparkpilot_client(context)
     config = WaitRunOpConfig.from_mapping(_normalized_op_config(context))
@@ -416,8 +424,8 @@ def sparkpilot_wait_for_run_op(
     out=Out(dict, description="Post-cancel SparkPilot run metadata."),
     config_schema=CANCEL_RUN_OP_CONFIG_SCHEMA,
 )
-def sparkpilot_cancel_run_op(
-    context: OpExecutionContext, run_metadata: dict[str, Any] | None = None
+def sparkpilot_cancel_run_op(  # noqa: ANN001
+    context, run_metadata: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     client = _resolve_sparkpilot_client(context)
     config = CancelRunOpConfig.from_mapping(_normalized_op_config(context))
@@ -433,5 +441,16 @@ def build_local_test_context(
     *,
     sparkpilot: SparkPilotClient,
     op_config: dict[str, Any] | None = None,
-) -> OpExecutionContext:
-    return OpExecutionContext(op_config=op_config or {}, resources=SimpleNamespace(sparkpilot=sparkpilot))
+) -> Any:
+    """Build a context for local/unit tests.
+
+    When Dagster is installed, uses ``dagster.build_op_context`` so that
+    direct ``@op`` invocations work correctly under Dagster 1.8+.
+    When Dagster is not installed, returns the lightweight compat shim context.
+    """
+    if _build_op_context_fn is not None:
+        return _build_op_context_fn(
+            op_config=op_config or {},
+            resources={"sparkpilot": sparkpilot},
+        )
+    return _LocalTestOpContext(op_config=op_config or {}, resources=SimpleNamespace(sparkpilot=sparkpilot))

@@ -13,6 +13,12 @@ export function LandingNav() {
         <strong>SparkPilot</strong>
       </Link>
       <div className="landing-nav-links">
+        <Link href="/#features" className={pathname === "/" ? "landing-nav-active" : ""}>
+          Features
+        </Link>
+        <Link href="/#integrations" className={pathname === "/" ? "landing-nav-active" : ""}>
+          Integrations
+        </Link>
         <Link href="/pricing" className={pathname === "/pricing" ? "landing-nav-active" : ""}>
           Pricing
         </Link>

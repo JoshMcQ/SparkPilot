@@ -75,20 +75,29 @@ def check_execution_role_lf_permissions(
 ) -> dict[str, Any]:
     """Validate that the execution role has Lake Formation data permissions.
 
-    Calls lakeformation:ListPermissions filtered by the execution role
-    principal. Returns a summary of granted permissions found.
+    Calls lakeformation:ListPermissions without a Principal filter (AWS requires
+    a Resource when filtering by Principal). Results are filtered client-side to
+    permissions belonging to the execution role.
     """
     try:
         lf = _get_lf_client(region)
-        principal = {"DataLakePrincipal": {"DataLakePrincipalIdentifier": execution_role_arn}}
-        kwargs: dict[str, Any] = {"Principal": principal}
+        kwargs: dict[str, Any] = {}
         if catalog_id:
             kwargs["CatalogId"] = catalog_id
 
         permissions: list[dict] = []
-        paginator = lf.get_paginator("list_permissions")
-        for page in paginator.paginate(**kwargs):
-            permissions.extend(page.get("PrincipalResourcePermissions", []))
+        next_token: str | None = None
+        while True:
+            if next_token:
+                kwargs["NextToken"] = next_token
+            resp = lf.list_permissions(**kwargs)
+            for perm in resp.get("PrincipalResourcePermissions", []):
+                principal_id = perm.get("Principal", {}).get("DataLakePrincipalIdentifier", "")
+                if principal_id == execution_role_arn:
+                    permissions.append(perm)
+            next_token = resp.get("NextToken")
+            if not next_token:
+                break
 
         databases = set()
         tables = set()

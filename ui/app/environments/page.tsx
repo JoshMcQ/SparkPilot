@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Environment, deleteEnvironment, fetchEnvironments, retryEnvironmentProvisioning } from "@/lib/api";
+import { Environment, EmrRelease, EmrReleaseLifecycleStatus, deleteEnvironment, fetchEnvironments, fetchEmrReleases, retryEnvironmentProvisioning } from "@/lib/api";
 import { badgeClass } from "@/lib/badge";
 import { friendlyError } from "@/lib/format";
 import { ShortId } from "@/components/short-id";
@@ -15,6 +15,104 @@ function formatTimestamp(value: string | null | undefined): string {
   const parsed = Date.parse(value);
   if (Number.isNaN(parsed)) return value;
   return new Date(parsed).toLocaleString();
+}
+
+function lifecycleBadge(status: EmrReleaseLifecycleStatus) {
+  if (status === "current") return <span className="badge badge-success">Current</span>;
+  if (status === "deprecated") return <span className="badge badge-warning">Deprecated</span>;
+  return <span className="badge badge-danger">End of Life</span>;
+}
+
+function EmrReleasesSection() {
+  const [releases, setReleases] = useState<EmrRelease[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    fetchEmrReleases({ limit: 100 })
+      .then(setReleases)
+      .catch((err: unknown) => setError(friendlyError(err, "Failed to load EMR releases")))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const { warnCount, visible } = useMemo(() => {
+    const nonCurrent: typeof releases = [];
+    const current: typeof releases = [];
+    for (const r of releases) {
+      if (r.lifecycle_status === "current") current.push(r);
+      else nonCurrent.push(r);
+    }
+    return {
+      warnCount: nonCurrent.length,
+      visible: showAll ? releases : [...nonCurrent, ...current.slice(0, 10)],
+    };
+  }, [showAll, releases]);
+
+  return (
+    <div className="card">
+      <div className="card-header-row">
+        <h3>EMR Release Lifecycle</h3>
+        {warnCount > 0 ? (
+          <span className="badge badge-warning">{warnCount} deprecated or EOL</span>
+        ) : null}
+      </div>
+      <div className="subtle">
+        SparkPilot syncs EMR release label lifecycle status from AWS. Deprecated and end-of-life labels are blocked or warned depending on your policy configuration.
+      </div>
+      {loading ? (
+        <div className="subtle" style={{ marginTop: 8 }}>Loading EMR releases...</div>
+      ) : error ? (
+        <div className="error-text" style={{ marginTop: 8 }}>{error}</div>
+      ) : releases.length === 0 ? (
+        <div className="subtle" style={{ marginTop: 8 }}>No EMR release data synced yet. Releases are populated by the SparkPilot worker on first connect.</div>
+      ) : (
+        <>
+          <div className="table-wrap" style={{ marginTop: 8 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Release Label</th>
+                  <th>Status</th>
+                  <th>Graviton</th>
+                  <th>Lake Formation</th>
+                  <th className="col-hide-mobile">Upgrade Target</th>
+                  <th className="col-hide-mobile">Last Synced</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((rel) => (
+                  <tr key={rel.id} className={rel.lifecycle_status === "end_of_life" ? "row-warn" : undefined}>
+                    <td style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem" }}>{rel.release_label}</td>
+                    <td>{lifecycleBadge(rel.lifecycle_status)}</td>
+                    <td>{rel.graviton_supported ? <span className="badge badge-success">Yes</span> : <span className="badge">No</span>}</td>
+                    <td>{rel.lake_formation_supported ? <span className="badge badge-success">Yes</span> : <span className="badge">No</span>}</td>
+                    <td className="col-hide-mobile">
+                      {rel.upgrade_target ? (
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem" }}>{rel.upgrade_target}</span>
+                      ) : (
+                        <span className="subtle">—</span>
+                      )}
+                    </td>
+                    <td className="col-hide-mobile">
+                      {rel.last_synced_at ? new Date(rel.last_synced_at).toLocaleDateString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {showAll || visible.length < releases.length ? (
+            <div className="button-row" style={{ marginTop: 8 }}>
+              <button type="button" className="button button-secondary button-sm" onClick={() => setShowAll((v) => !v)}>
+                {showAll ? "Show fewer" : `Show all ${releases.length} releases`}
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function EnvironmentsPage() {
@@ -253,6 +351,7 @@ export default function EnvironmentsPage() {
           <PaginationControls total={environments.length} state={pg} onChange={setPg} />
         </>
       )}
+      <EmrReleasesSection />
     </section>
   );
 }

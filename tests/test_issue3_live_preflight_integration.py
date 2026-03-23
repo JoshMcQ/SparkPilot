@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests._helpers import live_env_required
 from sparkpilot.services.preflight_checks import _add_issue3_dispatch_gate_checks
-from tests._helpers import live_env_required as _required
 
 
 def test_issue3_live_preflight_checks_real_aws() -> None:
@@ -16,10 +16,10 @@ def test_issue3_live_preflight_checks_real_aws() -> None:
     env = SimpleNamespace(
         engine="emr_on_eks",
         provisioning_mode="byoc_lite",
-        customer_role_arn=_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
+        customer_role_arn=live_env_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
         region=os.getenv("SPARKPILOT_LIVE_REGION", "us-east-1"),
-        eks_cluster_arn=_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
-        eks_namespace=_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
+        eks_cluster_arn=live_env_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
+        eks_namespace=live_env_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
     )
 
     checks: list[dict[str, object]] = []

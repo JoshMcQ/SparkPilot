@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests._helpers import live_env_required
 from sparkpilot.aws_clients import EmrEksClient
 from sparkpilot.config import get_settings
-from tests._helpers import live_env_required as _required
 
 
 def test_issue21_live_oidc_detection_real_aws() -> None:
@@ -20,10 +20,10 @@ def test_issue21_live_oidc_detection_real_aws() -> None:
         pytest.skip("SPARKPILOT_DRY_RUN_MODE must be false for live OIDC detection validation")
 
     env = SimpleNamespace(
-        customer_role_arn=_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
+        customer_role_arn=live_env_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
         region=os.getenv("SPARKPILOT_LIVE_REGION", "us-east-1"),
-        eks_cluster_arn=_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
-        eks_namespace=_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
+        eks_cluster_arn=live_env_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
+        eks_namespace=live_env_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
     )
 
     result = EmrEksClient().check_oidc_provider_association(env)

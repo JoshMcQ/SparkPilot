@@ -1,0 +1,16 @@
+{
+  "_note": "First attempt (00g4bj488809qo0b) failed because trust policy update hadn't propagated. Second attempt is the primary evidence run.",
+  "first_attempt": {
+    "applicationId": "00g4bj3mboofea09",
+    "jobRunId": "00g4bj488809qo0b",
+    "arn": "arn:aws:emr-serverless:us-east-1:787587782916:/applications/00g4bj3mboofea09/jobruns/00g4bj488809qo0b",
+    "state": "FAILED",
+    "stateDetails": "Could not assume runtime role — trust relationship hadn't propagated yet"
+  },
+  "second_attempt": {
+    "applicationId": "00g4bj3mboofea09",
+    "jobRunId": "00g4bj4lu4dmqg0b",
+    "arn": "arn:aws:emr-serverless:us-east-1:787587782916:/applications/00g4bj3mboofea09/jobruns/00g4bj4lu4dmqg0b"
+  },
+  "execution_role_arn": "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole"
+}

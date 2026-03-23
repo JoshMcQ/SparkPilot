@@ -573,3 +573,454 @@
   background: var(--surface-1);
   border-color: var(--line-soft);
 }
+
+/* ══════════════════════════════════════════════════════
+   OBJECTION PAGES — /why-not-diy and /why-not-serverless
+   ══════════════════════════════════════════════════════ */
+
+.objection-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 24px 80px;
+}
+
+/* ── Hero ── */
+.objection-hero {
+  padding: 80px 0 48px;
+  text-align: center;
+}
+
+.objection-hero-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 3px 10px;
+  margin-bottom: 20px;
+}
+
+.objection-hero-title {
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+  margin: 0 0 20px;
+}
+
+.objection-hero-sub {
+  font-size: 1.05rem;
+  color: var(--text-soft);
+  max-width: 680px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ── Sections ── */
+.objection-section {
+  padding: 56px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.objection-section-alt {
+  background: var(--surface-1);
+  margin: 0 -24px;
+  padding: 56px 24px;
+}
+
+.objection-section-highlight {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  margin: 0 -24px;
+  padding: 56px 24px;
+  border-top: 2px solid var(--accent);
+}
+
+.objection-section-highlight p {
+  font-size: 0.95rem;
+  color: var(--text-soft);
+  line-height: 1.7;
+  max-width: 760px;
+  margin: 0 0 16px;
+}
+
+.objection-section-title {
+  font-size: clamp(1.3rem, 2.5vw, 1.8rem);
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0 0 12px;
+}
+
+.objection-section-sub {
+  font-size: 0.95rem;
+  color: var(--text-soft);
+  max-width: 700px;
+  line-height: 1.6;
+  margin: 0 0 32px;
+}
+
+/* ── Cost grid ── */
+.objection-cost-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 640px) {
+  .objection-cost-grid { grid-template-columns: 1fr; }
+}
+
+.objection-cost-card {
+  background: var(--surface-1);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.objection-cost-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.objection-cost-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.objection-cost-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.objection-cost-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  border-radius: 4px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.objection-cost-tag-recurring {
+  background: color-mix(in srgb, var(--warning, #d97706) 12%, transparent);
+  color: var(--warning, #d97706);
+}
+
+.objection-cost-card p {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.objection-cost-total {
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 16px 20px;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+/* ── Ships grid ── */
+.objection-ships-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .objection-ships-grid { grid-template-columns: 1fr; }
+}
+
+.objection-ships-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.objection-ships-card h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0 0 8px;
+}
+
+.objection-ships-card p {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Honest list ── */
+.objection-honest-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.objection-honest-list li {
+  font-size: 0.9rem;
+  color: var(--text-soft);
+  line-height: 1.55;
+  padding-left: 20px;
+  position: relative;
+}
+
+.objection-honest-list li::before {
+  content: "—";
+  position: absolute;
+  left: 0;
+  color: var(--text-muted);
+}
+
+.objection-honest-note {
+  font-size: 0.9rem;
+  color: var(--text-soft);
+  line-height: 1.65;
+  border-left: 3px solid var(--line-soft);
+  padding-left: 16px;
+  margin: 0;
+}
+
+/* ── Comparison table ── */
+.objection-compare-wrapper {
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+
+.objection-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.objection-compare-table th {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+  padding: 10px 16px;
+  text-align: center;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.objection-compare-table th.objection-compare-cap {
+  text-align: left;
+}
+
+.objection-compare-table th.objection-compare-sp {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-1));
+}
+
+.objection-compare-table td {
+  padding: 10px 16px;
+  text-align: center;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.objection-compare-table td.objection-compare-cap {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-strong);
+  font-size: 0.82rem;
+}
+
+.objection-compare-table tr:last-child td {
+  border-bottom: none;
+}
+
+.objection-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.objection-cell-yes {
+  background: color-mix(in srgb, var(--success, #16a34a) 15%, transparent);
+  color: var(--success, #16a34a);
+}
+
+.objection-cell-no {
+  background: color-mix(in srgb, var(--danger, #dc2626) 12%, transparent);
+  color: var(--danger, #dc2626);
+}
+
+.objection-cell-partial {
+  background: color-mix(in srgb, var(--warning, #d97706) 12%, transparent);
+  color: var(--warning, #d97706);
+}
+
+.objection-compare-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Tradeoff list ── */
+.objection-tradeoff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.objection-tradeoff-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+
+.objection-tradeoff-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.objection-tradeoff-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.objection-impact-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+.objection-impact-high {
+  background: color-mix(in srgb, var(--danger, #dc2626) 12%, transparent);
+  color: var(--danger, #dc2626);
+}
+
+.objection-impact-medium {
+  background: color-mix(in srgb, var(--warning, #d97706) 12%, transparent);
+  color: var(--warning, #d97706);
+}
+
+.objection-tradeoff-problem {
+  font-size: 0.87rem;
+  color: var(--text-soft);
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.objection-tradeoff-sp {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  line-height: 1.55;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  border-radius: 0 6px 6px 0;
+}
+
+.objection-tradeoff-sp-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-strong);
+  margin-bottom: 4px;
+}
+
+/* ── Wins grid ── */
+.objection-wins-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .objection-wins-grid { grid-template-columns: 1fr; }
+}
+
+.objection-wins-card {
+  background: var(--surface-1);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.objection-wins-card h3 {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0 0 8px;
+}
+
+.objection-wins-card p {
+  font-size: 0.83rem;
+  color: var(--text-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── CTA ── */
+.objection-cta {
+  padding: 56px 0 24px;
+  text-align: center;
+  border-top: 1px solid var(--line-soft);
+}
+
+.objection-cta h2 {
+  font-size: clamp(1.3rem, 2.5vw, 1.7rem);
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0 0 12px;
+}
+
+.objection-cta p {
+  font-size: 0.95rem;
+  color: var(--text-soft);
+  max-width: 540px;
+  margin: 0 auto 28px;
+  line-height: 1.6;
+}
+
+.objection-cta-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Dark mode ── */
+:root[data-theme="dark"] .objection-cost-card { background: var(--surface-2); }
+:root[data-theme="dark"] .objection-ships-card { background: var(--surface-2); }
+:root[data-theme="dark"] .objection-tradeoff-card { background: var(--surface-2); }
+:root[data-theme="dark"] .objection-wins-card { background: var(--surface-2); }

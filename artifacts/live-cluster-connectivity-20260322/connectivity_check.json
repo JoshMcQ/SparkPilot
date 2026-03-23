@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-03-22T18:10:00Z",
+  "checks": {
+    "sts_get_caller_identity": {
+      "status": "pass",
+      "result": {
+        "UserId": "AIDA3OX7D3ECP6AABB7YD",
+        "Account": "787587782916",
+        "Arn": "arn:aws:iam::787587782916:user/sparkpilot-cli"
+      }
+    },
+    "sts_assume_role": {
+      "status": "pass",
+      "role_arn": "arn:aws:iam::787587782916:role/SparkPilotByocLiteRoleAdmin",
+      "assumed_role_arn": "arn:aws:sts::787587782916:assumed-role/SparkPilotByocLiteRoleAdmin/sparkpilot-live-check",
+      "session_name": "sparkpilot-live-check",
+      "expiration": "2026-03-22T19:06:42Z"
+    },
+    "emr_virtual_cluster": {
+      "status": "pass",
+      "virtual_cluster_id": "580dfmy1wqym1dz7nkksxhzpp",
+      "name": "sparkpilot-4c7d381a",
+      "state": "RUNNING",
+      "arn": "arn:aws:emr-containers:us-east-1:787587782916:/virtualclusters/580dfmy1wqym1dz7nkksxhzpp",
+      "namespace": "sparkpilot-demo-2",
+      "eks_cluster": "sparkpilot-live-1"
+    },
+    "eks_cluster_status": {
+      "status": "pass",
+      "cluster_name": "sparkpilot-live-1",
+      "region": "us-east-1",
+      "cluster_status": "ACTIVE"
+    }
+  },
+  "overall": "pass",
+  "env": {
+    "SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN": "arn:aws:iam::787587782916:role/SparkPilotByocLiteRoleAdmin",
+    "SPARKPILOT_LIVE_EKS_CLUSTER_ARN": "arn:aws:eks:us-east-1:787587782916:cluster/sparkpilot-live-1",
+    "SPARKPILOT_LIVE_EKS_NAMESPACE": "sparkpilot-demo-2",
+    "SPARKPILOT_LIVE_REGION": "us-east-1",
+    "SPARKPILOT_LIVE_EMR_VIRTUAL_CLUSTER_ID": "580dfmy1wqym1dz7nkksxhzpp"
+  }
+}

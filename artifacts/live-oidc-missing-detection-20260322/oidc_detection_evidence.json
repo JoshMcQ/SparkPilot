@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-03-22T18:25:00Z",
+  "summary": "OIDC missing detection evidence for Issue #21",
+  "live_cluster_check": {
+    "cluster": "sparkpilot-live-1",
+    "region": "us-east-1",
+    "customer_role_arn": "arn:aws:iam::787587782916:role/SparkPilotByocLiteRoleAdmin",
+    "aws_oidc_result": {
+      "associated": true,
+      "cluster_name": "sparkpilot-live-1",
+      "oidc_issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/4DDA085BD9A65436A1304446313C4B2B",
+      "oidc_provider_arn": "arn:aws:iam::787587782916:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/4DDA085BD9A65436A1304446313C4B2B"
+    },
+    "preflight_check": {
+      "code": "byoc_lite.oidc_association",
+      "status": "pass",
+      "message": "OIDC provider is associated for target EKS cluster.",
+      "details": {
+        "oidc_provider_arn": "arn:aws:iam::787587782916:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/4DDA085BD9A65436A1304446313C4B2B",
+        "cluster_name": "sparkpilot-live-1"
+      }
+    }
+  },
+  "oidc_missing_failure_path": {
+    "description": "Simulated check for a cluster where OIDC provider is NOT associated (NoSuchEntity from IAM GetOpenIDConnectProvider)",
+    "mock_cluster": "sparkpilot-no-oidc-cluster",
+    "aws_response": {
+      "associated": false,
+      "cluster_name": "sparkpilot-no-oidc-cluster",
+      "oidc_issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/ABC123",
+      "oidc_provider_arn": "arn:aws:iam::787587782916:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/ABC123"
+    },
+    "preflight_check": {
+      "code": "byoc_lite.oidc_association",
+      "status": "fail",
+      "message": "OIDC provider is not associated for target EKS cluster.",
+      "remediation": "Detect+instruct mode (default, no IAM mutation): run `eksctl utils associate-iam-oidc-provider --cluster sparkpilot-no-oidc-cluster --region us-east-1 --approve` in the customer account. Optional automation mode can be explicitly enabled later if desired (SPARKPILOT_PREFLIGHT_AUTOFIX_OIDC_PROVIDER=true).",
+      "details": {
+        "oidc_provider_arn": "arn:aws:iam::787587782916:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/ABC123",
+        "cluster_name": "sparkpilot-no-oidc-cluster",
+        "required_permissions": "eks:DescribeCluster, iam:GetOpenIDConnectProvider, iam:CreateOpenIDConnectProvider",
+        "automation_mode": "detect_only"
+      }
+    }
+  },
+  "code_path_summary": {
+    "detection_flow": [
+      "1. check_oidc_provider_association() calls eks:DescribeCluster to get OIDC issuer URL",
+      "2. Constructs expected IAM OIDC provider ARN from issuer URL",
+      "3. Calls iam:GetOpenIDConnectProvider — if NoSuchEntity, returns associated=false",
+      "4. _add_byoc_lite_oidc_association_check maps associated=false -> preflight status=fail",
+      "5. Remediation string includes exact eksctl command with cluster name and region"
+    ],
+    "automation_mode": "detect_only by default — SPARKPILOT_PREFLIGHT_AUTOFIX_OIDC_PROVIDER=true enables auto-create"
+  },
+  "issue_21_acceptance_criteria_coverage": {
+    "oidc_missing_detected": "PASS — check returns status=fail with remediation when OIDC provider absent",
+    "remediation_includes_eksctl_command": "PASS — eksctl utils associate-iam-oidc-provider command in remediation string",
+    "cluster_name_and_region_in_remediation": "PASS — cluster name and region interpolated into remediation",
+    "detect_only_mode": "PASS — no IAM mutations by default",
+    "live_cluster_passes": "PASS — sparkpilot-live-1 has OIDC configured and check returns pass"
+  }
+}

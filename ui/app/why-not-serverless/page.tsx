@@ -1,0 +1,241 @@
+import Link from "next/link";
+import { LandingNav } from "@/components/landing-nav";
+import { LandingFooter } from "@/components/landing-footer";
+
+const TRADEOFFS = [
+  {
+    title: "No persistent clusters",
+    impact: "High",
+    description:
+      "EMR Serverless spins up workers on demand for every application. You cannot pre-warm a set of workers that stay alive between jobs. For batch workloads running every 15 minutes, this is constant cold-start overhead.",
+    sparkpilot:
+      "EMR on EKS with SparkPilot supports persistent managed node groups and Karpenter-based warm capacity. Workers can be reused across jobs within the same virtual cluster.",
+  },
+  {
+    title: "Cold start latency",
+    impact: "High",
+    description:
+      "Serverless cold starts range from 30 seconds to several minutes depending on worker size and availability. Interactive and near-real-time workloads cannot absorb this latency.",
+    sparkpilot:
+      "With EKS-backed warm pools and Spot node groups, SparkPilot environments can achieve sub-10-second executor availability for pre-warmed capacity.",
+  },
+  {
+    title: "No Kubernetes scheduling control",
+    impact: "Medium",
+    description:
+      "You cannot use Kubernetes node selectors, taints, tolerations, or pod affinity to control where workloads land. Serverless manages placement entirely. You cannot co-locate jobs with S3 Express One Zone endpoints or GPU nodes.",
+    sparkpilot:
+      "Full Kubernetes scheduling control via spark conf. Spot selectors, GPU node affinity, S3 Express co-location, and Karpenter NodePool targeting are all supported.",
+  },
+  {
+    title: "No YuniKorn fair scheduling",
+    impact: "Medium",
+    description:
+      "YuniKorn provides queue-based fair scheduling, guaranteed vCPU allocations per team, and preemption policies. None of these exist in Serverless — every application competes for capacity without SLA guarantees.",
+    sparkpilot:
+      "SparkPilot exposes YuniKorn queue configuration per environment, validates queue utilization at preflight, and enforces guaranteed vs max vCPU bounds per team.",
+  },
+  {
+    title: "No cost allocation per team",
+    impact: "High",
+    description:
+      "Serverless bills by application-level resource usage, but does not give you per-team or per-run cost attribution unless you build it yourself using resource tags and a CUR pipeline.",
+    sparkpilot:
+      "SparkPilot tags every run with a run ID, estimates cost at submission, and reconciles actual cost per run from your CUR via Athena. Cost is attributed by team, environment, and job automatically.",
+  },
+  {
+    title: "No BYOC model",
+    impact: "High",
+    description:
+      "EMR Serverless is a fully managed AWS service. Your job artifacts run in AWS-managed infrastructure. There is no way to ensure workers run inside your VPC, your subnets, or your security groups without complex VPC connector configuration.",
+    sparkpilot:
+      "SparkPilot is BYOC-first. The control plane runs in your account, your VPC, your EKS cluster. Your data never leaves your perimeter. The BYOC-Lite role grants SparkPilot exactly the permissions it needs — nothing more.",
+  },
+  {
+    title: "No pre-dispatch policy enforcement",
+    impact: "Medium",
+    description:
+      "Serverless will accept and start any job you submit. Resource limits, release label policies, and team budget caps are not enforced at submission time. You discover overages in the bill.",
+    sparkpilot:
+      "SparkPilot's policy engine enforces max_vcpu, max_memory_gb, max_run_seconds, and allowed_release_labels before a single executor starts. Hard-block policies return HTTP 422 with the policy name in the error.",
+  },
+  {
+    title: "Limited Spark configuration surface",
+    impact: "Medium",
+    description:
+      "Serverless constrains the Spark configuration you can set. Properties that affect cluster topology, shuffle behavior on persistent disk, or advanced JVM tuning are either unavailable or have no effect.",
+    sparkpilot:
+      "Full Spark configuration is passed through to the EMR on EKS job run, including executor node selectors, toleration hints, shuffle storage, and YuniKorn scheduling properties.",
+  },
+];
+
+const WHEN_SERVERLESS_WINS = [
+  {
+    scenario: "Truly ad-hoc workloads",
+    detail:
+      "Jobs that run once a week or once a month where cold-start latency is irrelevant and you want zero cluster management overhead.",
+  },
+  {
+    scenario: "Dev and sandbox environments",
+    detail:
+      "Exploratory data work where you want no minimum cluster cost and you do not need per-run cost attribution.",
+  },
+  {
+    scenario: "Very small teams",
+    detail:
+      "Teams of 1–2 data engineers where the multi-tenant isolation, policy engine, and cost allocation overhead is not worth the setup.",
+  },
+  {
+    scenario: "AWS Glue replacement",
+    detail:
+      "Workloads migrating from Glue where the primary goal is eliminating the per-DPU hour cost, not adding governance.",
+  },
+];
+
+const COMPARE_ROWS = [
+  { capability: "Persistent warm capacity", serverless: false, sp: true },
+  { capability: "Sub-10s executor availability", serverless: false, sp: true },
+  { capability: "Kubernetes scheduling control", serverless: false, sp: true },
+  { capability: "YuniKorn fair scheduling", serverless: false, sp: true },
+  { capability: "Per-run cost attribution", serverless: false, sp: true },
+  { capability: "BYOC model (your VPC, your EKS)", serverless: false, sp: true },
+  { capability: "Pre-dispatch policy enforcement", serverless: false, sp: true },
+  { capability: "Spot instance management", serverless: "partial", sp: true },
+  { capability: "Full Spark conf surface", serverless: false, sp: true },
+  { capability: "Zero cluster management", serverless: true, sp: false },
+  { capability: "No minimum cluster cost", serverless: true, sp: false },
+  { capability: "Automatic scaling to zero", serverless: true, sp: "partial" },
+];
+
+function Cell({ value }: { value: boolean | "partial" }) {
+  if (value === true) return <span className="objection-cell objection-cell-yes" aria-label="Yes">✓</span>;
+  if (value === false) return <span className="objection-cell objection-cell-no" aria-label="No">✗</span>;
+  return <span className="objection-cell objection-cell-partial" aria-label="Partial">~</span>;
+}
+
+export default function WhyNotServerlessPage() {
+  return (
+    <>
+      <LandingNav />
+      <main className="objection-page">
+        {/* Hero */}
+        <section className="objection-hero">
+          <div className="objection-hero-badge">Common Objection</div>
+          <h1 className="objection-hero-title">
+            &ldquo;Why not just use EMR Serverless?&rdquo;
+          </h1>
+          <p className="objection-hero-sub">
+            EMR Serverless is a legitimate option for some workloads. Here is an honest breakdown
+            of the tradeoffs — so you can make the right call for your team&apos;s actual requirements.
+          </p>
+        </section>
+
+        {/* Quick comparison */}
+        <section className="objection-section">
+          <h2 className="objection-section-title">Head-to-head capability comparison</h2>
+          <div className="objection-compare-wrapper">
+            <table className="objection-compare-table">
+              <thead>
+                <tr>
+                  <th className="objection-compare-cap">Capability</th>
+                  <th>EMR Serverless</th>
+                  <th className="objection-compare-sp">SparkPilot + EMR on EKS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {COMPARE_ROWS.map((row) => (
+                  <tr key={row.capability}>
+                    <td className="objection-compare-cap">{row.capability}</td>
+                    <td><Cell value={row.serverless as boolean | "partial"} /></td>
+                    <td><Cell value={row.sp as boolean | "partial"} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="objection-compare-note">
+            ~ indicates partial support. Spot in Serverless is available but without the
+            placement control, diversification validation, or toleration management that
+            SparkPilot provides on EKS.
+          </p>
+        </section>
+
+        {/* Detailed tradeoffs */}
+        <section className="objection-section objection-section-alt">
+          <h2 className="objection-section-title">Tradeoff deep-dive</h2>
+          <p className="objection-section-sub">
+            These are real constraints — not marketing FUD. Each one matters in specific
+            production scenarios.
+          </p>
+          <div className="objection-tradeoff-list">
+            {TRADEOFFS.map((t) => (
+              <div key={t.title} className="objection-tradeoff-card">
+                <div className="objection-tradeoff-header">
+                  <h3>{t.title}</h3>
+                  <span className={`objection-impact-badge objection-impact-${t.impact.toLowerCase()}`}>
+                    Impact: {t.impact}
+                  </span>
+                </div>
+                <p className="objection-tradeoff-problem">{t.description}</p>
+                <div className="objection-tradeoff-sp">
+                  <span className="objection-tradeoff-sp-label">SparkPilot approach:</span>
+                  {t.sparkpilot}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* When Serverless wins */}
+        <section className="objection-section">
+          <h2 className="objection-section-title">When EMR Serverless is the right choice</h2>
+          <p className="objection-section-sub">
+            Honest answer: Serverless is better for some use cases. Here is when to choose it.
+          </p>
+          <div className="objection-wins-grid">
+            {WHEN_SERVERLESS_WINS.map((item) => (
+              <div key={item.scenario} className="objection-wins-card">
+                <h3>{item.scenario}</h3>
+                <p>{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* SparkPilot also supports Serverless */}
+        <section className="objection-section objection-section-highlight">
+          <h2 className="objection-section-title">SparkPilot also dispatches to EMR Serverless</h2>
+          <p>
+            SparkPilot is not an either/or choice. The same preflight pipeline, policy engine,
+            and cost tagging runs regardless of which execution engine you use. You can route
+            production batch workloads to EMR on EKS for latency and cost control, and route
+            ad-hoc or dev workloads to Serverless from the same control plane.
+          </p>
+          <p>
+            The governance layer — preflight checks, policies, CUR reconciliation, audit trail —
+            applies to all engines. You get visibility and control over every job, regardless
+            of which AWS service runs it.
+          </p>
+        </section>
+
+        {/* CTA */}
+        <section className="objection-cta">
+          <h2>Evaluate both in your actual environment</h2>
+          <p>
+            We can help you model the latency, cost, and operational tradeoffs for your
+            specific workload profile. No commitment required.
+          </p>
+          <div className="objection-cta-actions">
+            <Link href="/contact" className="landing-btn landing-btn-primary">
+              Talk to an engineer
+            </Link>
+            <Link href="/why-not-diy" className="landing-btn landing-btn-secondary">
+              Why not build it yourself?
+            </Link>
+          </div>
+        </section>
+      </main>
+      <LandingFooter />
+    </>
+  );
+}

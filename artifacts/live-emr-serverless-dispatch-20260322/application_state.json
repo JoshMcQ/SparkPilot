@@ -1,0 +1,30 @@
+{
+    "application": {
+        "applicationId": "00g4bj3mboofea09",
+        "name": "sparkpilot-evidence-app",
+        "arn": "arn:aws:emr-serverless:us-east-1:787587782916:/applications/00g4bj3mboofea09",
+        "releaseLabel": "emr-7.2.0",
+        "type": "Spark",
+        "state": "STARTED",
+        "stateDetails": "",
+        "createdAt": 1774207757.084,
+        "updatedAt": 1774207769.212,
+        "tags": {},
+        "autoStartConfiguration": {
+            "enabled": true
+        },
+        "autoStopConfiguration": {
+            "enabled": true,
+            "idleTimeoutMinutes": 15
+        },
+        "architecture": "X86_64",
+        "monitoringConfiguration": {
+            "managedPersistenceMonitoringConfiguration": {
+                "enabled": true
+            }
+        },
+        "jobLevelCostAllocationConfiguration": {
+            "enabled": false
+        }
+    }
+}

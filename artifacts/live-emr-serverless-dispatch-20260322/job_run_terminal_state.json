@@ -1,0 +1,55 @@
+{
+    "jobRun": {
+        "applicationId": "00g4bj3mboofea09",
+        "jobRunId": "00g4bj4lu4dmqg0b",
+        "arn": "arn:aws:emr-serverless:us-east-1:787587782916:/applications/00g4bj3mboofea09/jobruns/00g4bj4lu4dmqg0b",
+        "createdBy": "arn:aws:iam::787587782916:user/sparkpilot-cli",
+        "createdAt": 1774207860.545,
+        "updatedAt": 1774207975.836,
+        "executionRole": "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole",
+        "state": "SUCCESS",
+        "stateDetails": "",
+        "releaseLabel": "emr-7.2.0",
+        "configurationOverrides": {
+            "monitoringConfiguration": {
+                "s3MonitoringConfiguration": {
+                    "logUri": "s3://sparkpilot-live-787587782916-20260224203702/emr-serverless-logs/"
+                },
+                "managedPersistenceMonitoringConfiguration": {
+                    "enabled": true
+                }
+            }
+        },
+        "jobDriver": {
+            "sparkSubmit": {
+                "entryPoint": "local:///usr/lib/spark/examples/jars/spark-examples.jar",
+                "entryPointArguments": [
+                    "10"
+                ],
+                "sparkSubmitParameters": "--class org.apache.spark.examples.SparkPi"
+            }
+        },
+        "tags": {},
+        "totalResourceUtilization": {
+            "vCPUHour": 0.087,
+            "memoryGBHour": 0.347,
+            "storageGBHour": 0.433
+        },
+        "totalExecutionDurationSeconds": 27,
+        "executionTimeoutMinutes": 720,
+        "billedResourceUtilization": {
+            "vCPUHour": 0.267,
+            "memoryGBHour": 1.067,
+            "storageGBHour": 0.0
+        },
+        "mode": "BATCH",
+        "retryPolicy": {
+            "maxAttempts": 1
+        },
+        "attempt": 1,
+        "attemptCreatedAt": 1774207860.545,
+        "attemptUpdatedAt": 1774207975.836,
+        "startedAt": 1774207948.394,
+        "endedAt": 1774207975.836
+    }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "689acc2b-897a-479e-b465-a3eb0a33e174",
+  "run_id": "80bd269d-c5e6-4887-a2d4-04c29f53ac71",
+  "environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+  "tenant_id": "89b43f2d-2a48-4be6-9723-9732b0df8223",
+  "team": "89b43f2d-2a48-4be6-9723-9732b0df8223",
+  "cost_center": "sparkpilot-demo-2",
+  "billing_period": "2026-03",
+  "estimated_vcpu_seconds": 5457,
+  "estimated_memory_gb_seconds": 21828,
+  "estimated_cost_usd_micros": 67303,
+  "actual_cost_usd_micros": null,
+  "cur_reconciled_at": null,
+  "spot_cost_usd_micros": null,
+  "ondemand_cost_usd_micros": null,
+  "spot_savings_usd_micros": null,
+  "created_at": "2026-03-22 21:39:02.939655",
+  "updated_at": "2026-03-22 21:39:02.939656",
+  "_note": "State BEFORE cur-reconciliation worker ran. actual_cost_usd_micros=null, cur_reconciled_at=null"
+}

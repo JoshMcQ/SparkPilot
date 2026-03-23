@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests._helpers import live_env_required
 from sparkpilot.aws_clients import EmrEksClient
 from sparkpilot.config import get_settings
-from tests._helpers import live_env_required as _required
 
 
 def test_issue20_live_trust_policy_automation_real_aws(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -17,7 +17,7 @@ def test_issue20_live_trust_policy_automation_real_aws(monkeypatch: pytest.Monke
     # Require the EMR execution role ARN — no silent fallback to a hardcoded real
     # account ARN. A missing env var means the test is not configured, not that it
     # should silently run against a production account.
-    emr_execution_role_arn = _required("SPARKPILOT_LIVE_EMR_EXECUTION_ROLE_ARN")
+    emr_execution_role_arn = live_env_required("SPARKPILOT_LIVE_EMR_EXECUTION_ROLE_ARN")
 
     # monkeypatch.setenv restores the original value (or removes the key) after the
     # test automatically, preventing env var state from leaking into subsequent tests.
@@ -30,10 +30,10 @@ def test_issue20_live_trust_policy_automation_real_aws(monkeypatch: pytest.Monke
     env = SimpleNamespace(
         engine="emr_on_eks",
         provisioning_mode="byoc_lite",
-        customer_role_arn=_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
+        customer_role_arn=live_env_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
         region=os.getenv("SPARKPILOT_LIVE_REGION", "us-east-1"),
-        eks_cluster_arn=_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
-        eks_namespace=_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
+        eks_cluster_arn=live_env_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
+        eks_namespace=live_env_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
     )
 
     client = EmrEksClient()
