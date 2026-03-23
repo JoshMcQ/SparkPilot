@@ -408,17 +408,17 @@ export default function LandingPage() {
                 <tr key={row.topic}>
                   <td className="landing-compare-topic">{row.topic}</td>
                   <td>
-                    <span className={`landing-compare-cell ${row.diy ? "cell-yes" : "cell-no"}`} aria-label={row.diy ? "Yes" : "No"}>
+                    <span role="img" className={`landing-compare-cell ${row.diy ? "cell-yes" : "cell-no"}`} aria-label={row.diy ? "Yes" : "No"}>
                       {row.diy ? <IconCheck /> : <IconX />}
                     </span>
                   </td>
                   <td>
-                    <span className={`landing-compare-cell ${row.serverless ? "cell-yes" : "cell-no"}`} aria-label={row.serverless ? "Yes" : "No"}>
+                    <span role="img" className={`landing-compare-cell ${row.serverless ? "cell-yes" : "cell-no"}`} aria-label={row.serverless ? "Yes" : "No"}>
                       {row.serverless ? <IconCheck /> : <IconX />}
                     </span>
                   </td>
                   <td>
-                    <span className={`landing-compare-cell ${row.sp ? "cell-yes" : "cell-no"}`} aria-label={row.sp ? "Yes" : "No"}>
+                    <span role="img" className={`landing-compare-cell ${row.sp ? "cell-yes" : "cell-no"}`} aria-label={row.sp ? "Yes" : "No"}>
                       {row.sp ? <IconCheck /> : <IconX />}
                     </span>
                   </td>

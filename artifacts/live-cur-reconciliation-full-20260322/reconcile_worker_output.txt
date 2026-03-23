@@ -1,9 +1,9 @@
 === CUR Reconciliation Worker Output (2026-03-22) ===
 Command: python -m sparkpilot.workers cur-reconciliation --once
-Environment: SPARKPILOT_DATABASE_URL=sqlite:///C:/Users/JoshMcQueary/SparkPilot/sparkpilot_evidence2.db
+Environment: SPARKPILOT_DATABASE_URL=sqlite:///REDACTED/SparkPilot/sparkpilot_evidence2.db
              SPARKPILOT_CUR_ATHENA_DATABASE=sparkpilot_r03_evidence
              SPARKPILOT_CUR_ATHENA_TABLE=cur_live_evidence_20260322
-             SPARKPILOT_CUR_ATHENA_OUTPUT_LOCATION=s3://sparkpilot-live-787587782916-20260224203702/athena-results/
+             SPARKPILOT_CUR_ATHENA_OUTPUT_LOCATION=s3://sparkpilot-live-REDACTED_ACCOUNT_ID-20260224203702/athena-results/
 
 Output:
 2026-03-22 17:41:38,901 INFO botocore.credentials Found credentials in shared credentials file: ~/.aws/credentials
