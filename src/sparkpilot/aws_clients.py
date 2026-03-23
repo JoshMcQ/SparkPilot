@@ -1444,6 +1444,11 @@ class EmrEksClient:
             spark_conf["spark.kubernetes.driver.annotation.yunikorn.apache.org/queue-name"] = _yunikorn_queue
             spark_conf["spark.kubernetes.executor.annotation.yunikorn.apache.org/queue-name"] = _yunikorn_queue
 
+        _event_log_s3_uri = getattr(environment, "event_log_s3_uri", None)
+        if _event_log_s3_uri:
+            spark_conf.setdefault("spark.eventLog.enabled", "true")
+            spark_conf.setdefault("spark.eventLog.dir", _event_log_s3_uri)
+
         spark_submit_driver: dict[str, Any] = {
             "entryPoint": job.artifact_uri,
             "entryPointArguments": run.args_overrides_json or job.args_json,

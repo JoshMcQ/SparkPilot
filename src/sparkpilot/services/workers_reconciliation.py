@@ -173,6 +173,10 @@ def _record_reconciled_run_state(
             run.ended_at = now
         _record_usage_if_needed(db, run, env)
         _record_run_diagnostics_if_needed(db, run, env)
+        if mapped_state == "succeeded" and not run.spark_ui_uri:
+            _history_server_url = getattr(env, "spark_history_server_url", None)
+            if _history_server_url and run.emr_job_run_id:
+                run.spark_ui_uri = f"{_history_server_url.rstrip('/')}/history/{run.emr_job_run_id}"
     write_audit_event(
         db,
         actor=actor,
