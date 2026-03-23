@@ -276,6 +276,7 @@ export default function RunsPage() {
     if (!run) {
       // Run was removed from the list (cancelled/purged) — clear stale log output
       // so the panel does not show lines belonging to a different run.
+      setSelectedRunId(null);
       setLogs([]);
       setLogsHint("");
       return;
