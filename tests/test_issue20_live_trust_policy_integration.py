@@ -16,7 +16,7 @@ def test_issue20_live_trust_policy_automation_real_aws() -> None:
 
     emr_execution_role_arn = os.getenv("SPARKPILOT_LIVE_EMR_EXECUTION_ROLE_ARN", "").strip()
     if not emr_execution_role_arn:
-        pytest.skip("Set SPARKPILOT_LIVE_EMR_EXECUTION_ROLE_ARN for trust-policy integration tests")
+        emr_execution_role_arn = "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole"
     os.environ["SPARKPILOT_EMR_EXECUTION_ROLE_ARN"] = emr_execution_role_arn
     os.environ["SPARKPILOT_DRY_RUN_MODE"] = "false"
     get_settings.cache_clear()
