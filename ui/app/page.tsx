@@ -264,8 +264,8 @@ export default function LandingPage() {
           </p>
         </div>
         <div className="landing-before-after-grid">
-          {BEFORE_AFTER.map((row, i) => (
-            <div key={i} className="landing-ba-row reveal">
+          {BEFORE_AFTER.map((row) => (
+            <div key={row.before} className="landing-ba-row reveal">
               <div className="landing-ba-before">
                 <span className="landing-ba-icon landing-ba-icon-no" aria-hidden><IconX /></span>
                 <span>{row.before}</span>

@@ -43,7 +43,7 @@ const COSTS = [
     hours: "15–30 hrs to build",
     recurring: "5–10 hrs/month",
     description:
-      "Resource guards (max vCPU, max memory, max runtime, allowed release labels) need to be enforced at submission time, not discovered in a bill. SparkPilot ships a policy engine with hard-block and soft-cap enforcement — no custom admission webhook required.",
+      "Resource guards (max vCPU, max memory, max runtime, allowed release labels) need to be enforced at submission time, not discovered in a bill. SparkPilot ships a policy engine with hard-block (HTTP 422) and soft-warn enforcement — no custom admission webhook required.",
   },
   {
     category: "Upgrade Lifecycle",
@@ -72,7 +72,7 @@ const WHAT_SP_SHIPS = [
   },
   {
     title: "Policy engine",
-    body: "Global and scoped policies with hard-block or soft-cap enforcement. max_vcpu, max_memory_gb, max_run_seconds, allowed_release_labels, allowed_golden_paths, and more.",
+    body: "Global and scoped policies with hard-block (HTTP 422) or soft-warn enforcement. max_vcpu, max_memory_gb, max_run_seconds, allowed_release_labels, allowed_golden_paths, and more.",
   },
   {
     title: "CUR reconciliation",
