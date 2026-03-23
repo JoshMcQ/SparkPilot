@@ -108,9 +108,9 @@ const COMPARE_ROWS = [
 ];
 
 function Cell({ value }: { value: boolean | "partial" }) {
-  if (value === true) return <span className="objection-cell objection-cell-yes">✓</span>;
-  if (value === false) return <span className="objection-cell objection-cell-no">✗</span>;
-  return <span className="objection-cell objection-cell-partial">~</span>;
+  if (value === true) return <span className="objection-cell objection-cell-yes" aria-label="Yes">✓</span>;
+  if (value === false) return <span className="objection-cell objection-cell-no" aria-label="No">✗</span>;
+  return <span className="objection-cell objection-cell-partial" aria-label="Partial">~</span>;
 }
 
 export default function WhyNotServerlessPage() {

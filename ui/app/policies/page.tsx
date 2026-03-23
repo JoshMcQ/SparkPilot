@@ -150,7 +150,7 @@ function CreatePolicyForm({
   function validateConfig(): Record<string, unknown> | null {
     try {
       const parsed = JSON.parse(configRaw);
-      if (typeof parsed !== "object" || Array.isArray(parsed)) {
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
         setConfigError("Config must be a JSON object");
         return null;
       }

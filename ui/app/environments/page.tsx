@@ -97,7 +97,7 @@ function EmrReleasesSection() {
               </tbody>
             </table>
           </div>
-          {releases.length > 10 ? (
+          {showAll || visible.length < releases.length ? (
             <div className="button-row" style={{ marginTop: 8 }}>
               <button type="button" className="button button-secondary button-sm" onClick={() => setShowAll((v) => !v)}>
                 {showAll ? "Show fewer" : `Show all ${releases.length} releases`}
