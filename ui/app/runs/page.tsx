@@ -105,6 +105,11 @@ export default function RunsPage() {
     return `${env.region} / ${env.eks_namespace ?? env.provisioning_mode}`;
   }, [envMap]);
 
+  const envArchBadge = useCallback((id: string): string | null => {
+    const env = envMap.get(id);
+    return env?.instance_architecture ?? null;
+  }, [envMap]);
+
   const jobDisplay = useCallback((id: string): string => {
     const job = jobMap.get(id);
     return job?.name ?? shortId(id);
@@ -238,6 +243,12 @@ export default function RunsPage() {
   }, [refreshQueueUtilizationForActiveRuns]);
 
   async function loadLogs(run: Run) {
+    if (selectedRunId === run.id) {
+      setSelectedRunId(null);
+      setLogs([]);
+      setLogsHint("Select a run to view logs.");
+      return;
+    }
     setSelectedRunId(run.id);
     setError(null);
     setLogs([]);
@@ -539,7 +550,14 @@ export default function RunsPage() {
                 <tr key={run.id} className={selectedRunId === run.id ? "row-selected" : ""}>
                   <td><ShortId value={run.id} /></td>
                   <td title={run.job_id}>{jobDisplay(run.job_id)}</td>
-                  <td title={run.environment_id}>{envDisplay(run.environment_id)}</td>
+                  <td title={run.environment_id}>
+                    {envDisplay(run.environment_id)}
+                    {envArchBadge(run.environment_id) === "arm64" ? (
+                      <span className="badge badge-graviton" style={{ marginLeft: 6 }} title="Graviton (arm64) environment">arm64</span>
+                    ) : envArchBadge(run.environment_id) === "x86_64" ? (
+                      <span className="badge" style={{ marginLeft: 6 }} title="x86_64 environment">x86_64</span>
+                    ) : null}
+                  </td>
                   <td>
                     <span className={badgeClass(run.state)}>{run.state}</span>
                   </td>
@@ -619,6 +637,16 @@ export default function RunsPage() {
             {selectedRun.error_message ? (
               <span className="error-text" style={{ marginLeft: 8 }}>Error: {selectedRun.error_message}</span>
             ) : null}
+          </div>
+        ) : null}
+        {selectedRun?.spark_ui_uri ? (
+          <div className="subtle" style={{ marginTop: 6, padding: "4px 0" }}>
+            <strong>Spark UI:</strong>{" "}
+            <a href={selectedRun.spark_ui_uri} target="_blank" rel="noopener noreferrer" className="spark-ui-link">
+              {selectedRun.spark_ui_uri}
+            </a>
+            {" "}
+            <span style={{ opacity: 0.7 }}>(available while run is active; may require VPN or kubectl port-forward)</span>
           </div>
         ) : null}
         <div className="logs">{logsLoading ? "Loading logs..." : logs.length > 0 ? logs.join("\n") : logsHint}</div>

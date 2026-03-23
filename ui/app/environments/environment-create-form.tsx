@@ -360,6 +360,11 @@ export default function EnvironmentCreateForm() {
               <option value="arm64">arm64</option>
             </select>
           </label>
+          {values.instanceArchitecture === "arm64" ? (
+            <div className="subtle" style={{ gridColumn: "1 / -1", marginTop: -4, padding: "6px 8px", background: "var(--color-surface-2, #f6f8fa)", borderRadius: 4, border: "1px solid var(--color-border, #e1e4e8)" }}>
+              Graviton instances (arm64) offer up to 40% better price-performance for Spark workloads. Requires EMR releases with Graviton support — check the release lifecycle table below.
+            </div>
+          ) : null}
           <label>
             Customer Role ARN
             <input value={values.customerRoleArn} onChange={(event) => setAndSync({ ...values, customerRoleArn: event.target.value })} />

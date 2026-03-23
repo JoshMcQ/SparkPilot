@@ -177,7 +177,8 @@ const HOW_IT_WORKS = [
     step: "1",
     title: "Connect your AWS account",
     description:
-      "Create a cross-account IAM role and OIDC association. SparkPilot validates the trust relationship, required permissions, and namespace prerequisites automatically — with exact remediation for every failure.",
+      "Create a cross-account IAM role and OIDC association. SparkPilot validates the trust relationship, required permissions, and namespace prerequisites automatically — with exact remediation for every failure. Supports Cognito, Auth0, Okta, and any standards-compliant OIDC provider.",
+    docLink: { href: "/docs/setup/oidc-provider-setup", label: "OIDC provider setup guide" },
   },
   {
     step: "2",
@@ -344,6 +345,11 @@ export default function LandingPage() {
               <div className="landing-step-body">
                 <h3>{s.title}</h3>
                 <p>{s.description}</p>
+                {"docLink" in s && s.docLink ? (
+                  <Link href={s.docLink.href} className="landing-step-doc-link">
+                    {s.docLink.label} →
+                  </Link>
+                ) : null}
               </div>
             </div>
           ))}
@@ -399,17 +405,17 @@ export default function LandingPage() {
                 <tr key={row.topic}>
                   <td className="landing-compare-topic">{row.topic}</td>
                   <td>
-                    <span className={`landing-compare-cell ${row.diy ? "cell-yes" : "cell-no"}`}>
+                    <span className={`landing-compare-cell ${row.diy ? "cell-yes" : "cell-no"}`} aria-label={row.diy ? "Yes" : "No"}>
                       {row.diy ? <IconCheck /> : <IconX />}
                     </span>
                   </td>
                   <td>
-                    <span className={`landing-compare-cell ${row.serverless ? "cell-yes" : "cell-no"}`}>
+                    <span className={`landing-compare-cell ${row.serverless ? "cell-yes" : "cell-no"}`} aria-label={row.serverless ? "Yes" : "No"}>
                       {row.serverless ? <IconCheck /> : <IconX />}
                     </span>
                   </td>
                   <td>
-                    <span className={`landing-compare-cell ${row.sp ? "cell-yes" : "cell-no"}`}>
+                    <span className={`landing-compare-cell ${row.sp ? "cell-yes" : "cell-no"}`} aria-label={row.sp ? "Yes" : "No"}>
                       {row.sp ? <IconCheck /> : <IconX />}
                     </span>
                   </td>

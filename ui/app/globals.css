@@ -559,6 +559,12 @@ tbody tr:last-child td {
   border-color: #ccd8e0;
 }
 
+.badge-graviton {
+  background: linear-gradient(180deg, #f0e8ff, #e2d4fb);
+  color: #4a1f7f;
+  border-color: #c4a4ee;
+}
+
 .row-selected {
   background: rgba(202, 235, 225, 0.6);
 }
@@ -1743,6 +1749,19 @@ details.card > summary:focus-visible {
   margin: 0;
 }
 
+.landing-step-doc-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-accent, #1a73e8);
+  text-decoration: none;
+}
+
+.landing-step-doc-link:hover {
+  text-decoration: underline;
+}
+
 /* ── CTA block ─────────────────────────────────────── */
 
 .landing-cta {
@@ -1942,6 +1961,13 @@ details.card > summary:focus-visible {
   transform: translateY(0);
 }
 
+/* Fallback: make content visible if JS hasn't loaded */
+noscript ~ * .reveal,
+.no-js .reveal {
+  opacity: 1;
+  transform: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal {
     opacity: 1;
@@ -2133,7 +2159,7 @@ details.card > summary:focus-visible {
 
 .landing-integrations-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 20px;
   max-width: 800px;
   margin: 0 auto 20px;
