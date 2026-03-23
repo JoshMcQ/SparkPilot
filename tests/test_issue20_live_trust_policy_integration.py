@@ -7,13 +7,7 @@ import pytest
 
 from sparkpilot.aws_clients import EmrEksClient
 from sparkpilot.config import get_settings
-
-
-def _required(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        pytest.skip(f"Live integration disabled/missing env: {name}")
-    return value
+from tests._helpers import live_env_required as _required
 
 
 def test_issue20_live_trust_policy_automation_real_aws(monkeypatch: pytest.MonkeyPatch) -> None:

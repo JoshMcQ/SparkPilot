@@ -6,13 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from sparkpilot.services.preflight_checks import _add_issue3_dispatch_gate_checks
-
-
-def _required(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        pytest.skip(f"Live integration disabled/missing env: {name}")
-    return value
+from tests._helpers import live_env_required as _required
 
 
 def test_issue3_live_preflight_checks_real_aws() -> None:
