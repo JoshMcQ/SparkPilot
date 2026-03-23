@@ -1,0 +1,21 @@
+=== CUR Reconciliation Worker Output (2026-03-22) ===
+Command: python -m sparkpilot.workers cur-reconciliation --once
+Environment: SPARKPILOT_DATABASE_URL=sqlite:///REDACTED/SparkPilot/sparkpilot_evidence2.db
+             SPARKPILOT_CUR_ATHENA_DATABASE=sparkpilot_r03_evidence
+             SPARKPILOT_CUR_ATHENA_TABLE=cur_live_evidence_20260322
+             SPARKPILOT_CUR_ATHENA_OUTPUT_LOCATION=s3://sparkpilot-live-REDACTED_ACCOUNT_ID-20260224203702/athena-results/
+
+Output:
+2026-03-22 17:41:38,901 INFO botocore.credentials Found credentials in shared credentials file: ~/.aws/credentials
+2026-03-22 17:41:41,834 INFO __main__ [cur-reconciliation] processed=1
+
+Result: processed=1
+- Run 80bd269d-c5e6-4887-a2d4-04c29f53ac71: actual_cost_usd_micros updated from null → 27800 ($0.0278)
+- cur_reconciled_at: 2026-03-22 21:41:41.814869
+
+Athena Query Used:
+SELECT resource_tags_user_sparkpilot_run_id AS run_id,
+SUM(CAST(line_item_unblended_cost AS DOUBLE)) AS cost_usd
+FROM sparkpilot_r03_evidence.cur_live_evidence_20260322
+WHERE resource_tags_user_sparkpilot_run_id IN ('80bd269d-c5e6-4887-a2d4-04c29f53ac71')
+GROUP BY 1

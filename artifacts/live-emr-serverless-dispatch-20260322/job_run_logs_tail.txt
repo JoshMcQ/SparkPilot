@@ -1,0 +1,44 @@
+=== SPARK DRIVER STDOUT ===
+Pi is roughly 3.1438711438711437
+
+=== SPARK DRIVER STDERR (last 40 lines) ===
+26/03/22 19:32:40 INFO TaskSetManager: Starting task 4.0 in stage 0.0 (TID 4) ([2600:1f18:55e9:f503:3298:43c5:18bd:38de], executor 3, partition 4, PROCESS_LOCAL, 8065 bytes) 
+26/03/22 19:32:40 INFO TaskSetManager: Starting task 5.0 in stage 0.0 (TID 5) ([2600:1f18:55e9:f503:11b9:2346:30bd:2d59], executor 2, partition 5, PROCESS_LOCAL, 8065 bytes) 
+26/03/22 19:32:40 INFO TaskSetManager: Starting task 6.0 in stage 0.0 (TID 6) ([2600:1f18:55e9:f503:7456:5365:5f96:9e54], executor 1, partition 6, PROCESS_LOCAL, 8065 bytes) 
+26/03/22 19:32:40 INFO TaskSetManager: Starting task 7.0 in stage 0.0 (TID 7) ([2600:1f18:55e9:f503:3298:43c5:18bd:38de], executor 3, partition 7, PROCESS_LOCAL, 8065 bytes) 
+26/03/22 19:32:40 INFO TaskSetManager: Starting task 8.0 in stage 0.0 (TID 8) ([2600:1f18:55e9:f503:11b9:2346:30bd:2d59], executor 2, partition 8, PROCESS_LOCAL, 8065 bytes) 
+26/03/22 19:32:40 INFO TaskSetManager: Starting task 9.0 in stage 0.0 (TID 9) ([2600:1f18:55e9:f503:7456:5365:5f96:9e54], executor 1, partition 9, PROCESS_LOCAL, 8065 bytes) 
+26/03/22 19:32:40 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on [2600:1f18:55e9:f503:7456:5365:5f96:9e54]:37123 (size: 2.3 KiB, free: 7.9 GiB)
+26/03/22 19:32:40 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on [2600:1f18:55e9:f503:3298:43c5:18bd:38de]:42737 (size: 2.3 KiB, free: 7.9 GiB)
+26/03/22 19:32:40 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on [2600:1f18:55e9:f503:11b9:2346:30bd:2d59]:35569 (size: 2.3 KiB, free: 7.9 GiB)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 0.0 in stage 0.0 (TID 0) in 857 ms on [2600:1f18:55e9:f503:7456:5365:5f96:9e54] (executor 1) (1/10)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 9.0 in stage 0.0 (TID 9) in 818 ms on [2600:1f18:55e9:f503:7456:5365:5f96:9e54] (executor 1) (2/10)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 3.0 in stage 0.0 (TID 3) in 827 ms on [2600:1f18:55e9:f503:7456:5365:5f96:9e54] (executor 1) (3/10)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 6.0 in stage 0.0 (TID 6) in 825 ms on [2600:1f18:55e9:f503:7456:5365:5f96:9e54] (executor 1) (4/10)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 7.0 in stage 0.0 (TID 7) in 840 ms on [2600:1f18:55e9:f503:3298:43c5:18bd:38de] (executor 3) (5/10)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 1.0 in stage 0.0 (TID 1) in 852 ms on [2600:1f18:55e9:f503:3298:43c5:18bd:38de] (executor 3) (6/10)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 4.0 in stage 0.0 (TID 4) in 852 ms on [2600:1f18:55e9:f503:3298:43c5:18bd:38de] (executor 3) (7/10)
+26/03/22 19:32:41 INFO ExecutorContainerAllocator: Set total expected execs to {0=1}
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 8.0 in stage 0.0 (TID 8) in 963 ms on [2600:1f18:55e9:f503:11b9:2346:30bd:2d59] (executor 2) (8/10)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 2.0 in stage 0.0 (TID 2) in 972 ms on [2600:1f18:55e9:f503:11b9:2346:30bd:2d59] (executor 2) (9/10)
+26/03/22 19:32:41 INFO TaskSetManager: Finished task 5.0 in stage 0.0 (TID 5) in 969 ms on [2600:1f18:55e9:f503:11b9:2346:30bd:2d59] (executor 2) (10/10)
+26/03/22 19:32:41 INFO TaskSchedulerImpl: Removed TaskSet 0.0, whose tasks have all completed, from pool 
+26/03/22 19:32:41 INFO DAGScheduler: ResultStage 0 (reduce at SparkPi.scala:38) finished in 1.172 s
+26/03/22 19:32:41 INFO DAGScheduler: Job 0 is finished. Cancelling potential speculative or zombie tasks for this job
+26/03/22 19:32:41 INFO TaskSchedulerImpl: Killing all running tasks in stage 0: Stage finished
+26/03/22 19:32:41 INFO ExecutorContainerAllocator: Set total expected execs to {0=0}
+26/03/22 19:32:41 INFO DAGScheduler: Job 0 finished: reduce at SparkPi.scala:38, took 1.249021 s
+26/03/22 19:32:41 INFO SparkContext: SparkContext is stopping with exitCode 0.
+26/03/22 19:32:41 INFO SparkUI: Stopped Spark web UI at http://[2600:1f18:55e9:f503:d125:5019:1b4:d6dd]:4040
+26/03/22 19:32:41 INFO EmrServerlessClusterSchedulerBackend: Shutting down all executors
+26/03/22 19:32:41 INFO EmrServerlessClusterSchedulerBackend$EmrServerlessDriverEndpoint: Asking each executor to shut down
+26/03/22 19:32:41 INFO TimeBasedRotatingEventLogFilesWriter: Renaming file:/var/log/spark/apps/eventlog_v2_00g4bj4lu4dmqg0b/00g4bj4lu4dmqg0b.inprogress to file:/var/log/spark/apps/eventlog_v2_00g4bj4lu4dmqg0b/events_1_00g4bj4lu4dmqg0b
+26/03/22 19:32:41 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+26/03/22 19:32:41 INFO MemoryStore: MemoryStore cleared
+26/03/22 19:32:41 INFO BlockManager: BlockManager stopped
+26/03/22 19:32:41 INFO BlockManagerMaster: BlockManagerMaster stopped
+26/03/22 19:32:41 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+26/03/22 19:32:41 INFO SparkContext: Successfully stopped SparkContext
+26/03/22 19:32:41 INFO ShutdownHookManager: Shutdown hook called
+26/03/22 19:32:41 INFO ShutdownHookManager: Deleting directory /tmp/spark-1d977ce7-a560-446a-95f5-f8c778a021b4
+26/03/22 19:32:41 INFO ShutdownHookManager: Deleting directory /tmp/spark-713d162e-a6f7-4ccc-9fda-a5b0423435a0

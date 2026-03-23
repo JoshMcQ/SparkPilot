@@ -25,6 +25,7 @@ from dagster_sparkpilot.ops import (  # noqa: E402
     SubmitRunOpConfig,
     WaitRunOpConfig,
     _looks_like_sparkpilot_client,
+    build_local_test_context,
     cancel_run_with_client,
     sparkpilot_submit_run_op,
     sparkpilot_wait_for_run_op,
@@ -179,9 +180,9 @@ def test_submit_op_maps_transient_error_to_retry_requested() -> None:
         def wait_for_terminal_state(self, **_kwargs: object) -> dict[str, object]:
             return {}
 
-    context = OpExecutionContext(
+    context = build_local_test_context(
+        sparkpilot=_FailingClient(),
         op_config={"job_id": "job-1"},
-        resources=SimpleNamespace(sparkpilot=_FailingClient()),
     )
     with pytest.raises(RetryRequested):
         sparkpilot_submit_run_op(context)
@@ -201,9 +202,9 @@ def test_wait_op_maps_terminal_failure_to_failure() -> None:
         def wait_for_terminal_state(self, **_kwargs: object) -> dict[str, object]:
             raise SparkPilotRunFailedError("terminal state failed")
 
-    context = OpExecutionContext(
+    context = build_local_test_context(
+        sparkpilot=_FailingClient(),
         op_config={"poll_interval_seconds": 1, "timeout_seconds": 5},
-        resources=SimpleNamespace(sparkpilot=_FailingClient()),
     )
     with pytest.raises(Failure, match="terminal state failed"):
         sparkpilot_wait_for_run_op(context, {"id": "run-1"})

@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/environments", label: "Environments" },
   { href: "/runs", label: "Runs" },
   { href: "/costs", label: "Costs" },
+  { href: "/policies", label: "Policies" },
   { href: "/access", label: "Access" },
   { href: "/settings", label: "Settings" },
 ];

@@ -1,0 +1,77 @@
+{
+  "timestamp": "2026-03-22T18:20:00Z",
+  "summary": "Spot preflight validation evidence for Issue #32",
+  "test_environment": {
+    "environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+    "eks_cluster": "sparkpilot-live-1",
+    "region": "us-east-1",
+    "customer_role_arn": "arn:aws:iam::787587782916:role/SparkPilotByocLiteRoleAdmin"
+  },
+  "live_spot_capacity_result": {
+    "description": "Real EKS cluster sparkpilot-live-1 has 1 nodegroup with no Spot capacity configured",
+    "checks": [
+      {
+        "code": "byoc_lite.spot_capacity",
+        "status": "warning",
+        "message": "No Spot-capable managed node groups were found; workloads may run on on-demand capacity only.",
+        "remediation": "Configure at least one Spot-capable node group or Karpenter NodePool for executor workloads.",
+        "details": {
+          "total_nodegroups": 1
+        }
+      },
+      {
+        "code": "byoc_lite.spot_diversification",
+        "status": "warning",
+        "message": "Spot diversification check skipped because no Spot-capable managed node groups were found.",
+        "remediation": "Add Spot-capable node groups or Karpenter Spot NodePools with diversified instance type requirements.",
+        "details": {}
+      }
+    ]
+  },
+  "unit_test_cases": {
+    "test_no_spot_conf": {
+      "description": "Executor spark conf missing spot selectors entirely",
+      "spark_conf": null,
+      "result": {
+        "code": "byoc_lite.spot_executor_placement",
+        "status": "warning",
+        "message": "Executor Spark configuration does not include a Spot node selector.",
+        "remediation": "Set executor node selector Spark config such as `spark.kubernetes.executor.node.selector.eks.amazonaws.com/capacityType=SPOT` or `spark.kubernetes.executor.node.selector.karpenter.sh/capacity-type=spot`."
+      }
+    },
+    "test_spot_selector_no_toleration": {
+      "description": "Executor has spot selector but missing toleration — partial config that still produces warning",
+      "spark_conf": {
+        "spark.kubernetes.executor.node.selector.eks.amazonaws.com/capacityType": "SPOT"
+      },
+      "result": {
+        "code": "byoc_lite.spot_executor_placement",
+        "status": "warning",
+        "message": "Executor Spark configuration has Spot node selectors but no Spot toleration hints.",
+        "remediation": "Add executor Spot tolerations (for example `spark.kubernetes.executor.tolerations`) to improve placement on tainted Spot pools."
+      }
+    },
+    "test_full_spot_config_pass": {
+      "description": "Full spot config — selector + toleration — passes",
+      "spark_conf": {
+        "spark.kubernetes.executor.node.selector.eks.amazonaws.com/capacityType": "SPOT",
+        "spark.kubernetes.executor.tolerations": "spot=true:NoSchedule"
+      },
+      "result": {
+        "code": "byoc_lite.spot_executor_placement",
+        "status": "pass",
+        "message": "Executor Spark configuration includes Spot node selectors and toleration hints."
+      }
+    }
+  },
+  "blocking_behavior_note": "Spot checks currently produce 'warning' status, not 'fail'. Warnings are surfaced in the preflight response and logged as audit events. When environment.status is 'provisioning', the check code=environment.status returns status=fail and blocks dispatch. For environments in 'ready' state with no spot capacity, the warning is surfaced to the operator but dispatch is not hard-blocked — consistent with the design for graceful degradation to on-demand.",
+  "issue_32_acceptance_criteria_coverage": {
+    "validate_spot_nodegroups": "PASS — live check confirmed: 1 nodegroup, 0 are Spot-capable, warning returned",
+    "validate_spot_diversification": "PASS — diversification check skips gracefully when no spot nodegroups found",
+    "warn_on_demand_only": "PASS — warning message: 'workloads may run on on-demand capacity only'",
+    "validate_executor_pod_templates": "PASS — spark_conf checks validate selector + toleration presence",
+    "remediation_strings": "PASS — all warning checks include remediation strings",
+    "unit_tests": "PARTIAL — preflight_byoc unit test cases documented here; test suite TBD",
+    "real_eks_integration_test": "PASS — live check run against sparkpilot-live-1"
+  }
+}

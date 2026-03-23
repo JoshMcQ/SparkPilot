@@ -1,0 +1,8 @@
+dag_id                 | run_id                  | state   | execution_date            | start_date | end_date                 
+=======================+=========================+=========+===========================+============+==========================
+sparkpilot_minimal_run | p0-evidence-20260322-v5 | success | 2026-03-22T22:48:42+00:00 |            | 2026-03-22T22:53:46+00:00
+sparkpilot_minimal_run | p0-evidence-20260322-v4 | queued  | 2026-03-22T22:34:38+00:00 |            |                          
+sparkpilot_minimal_run | p0-evidence-20260322-v3 | queued  | 2026-03-22T22:31:04+00:00 |            |                          
+sparkpilot_minimal_run | p0-evidence-20260322-v2 | queued  | 2026-03-22T22:25:54+00:00 |            |                          
+sparkpilot_minimal_run | p0-evidence-20260322    | queued  | 2026-03-22T22:22:08+00:00 |            |                          
+                                                                                                                               

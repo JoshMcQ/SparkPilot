@@ -5,6 +5,22 @@ import logging
 from types import SimpleNamespace
 from typing import Any, Callable
 
+class _LocalTestOpContext:
+    """Minimal op execution context for local/unit tests.
+
+    Always available (regardless of whether the real Dagster is installed).
+    Use ``build_local_test_context`` in ``ops.py`` to construct one.
+    """
+
+    def __init__(self, *, op_config: dict[str, Any] | None = None, resources: Any = None) -> None:
+        self.op_config = op_config or {}
+        self.resources = resources or SimpleNamespace()
+        self.log = logging.getLogger("dagster-sparkpilot.op")
+
+
+_dagster_available = False
+_build_op_context_fn: Any = None
+
 try:
     from dagster import (  # type: ignore[assignment]
         AssetExecutionContext,
@@ -18,10 +34,13 @@ try:
         Out,
         RetryRequested,
         asset,
+        build_op_context,
         job,
         op,
         resource,
     )
+    _dagster_available = True
+    _build_op_context_fn = build_op_context
 except (ImportError, ModuleNotFoundError):
 
     class Failure(Exception):

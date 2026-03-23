@@ -1,0 +1,14 @@
+{
+  "dag_run_method": "SparkPilotSubmitRunOperator.execute() called directly (no Airflow scheduler)",
+  "note": "Full Airflow scheduler execution blocked — see BLOCKER.md for infrastructure requirements",
+  "run_submission_idempotency_key": "airflow-evidence-run-20260322a",
+  "run_id": "1ca72ab4-f067-45f1-bbbc-6efc3726cc03",
+  "emr_job_run_id": "0000000378n4ub5e3i6",
+  "submitted_at": "2026-03-22T19:35:53Z",
+  "terminal_state": "failed",
+  "ended_at": "2026-03-22T20:21:30Z",
+  "operator_exception": "AirflowFailException: Run reached terminal failure state failed",
+  "job_id": "dd87754d-bbef-45fb-bf84-e6686c4b990e",
+  "environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
+  "environment": "EKS sparkpilot-live-1 / namespace sparkpilot-demo-2"
+}

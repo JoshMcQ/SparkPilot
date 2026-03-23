@@ -1,0 +1,39 @@
+{
+  "submitted_at": "2026-03-22T20:10:26Z",
+  "runs": [
+    {
+      "id": "286b5193-ce03-4a53-ae91-5c0f2c449095",
+      "job_id": "1a8eeeb6-f95f-4a0d-92e6-5696633313b8",
+      "tenant": "db61c6d5 (Load Test Tenant 1)",
+      "ikey": "lt-run-1a-20260322",
+      "state": "accepted",
+      "emr_job_run_id": "0000000378n5csamreq"
+    },
+    {
+      "id": "e4cd9079-1030-402b-ba2f-65ec4f813081",
+      "job_id": "1a8eeeb6-f95f-4a0d-92e6-5696633313b8",
+      "tenant": "db61c6d5 (Load Test Tenant 1)",
+      "ikey": "lt-run-1b-20260322",
+      "state": "accepted",
+      "emr_job_run_id": "0000000378n5cuuuh06"
+    },
+    {
+      "id": "6f67a3e6-76d5-421d-80ce-5a6caf76f1e3",
+      "job_id": "be2cf2dd-ae23-4b44-9b96-6c9e2d72c6b5",
+      "tenant": "67685e62 (Load Test Tenant 2)",
+      "ikey": "lt-run-2a-20260322",
+      "state": "accepted",
+      "emr_job_run_id": "0000000378n5d1fg7c4"
+    },
+    {
+      "id": "3a6acf68-6e21-4cf8-af41-f71df27dfbd9",
+      "job_id": "be2cf2dd-ae23-4b44-9b96-6c9e2d72c6b5",
+      "tenant": "67685e62 (Load Test Tenant 2)",
+      "ikey": "lt-run-2b-20260322",
+      "state": "accepted",
+      "emr_job_run_id": "0000000378n5d43mgmb"
+    }
+  ],
+  "all_states": "accepted",
+  "all_have_emr_job_run_id": true
+}
