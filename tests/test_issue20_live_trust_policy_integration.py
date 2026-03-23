@@ -5,15 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests._helpers import live_env_required
 from sparkpilot.aws_clients import EmrEksClient
 from sparkpilot.config import get_settings
-
-
-def _required(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        pytest.skip(f"Live integration disabled/missing env: {name}")
-    return value
 
 
 def test_issue20_live_trust_policy_automation_real_aws() -> None:
@@ -22,7 +16,7 @@ def test_issue20_live_trust_policy_automation_real_aws() -> None:
 
     emr_execution_role_arn = os.getenv("SPARKPILOT_LIVE_EMR_EXECUTION_ROLE_ARN", "").strip()
     if not emr_execution_role_arn:
-        emr_execution_role_arn = "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole"
+        pytest.skip("Set SPARKPILOT_LIVE_EMR_EXECUTION_ROLE_ARN for trust-policy integration tests")
     os.environ["SPARKPILOT_EMR_EXECUTION_ROLE_ARN"] = emr_execution_role_arn
     os.environ["SPARKPILOT_DRY_RUN_MODE"] = "false"
     get_settings.cache_clear()
@@ -32,10 +26,10 @@ def test_issue20_live_trust_policy_automation_real_aws() -> None:
     env = SimpleNamespace(
         engine="emr_on_eks",
         provisioning_mode="byoc_lite",
-        customer_role_arn=_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
+        customer_role_arn=live_env_required("SPARKPILOT_LIVE_CUSTOMER_ROLE_ARN"),
         region=os.getenv("SPARKPILOT_LIVE_REGION", "us-east-1"),
-        eks_cluster_arn=_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
-        eks_namespace=_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
+        eks_cluster_arn=live_env_required("SPARKPILOT_LIVE_EKS_CLUSTER_ARN"),
+        eks_namespace=live_env_required("SPARKPILOT_LIVE_EKS_NAMESPACE"),
     )
 
     client = EmrEksClient()
