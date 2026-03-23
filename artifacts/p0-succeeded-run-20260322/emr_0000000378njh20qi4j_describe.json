@@ -2,11 +2,11 @@
     "jobRun": {
         "id": "0000000378njh20qi4j",
         "name": "cur-reconcile-evidence-sparkpi-20260322-66acd4238ac1",
-        "virtualClusterId": "580dfmy1wqym1dz7nkksxhzpp",
-        "arn": "arn:aws:emr-containers:us-east-1:787587782916:/virtualclusters/580dfmy1wqym1dz7nkksxhzpp/jobruns/0000000378njh20qi4j",
+        "virtualClusterId": "REDACTED_VIRTUAL_CLUSTER_ID",
+        "arn": "arn:aws:emr-containers:us-east-1:REDACTED_ACCOUNT_ID:/virtualclusters/REDACTED_VIRTUAL_CLUSTER_ID/jobruns/0000000378njh20qi4j",
         "state": "COMPLETED",
-        "clientToken": "21f608ee-f247-457c-95ca-97d3e343281e",
-        "executionRoleArn": "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole",
+        "clientToken": "REDACTED",
+        "executionRoleArn": "arn:aws:iam::REDACTED_ACCOUNT_ID:role/SparkPilotEmrExecutionRole",
         "releaseLabel": "emr-7.10.0-latest",
         "configurationOverrides": {
             "monitoringConfiguration": {
@@ -19,7 +19,7 @@
         },
         "jobDriver": {
             "sparkSubmitJobDriver": {
-                "entryPoint": "s3://sparkpilot-live-787587782916-20260224203702/scripts/sparkpi.py",
+                "entryPoint": "s3://sparkpilot-live-REDACTED_ACCOUNT_ID-20260224203702/scripts/sparkpi.py",
                 "entryPointArguments": [
                     "10"
                 ],
@@ -27,7 +27,7 @@
             }
         },
         "createdAt": "2026-03-22T22:13:30Z",
-        "createdBy": "arn:aws:sts::787587782916:assumed-role/SparkPilotByocLiteRoleAdmin/sparkpilot-31673e62",
+        "createdBy": "arn:aws:sts::REDACTED_ACCOUNT_ID:assumed-role/SparkPilotByocLiteRoleAdmin/sparkpilot-31673e62",
         "finishedAt": "2026-03-22T22:15:04Z",
         "stateDetails": "JobRun completed successfully. It ran for 42 Seconds",
         "tags": {
@@ -36,7 +36,7 @@
             "sparkpilot:run_id": "99a3fa28-de0a-4425-ab23-66acd4238ac1",
             "sparkpilot:environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
             "sparkpilot:project": "sparkpilot-demo-2",
-            "sparkpilot:virtual_cluster_id": "580dfmy1wqym1dz7nkksxhzpp",
+            "sparkpilot:virtual_cluster_id": "REDACTED_VIRTUAL_CLUSTER_ID",
             "sparkpilot:team": "89b43f2d-2a48-4be6-9723-9732b0df8223"
         }
     }

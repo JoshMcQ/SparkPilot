@@ -2,11 +2,11 @@
     "jobRun": {
         "id": "0000000378ndnln0oek",
         "name": "cur-reconcile-evidence-sparkpi-20260322-fb667a851992",
-        "virtualClusterId": "580dfmy1wqym1dz7nkksxhzpp",
-        "arn": "arn:aws:emr-containers:us-east-1:787587782916:/virtualclusters/580dfmy1wqym1dz7nkksxhzpp/jobruns/0000000378ndnln0oek",
+        "virtualClusterId": "REDACTED_VIRTUAL_CLUSTER_ID",
+        "arn": "arn:aws:emr-containers:us-east-1:REDACTED_ACCOUNT_ID:/virtualclusters/REDACTED_VIRTUAL_CLUSTER_ID/jobruns/0000000378ndnln0oek",
         "state": "FAILED",
-        "clientToken": "81faccd3-fd4b-49f2-b2ad-3cfe9e01289c",
-        "executionRoleArn": "arn:aws:iam::787587782916:role/SparkPilotEmrExecutionRole",
+        "clientToken": "REDACTED",
+        "executionRoleArn": "arn:aws:iam::REDACTED_ACCOUNT_ID:role/SparkPilotEmrExecutionRole",
         "releaseLabel": "emr-7.10.0-latest",
         "configurationOverrides": {
             "monitoringConfiguration": {
@@ -19,7 +19,7 @@
         },
         "jobDriver": {
             "sparkSubmitJobDriver": {
-                "entryPoint": "s3://sparkpilot-live-787587782916-20260224203702/scripts/sparkpi.py",
+                "entryPoint": "s3://sparkpilot-live-REDACTED_ACCOUNT_ID-20260224203702/scripts/sparkpi.py",
                 "entryPointArguments": [
                     "10"
                 ],
@@ -27,7 +27,7 @@
             }
         },
         "createdAt": "2026-03-22T21:22:53Z",
-        "createdBy": "arn:aws:sts::787587782916:assumed-role/SparkPilotByocLiteRoleAdmin/sparkpilot-3e9e2f8b",
+        "createdBy": "arn:aws:sts::REDACTED_ACCOUNT_ID:assumed-role/SparkPilotByocLiteRoleAdmin/sparkpilot-3e9e2f8b",
         "finishedAt": "2026-03-22T21:38:10Z",
         "stateDetails": "JobRun timed out before job controller pod started running due to lack of cluster resources. Last event from default-scheduler: FailedScheduling, message: 0/2 nodes are available: 2 Insufficient cpu. no new claims to deallocate, preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.",
         "failureReason": "USER_ERROR",
@@ -37,7 +37,7 @@
             "sparkpilot:run_id": "3a808369-f338-4d2e-9342-fb667a851992",
             "sparkpilot:environment_id": "69be1cb6-1cfd-45dc-a1de-4345f612001e",
             "sparkpilot:project": "sparkpilot-demo-2",
-            "sparkpilot:virtual_cluster_id": "580dfmy1wqym1dz7nkksxhzpp",
+            "sparkpilot:virtual_cluster_id": "REDACTED_VIRTUAL_CLUSTER_ID",
             "sparkpilot:team": "89b43f2d-2a48-4be6-9723-9732b0df8223"
         }
     }
