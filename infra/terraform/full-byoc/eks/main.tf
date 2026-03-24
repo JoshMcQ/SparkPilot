@@ -43,6 +43,12 @@ module "eks" {
       capacity_type  = "ON_DEMAND"
       instance_types = ["m7i.xlarge"]
 
+      # AWS enforces a 38-char limit on IAM role name_prefix; the auto-generated
+      # prefix ("{nodegroup_name}-eks-node-group-") exceeds that when cluster_name
+      # is ≥11 chars. Use an explicit name instead.
+      iam_role_use_name_prefix = false
+      iam_role_name            = "${local.cluster_name}-od"
+
       labels = {
         "sparkpilot.io/pool" = "on-demand"
         "sparkpilot.io/arch" = "amd64"
@@ -57,6 +63,10 @@ module "eks" {
 
       capacity_type  = "SPOT"
       instance_types = ["m7g.xlarge"]
+      ami_type       = "AL2_ARM_64"
+
+      iam_role_use_name_prefix = false
+      iam_role_name            = "${local.cluster_name}-spot"
 
       labels = {
         "sparkpilot.io/pool" = "spot"
