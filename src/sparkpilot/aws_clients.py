@@ -1844,6 +1844,10 @@ class EmrServerlessClient:
         self._preflight_application(client, application_id)
 
         spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
+        _event_log_s3_uri = getattr(environment, "event_log_s3_uri", None)
+        if _event_log_s3_uri:
+            spark_conf.setdefault("spark.eventLog.enabled", "true")
+            spark_conf.setdefault("spark.eventLog.dir", _event_log_s3_uri)
         args = run.args_overrides_json or job.args_json or []
         spark_params = " ".join(f"--conf {k}={v}" for k, v in spark_conf.items()) if spark_conf else ""
 
@@ -1967,6 +1971,10 @@ class EmrEc2Client:
         self._preflight_cluster(client, cluster_id)
 
         spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
+        _event_log_s3_uri = getattr(environment, "event_log_s3_uri", None)
+        if _event_log_s3_uri:
+            spark_conf.setdefault("spark.eventLog.enabled", "true")
+            spark_conf.setdefault("spark.eventLog.dir", _event_log_s3_uri)
         args = run.args_overrides_json or job.args_json or []
         conf_flags: list[str] = []
         for k, v in spark_conf.items():

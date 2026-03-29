@@ -1025,6 +1025,133 @@ def test_start_job_run_adds_chargeback_tags_and_labels(monkeypatch) -> None:
     get_settings.cache_clear()
 
 
+def test_serverless_start_job_run_applies_event_log_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv("SPARKPILOT_LOG_GROUP_PREFIX", "/sparkpilot/runs")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+    )
+    get_settings.cache_clear()
+
+    captured_request: dict[str, object] = {}
+
+    class _FakeServerlessClient:
+        def get_application(self, **kwargs):
+            assert kwargs["applicationId"] == "app-abc123"
+            return {"application": {"state": "STARTED"}}
+
+        def start_job_run(self, **kwargs):
+            captured_request.update(kwargs)
+            return {
+                "jobRunId": "jr-serverless-001",
+                "ResponseMetadata": {"RequestId": "req-serverless-001"},
+            }
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr-serverless"
+            assert region_name == "us-east-1"
+            return _FakeServerlessClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        id="env-123",
+        emr_serverless_application_id="app-abc123",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+        tenant_id="tenant-123",
+        event_log_s3_uri="s3://sparkpilot-event-logs/team-a/",
+    )
+    job = SimpleNamespace(
+        id="job-123",
+        name="demo-job",
+        artifact_uri="s3://bucket/jobs/demo.py",
+        args_json=["--date", "2026-03-29"],
+        spark_conf_json={},
+    )
+    run = SimpleNamespace(
+        id="run-123",
+        attempt=1,
+        args_overrides_json=[],
+        spark_conf_overrides_json={},
+    )
+
+    result = EmrServerlessClient().start_job_run(environment, job, run)
+
+    assert result.job_run_id == "jr-serverless-001"
+    spark_submit = captured_request["jobDriver"]["sparkSubmit"]
+    params = spark_submit["sparkSubmitParameters"]
+    assert "--conf spark.eventLog.enabled=true" in params
+    assert "--conf spark.eventLog.dir=s3://sparkpilot-event-logs/team-a/" in params
+
+    get_settings.cache_clear()
+
+
+def test_ec2_start_job_run_applies_event_log_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv("SPARKPILOT_LOG_GROUP_PREFIX", "/sparkpilot/runs")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+    )
+    get_settings.cache_clear()
+
+    captured_request: dict[str, object] = {}
+
+    class _FakeEmrClient:
+        def describe_cluster(self, **kwargs):
+            assert kwargs["ClusterId"] == "j-CLUSTER123"
+            return {"Cluster": {"Status": {"State": "WAITING"}}}
+
+        def add_job_flow_steps(self, **kwargs):
+            captured_request.update(kwargs)
+            return {
+                "StepIds": ["s-EC2STEP001"],
+                "ResponseMetadata": {"RequestId": "req-ec2-001"},
+            }
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr"
+            assert region_name == "us-east-1"
+            return _FakeEmrClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        id="env-123",
+        emr_on_ec2_cluster_id="j-CLUSTER123",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+        event_log_s3_uri="s3://sparkpilot-event-logs/team-a/",
+    )
+    job = SimpleNamespace(
+        id="job-123",
+        name="demo-job",
+        artifact_uri="s3://bucket/jobs/demo.py",
+        args_json=["--date", "2026-03-29"],
+        spark_conf_json={},
+    )
+    run = SimpleNamespace(
+        id="run-123",
+        attempt=1,
+        args_overrides_json=[],
+        spark_conf_overrides_json={},
+    )
+
+    result = EmrEc2Client().start_job_run(environment, job, run)
+
+    assert result.step_id == "s-EC2STEP001"
+    step_args = captured_request["Steps"][0]["HadoopJarStep"]["Args"]
+    assert "--conf" in step_args
+    assert "spark.eventLog.enabled=true" in step_args
+    assert "spark.eventLog.dir=s3://sparkpilot-event-logs/team-a/" in step_args
+
+    get_settings.cache_clear()
+
+
 def test_emr_job_run_name_is_length_safe_and_sanitized() -> None:
     name = _emr_job_run_name(
         "live matrix job with spaces and symbols !!! " + ("x" * 100),

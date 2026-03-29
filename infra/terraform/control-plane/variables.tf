@@ -299,6 +299,17 @@ variable "assume_role_external_id" {
   type        = string
   description = "Optional ExternalId included in SparkPilot runtime AssumeRole calls."
   default     = ""
+  validation {
+    condition = (
+      trimspace(var.assume_role_external_id) == "" ||
+      (
+        length(trimspace(var.assume_role_external_id)) >= 2 &&
+        length(trimspace(var.assume_role_external_id)) <= 1224 &&
+        can(regex("^[A-Za-z0-9_+=,.@:/-]+$", trimspace(var.assume_role_external_id)))
+      )
+    )
+    error_message = "assume_role_external_id must be empty or 2-1224 chars matching [A-Za-z0-9_+=,.@:/-]."
+  }
 }
 
 variable "poll_interval_seconds" {

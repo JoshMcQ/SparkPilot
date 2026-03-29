@@ -198,7 +198,7 @@ export default function AwsOnboardingPage() {
               ? "Wait for provisioning to complete or open Environments for retry/remediation."
               : "Run assisted setup: discover cluster, use suggested namespace, then create environment."
             : "Ask an admin to create the first environment, then continue here.",
-      action: !active || !authMe || !authMe.tenant_id || readyEnvironments.length > 0
+      action: !active || !authMe || !authMe.tenant_id || environments.length > 0
         ? { kind: "link", label: "Open Environments", href: "/environments" }
         : canCreateEnvironment
           ? { kind: "link", label: "Open assisted setup", href: "#assisted-environment-setup" }
@@ -261,7 +261,7 @@ export default function AwsOnboardingPage() {
   const completedCount = steps.filter((step) => step.status === "done").length;
   const progressPct = Math.round((completedCount / steps.length) * 100);
   const nextStep = steps.find((step) => step.status !== "done") ?? null;
-  const showEmbeddedEnvironmentSetup = active && Boolean(authMe?.tenant_id) && canCreateEnvironment && readyEnvironments.length === 0;
+  const showEmbeddedEnvironmentSetup = active && Boolean(authMe?.tenant_id) && canCreateEnvironment && environments.length === 0;
 
   async function handleSignIn() {
     setLoginPending(true);

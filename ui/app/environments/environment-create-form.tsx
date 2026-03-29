@@ -35,7 +35,7 @@ type CreateValues = {
 
 const IAM_ROLE_ARN_PATTERN = /^arn:aws[a-zA-Z-]*:iam::(\d{12}):role\/.+$/;
 const ACCOUNT_ID_PATTERN = /^\d{12}$/;
-const ROLE_NAME_PATTERN = /^[A-Za-z0-9+=,.@_-]{1,64}$/;
+const ROLE_NAME_PATTERN = /^(?=.{1,512}$)[A-Za-z0-9+=,.@_-]+(?:\/[A-Za-z0-9+=,.@_-]+)*$/;
 const EKS_CLUSTER_ARN_PATTERN = /^arn:aws[a-zA-Z-]*:eks:[a-z0-9-]+:\d{12}:cluster\/[A-Za-z0-9._\-]+$/;
 const EKS_NAMESPACE_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 const RESERVED_NAMESPACES = new Set(["default", "kube-system", "kube-public", "kube-node-lease", "emr-workloads"]);
@@ -145,6 +145,7 @@ export default function EnvironmentCreateForm({
   const [discoveryError, setDiscoveryError] = useState<string>("");
   const [discoveryHint, setDiscoveryHint] = useState<string>("");
   const [discoveredNamespaceHint, setDiscoveredNamespaceHint] = useState<string>("");
+  const [namespaceSource, setNamespaceSource] = useState<"manual" | "suggested">("manual");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [result, setResult] = useState<string>("");
@@ -207,11 +208,21 @@ export default function EnvironmentCreateForm({
     setDiscoveryError("");
     setValues((prev) => {
       if (prev.manualClusterArnEnabled || !prev.selectedClusterArn) {
+        if (namespaceSource === "suggested" && prev.eksNamespace.trim()) {
+          return { ...prev, eksNamespace: "" };
+        }
         return prev;
       }
-      return { ...prev, selectedClusterArn: "" };
+      return {
+        ...prev,
+        selectedClusterArn: "",
+        eksNamespace: namespaceSource === "suggested" ? "" : prev.eksNamespace,
+      };
     });
-  }, [discoveryContext]);
+    if (namespaceSource === "suggested") {
+      setNamespaceSource("manual");
+    }
+  }, [discoveryContext, namespaceSource]);
 
   useEffect(() => {
     if (!values.selectedClusterArn || values.eksNamespace.trim()) {
@@ -226,6 +237,7 @@ export default function EnvironmentCreateForm({
       ...prev,
       eksNamespace: suggestedNamespace(effectiveTenantId, clusterName),
     }));
+    setNamespaceSource("suggested");
   }, [clusters, effectiveTenantId, values.eksNamespace, values.selectedClusterArn]);
 
   const setupReadiness = useMemo((): { status: SetupStatus; detail: string; remediation?: string } => {
@@ -303,7 +315,7 @@ export default function EnvironmentCreateForm({
         nextErrors.push("AWS account ID must be a 12-digit number.");
       }
       if (!ROLE_NAME_PATTERN.test(values.roleName.trim())) {
-        nextErrors.push("Role name can contain letters, numbers, and +=,.@_- only.");
+        nextErrors.push("Role path/name can contain letters, numbers, +=,.@_-, and '/' separators.");
       }
     }
 
@@ -370,12 +382,17 @@ export default function EnvironmentCreateForm({
 
       const recommendedArn = discovered.recommended_cluster_arn ?? options[0].arn;
       const selectedCluster = options.find((item) => item.arn === recommendedArn) ?? options[0];
+      const suggestedNamespaceValue = (discovered.namespace_suggestion || "").trim()
+        || suggestedNamespace(effectiveTenantId || identityActor, selectedCluster.name);
       setValues((prev) => ({
         ...prev,
         selectedClusterArn: recommendedArn,
-        eksNamespace: prev.eksNamespace.trim() || suggestedNamespace(effectiveTenantId || identityActor, selectedCluster.name),
+        eksNamespace: prev.eksNamespace.trim() && namespaceSource === "manual"
+          ? prev.eksNamespace
+          : suggestedNamespaceValue,
       }));
-      setDiscoveredNamespaceHint(discovered.namespace_suggestion || "");
+      setNamespaceSource("suggested");
+      setDiscoveredNamespaceHint(suggestedNamespaceValue);
       setDiscoveryHint(
         `Discovered ${options.length} cluster${options.length === 1 ? "" : "s"} in ${discovered.region}.`
       );
@@ -465,7 +482,7 @@ export default function EnvironmentCreateForm({
   }, [environmentId, operationId, router, trackingActive]);
 
   return (
-    <div className="card" data-testid="assisted-environment-setup">
+    <div className="card" id="assisted-environment-setup" data-testid="assisted-environment-setup">
       <h3>Assisted BYOC-Lite Environment Setup</h3>
       <div className="subtle">
         Cluster ARN entry is now assisted. Discover clusters first, then select one and use the generated namespace.
@@ -513,11 +530,11 @@ export default function EnvironmentCreateForm({
               />
             </label>
             <label>
-              Customer Role Name
+              Customer Role Name or Path
               <input
                 value={values.roleName}
                 onChange={(event) => setValues((prev) => ({ ...prev, roleName: event.target.value }))}
-                placeholder="SparkPilotByocLiteRole"
+                placeholder="team/platform/SparkPilotByocLiteRole"
                 data-testid="assisted-role-name-input"
               />
             </label>
@@ -587,7 +604,10 @@ export default function EnvironmentCreateForm({
           EKS Namespace
           <input
             value={values.eksNamespace}
-            onChange={(event) => setValues((prev) => ({ ...prev, eksNamespace: event.target.value }))}
+            onChange={(event) => {
+              setNamespaceSource("manual");
+              setValues((prev) => ({ ...prev, eksNamespace: event.target.value }));
+            }}
             data-testid="assisted-namespace-input"
           />
           {discoveredNamespaceHint ? (

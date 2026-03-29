@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 import os
 
 import pytest
-from botocore.exceptions import EndpointConnectionError, ParamValidationError
+from botocore.exceptions import ClientError, EndpointConnectionError, ParamValidationError
 from fastapi.testclient import TestClient
 from sqlalchemy import and_, select
 
@@ -220,6 +220,36 @@ def test_byoc_lite_discovery_translates_boto_transport_error(monkeypatch) -> Non
     )
     assert response.status_code == 502
     assert "Unable to complete BYOC-Lite discovery due to an AWS SDK/transport error." in response.json()["detail"]
+
+
+def test_byoc_lite_discovery_translates_client_error(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def _fake_discovery_error(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        raise ClientError(
+            error_response={"Error": {"Code": "ServiceUnavailableException", "Message": "temporarily unavailable"}},
+            operation_name="ListClusters",
+        )
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1"
+    )
+    assert response.status_code == 502
+    assert "AWS service error during BYOC-Lite discovery" in response.json()["detail"]
+    assert "ServiceUnavailableException" in response.json()["detail"]
+
+
+def test_byoc_lite_discovery_requires_admin_role(monkeypatch) -> None:
+    client = TestClient(app)
+    fixtures = _setup_rbac_fixtures(client, monkeypatch)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers={"Authorization": f"Bearer {fixtures['operator_token']}"},
+    )
+    assert response.status_code == 403
 
 
 def test_environment_provisioning_run_and_usage() -> None:

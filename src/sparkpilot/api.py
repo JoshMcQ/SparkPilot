@@ -693,7 +693,7 @@ def get_byoc_lite_discovery(
 ) -> AwsByocLiteDiscoveryResponse:
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can discover BYOC-Lite targets.")
+    _require_admin(access)
 
     from sparkpilot.aws_clients import discover_eks_clusters_for_role
 
@@ -714,6 +714,13 @@ def get_byoc_lite_discovery(
         ) from None
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    except ClientError as exc:
+        error = exc.response.get("Error", {})
+        code = str(error.get("Code") or "ClientError")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AWS service error during BYOC-Lite discovery ({code}). Retry and verify IAM permissions.",
+        ) from None
     except BotoCoreError:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
