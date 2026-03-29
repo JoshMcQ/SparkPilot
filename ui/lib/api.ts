@@ -177,6 +177,24 @@ export type ProvisioningOperation = {
   updated_at: string;
 };
 
+export type ByocLiteDiscoveredCluster = {
+  name: string;
+  arn: string;
+  status: string;
+  version: string | null;
+  oidc_issuer: string | null;
+  has_oidc: boolean;
+};
+
+export type ByocLiteDiscoveryResponse = {
+  customer_role_arn: string;
+  region: string;
+  account_id: string | null;
+  recommended_cluster_arn: string | null;
+  namespace_suggestion: string;
+  clusters: ByocLiteDiscoveredCluster[];
+};
+
 export async function fetchProvisioningOperation(operationId: string): Promise<ProvisioningOperation> {
   const response = await fetch(`${API_PREFIX}/v1/provisioning-operations/${operationId}`, {
     cache: "no-store",
@@ -187,6 +205,25 @@ export async function fetchProvisioningOperation(operationId: string): Promise<P
   }
   const payload = await response.json();
   return _asObject(payload, "Provisioning operation fetch") as ProvisioningOperation;
+}
+
+export async function discoverByocLiteTargets(
+  customerRoleArn: string,
+  region: string
+): Promise<ByocLiteDiscoveryResponse> {
+  const params = new URLSearchParams({
+    customer_role_arn: customerRoleArn.trim(),
+    region: region.trim() || "us-east-1",
+  });
+  const response = await fetch(`${API_PREFIX}/v1/aws/byoc-lite/discovery?${params.toString()}`, {
+    cache: "no-store",
+    headers: _headers(false),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "BYOC-Lite discovery failed"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "BYOC-Lite discovery") as ByocLiteDiscoveryResponse;
 }
 
 export type JobCreateRequest = {

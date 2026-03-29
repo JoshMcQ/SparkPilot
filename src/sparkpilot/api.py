@@ -3,13 +3,14 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 import hmac
+import re
 from typing import Any, TypeVar
 
 import boto3
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,8 @@ from sparkpilot.idempotency import with_idempotency
 from sparkpilot.models import AuditEvent, Environment, InteractiveEndpoint, Job, JobTemplate, Run, TeamEnvironmentScope, UserIdentity
 from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
 from sparkpilot.schemas import (
+    AwsByocLiteDiscoveryResponse,
+    AwsByocLiteClusterDiscoveryItem,
     AuthMeResponse,
     CostShowbackResponse,
     DiagnosticItem,
@@ -313,6 +316,44 @@ def _require_bootstrap_secret(bootstrap_secret: str | None) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid bootstrap secret.",
         )
+
+
+_NAMESPACE_INVALID_CHARS = re.compile(r"[^a-z0-9-]+")
+_NAMESPACE_MULTI_DASH = re.compile(r"-{2,}")
+
+
+def _namespace_fragment(raw: str) -> str:
+    value = _NAMESPACE_INVALID_CHARS.sub("-", raw.strip().lower())
+    value = _NAMESPACE_MULTI_DASH.sub("-", value)
+    value = value.strip("-")
+    return value or "sparkpilot"
+
+
+def _suggest_namespace(*, tenant_id: str | None, actor: str, cluster_name: str | None) -> str:
+    tenant_part = _namespace_fragment((tenant_id or actor).replace("_", "-"))[:20]
+    cluster_part = _namespace_fragment(cluster_name or "cluster")[:20]
+    namespace = f"sparkpilot-{tenant_part}-{cluster_part}".strip("-")
+    if len(namespace) > 63:
+        namespace = namespace[:63].strip("-")
+    return namespace or "sparkpilot"
+
+
+def _recommended_cluster(
+    clusters: list[AwsByocLiteClusterDiscoveryItem],
+) -> AwsByocLiteClusterDiscoveryItem | None:
+    if not clusters:
+        return None
+    preferred = [
+        item
+        for item in clusters
+        if item.status.upper() == "ACTIVE" and item.has_oidc
+    ]
+    if preferred:
+        return preferred[0]
+    active = [item for item in clusters if item.status.upper() == "ACTIVE"]
+    if active:
+        return active[0]
+    return clusters[0]
 
 
 ResponseModelT = TypeVar("ResponseModelT")
@@ -641,6 +682,74 @@ def get_environments(
         tenant_id = access.tenant_id
     rows = [env for env in list_environments(db, tenant_id, limit=limit, offset=offset) if _can_access_environment(access, env)]
     return [_response(model_to_dict(env), EnvironmentResponse) for env in rows]
+
+
+@app.get("/v1/aws/byoc-lite/discovery", response_model=AwsByocLiteDiscoveryResponse)
+def get_byoc_lite_discovery(
+    request: Request,
+    customer_role_arn: str = Query(..., min_length=20, max_length=1024),
+    region: str = Query(default="us-east-1", min_length=2, max_length=64),
+    db: Session = Depends(get_db),
+) -> AwsByocLiteDiscoveryResponse:
+    actor, _ = _actor_and_ip(request)
+    access = _resolve_access_context(db, actor)
+    _require_role(access, {"admin", "operator"}, "Only admin/operator can discover BYOC-Lite targets.")
+
+    from sparkpilot.aws_clients import discover_eks_clusters_for_role
+
+    normalized_role_arn = customer_role_arn.strip()
+    normalized_region = region.strip() or "us-east-1"
+    if not normalized_role_arn:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="customer_role_arn is required.")
+
+    try:
+        discovered = discover_eks_clusters_for_role(
+            customer_role_arn=normalized_role_arn,
+            region=normalized_region,
+        )
+    except ParamValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid BYOC-Lite discovery parameters. {exc}",
+        ) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    except BotoCoreError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "Unable to complete BYOC-Lite discovery due to an AWS SDK/transport error. "
+                "Retry and verify region + IAM permissions if this persists."
+            ),
+        ) from None
+
+    clusters = [
+        AwsByocLiteClusterDiscoveryItem(
+            name=str(item.get("name") or ""),
+            arn=str(item.get("arn") or ""),
+            status=str(item.get("status") or "UNKNOWN"),
+            version=str(item.get("version") or "").strip() or None,
+            oidc_issuer=str(item.get("oidc_issuer") or "").strip() or None,
+            has_oidc=bool(item.get("has_oidc")),
+        )
+        for item in discovered.get("clusters", [])
+    ]
+    clusters = [item for item in clusters if item.name and item.arn]
+    recommended = _recommended_cluster(clusters)
+    namespace_suggestion = _suggest_namespace(
+        tenant_id=access.tenant_id,
+        actor=access.actor,
+        cluster_name=recommended.name if recommended else None,
+    )
+
+    return AwsByocLiteDiscoveryResponse(
+        customer_role_arn=normalized_role_arn,
+        region=normalized_region,
+        account_id=str(discovered.get("account_id") or "").strip() or None,
+        recommended_cluster_arn=recommended.arn if recommended else None,
+        namespace_suggestion=namespace_suggestion,
+        clusters=clusters,
+    )
 
 
 @app.post(

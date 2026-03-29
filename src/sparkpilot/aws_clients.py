@@ -15,6 +15,7 @@ from sparkpilot.models import Environment, Job, Run
 
 logger = logging.getLogger(__name__)
 ROLE_ARN_PATTERN = re.compile(r"^arn:aws[a-zA-Z-]*:iam::\d{12}:role/(.+)$")
+ROLE_ACCOUNT_ARN_PATTERN = re.compile(r"^arn:aws[a-zA-Z-]*:iam::(\d{12}):role/.+$")
 TRUST_POLICY_REQUIRED_ACTIONS = [
     "eks:DescribeCluster",
     "iam:GetRole",
@@ -82,6 +83,15 @@ def parse_role_name_from_arn(role_arn: str | None, *, raise_on_invalid: bool = F
     if raise_on_invalid:
         raise ValueError("Invalid IAM role ARN.")
     return None
+
+
+def parse_role_account_id_from_arn(role_arn: str | None) -> str | None:
+    if not role_arn:
+        return None
+    match = ROLE_ACCOUNT_ARN_PATTERN.match(role_arn.strip())
+    if not match:
+        return None
+    return match.group(1)
 
 
 def _as_str_list(value: Any) -> list[str]:
@@ -320,6 +330,115 @@ def assume_role_session(role_arn: str, region: str, external_id: str | None = No
         aws_session_token=creds["SessionToken"],
         region_name=region,
     )
+
+
+def discover_eks_clusters_for_role(
+    *,
+    customer_role_arn: str,
+    region: str,
+    max_clusters: int = 50,
+) -> dict[str, Any]:
+    role_arn = customer_role_arn.strip()
+    region_name = region.strip() or "us-east-1"
+    if not role_arn:
+        raise ValueError("customer_role_arn is required for BYOC-Lite discovery.")
+    if parse_role_name_from_arn(role_arn, raise_on_invalid=False) is None:
+        raise ValueError("customer_role_arn must match arn:aws:iam::<12-digit-account-id>:role/<role-name>.")
+
+    settings = get_settings()
+    role_account_id = parse_role_account_id_from_arn(role_arn)
+    if settings.dry_run_mode:
+        sample_account = role_account_id or "123456789012"
+        sample_cluster_name = "sparkpilot-dryrun-cluster"
+        return {
+            "account_id": sample_account,
+            "clusters": [
+                {
+                    "name": sample_cluster_name,
+                    "arn": f"arn:aws:eks:{region_name}:{sample_account}:cluster/{sample_cluster_name}",
+                    "status": "ACTIVE",
+                    "version": "1.31",
+                    "oidc_issuer": f"https://oidc.eks.{region_name}.amazonaws.com/id/DRYRUN",
+                    "has_oidc": True,
+                }
+            ],
+        }
+
+    try:
+        session = assume_role_session(role_arn, region_name)
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
+            raise ValueError(
+                "Unable to assume customer_role_arn for BYOC-Lite discovery. "
+                "Remediation: confirm trust policy allows sts:AssumeRole from SparkPilot runtime role, "
+                "and if your trust policy enforces ExternalId, configure SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID."
+            ) from None
+        raise
+
+    sts_client = session.client("sts", region_name=region_name)
+    account_id = role_account_id
+    try:
+        account_id = str(sts_client.get_caller_identity().get("Account") or "").strip() or role_account_id
+    except ClientError:
+        account_id = role_account_id
+
+    eks_client = session.client("eks", region_name=region_name)
+    cluster_names: list[str] = []
+    try:
+        paginator = eks_client.get_paginator("list_clusters")
+        for page in paginator.paginate():
+            for cluster_name in page.get("clusters", []):
+                if not isinstance(cluster_name, str):
+                    continue
+                cluster_names.append(cluster_name)
+                if len(cluster_names) >= max_clusters:
+                    break
+            if len(cluster_names) >= max_clusters:
+                break
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
+            raise ValueError(
+                "Access denied while listing EKS clusters for BYOC-Lite discovery. "
+                "Remediation: grant customer_role_arn eks:ListClusters and retry."
+            ) from None
+        raise
+
+    discovered: list[dict[str, Any]] = []
+    for cluster_name in sorted(set(cluster_names)):
+        try:
+            cluster = eks_client.describe_cluster(name=cluster_name).get("cluster", {})
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in {"ResourceNotFoundException", "NotFoundException"}:
+                continue
+            if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
+                raise ValueError(
+                    "Access denied while describing EKS clusters for BYOC-Lite discovery. "
+                    "Remediation: grant customer_role_arn eks:DescribeCluster and retry."
+                ) from None
+            raise
+
+        cluster_arn = str(cluster.get("arn") or "").strip()
+        if not cluster_arn and account_id:
+            cluster_arn = f"arn:aws:eks:{region_name}:{account_id}:cluster/{cluster_name}"
+        oidc_issuer = str(cluster.get("identity", {}).get("oidc", {}).get("issuer") or "").strip() or None
+        discovered.append(
+            {
+                "name": cluster_name,
+                "arn": cluster_arn,
+                "status": str(cluster.get("status") or "UNKNOWN"),
+                "version": str(cluster.get("version") or "").strip() or None,
+                "oidc_issuer": oidc_issuer,
+                "has_oidc": bool(oidc_issuer),
+            }
+        )
+
+    return {
+        "account_id": account_id,
+        "clusters": discovered,
+    }
 
 
 @dataclass(slots=True)
