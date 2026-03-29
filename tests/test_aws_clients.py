@@ -192,6 +192,7 @@ def test_assume_role_session_explicit_empty_external_id_disables_fallback(monkey
 def test_parse_role_account_id_from_arn() -> None:
     assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:role/SparkPilotByocLiteRole") == "123456789012"
     assert parse_role_account_id_from_arn("arn:aws:iam::987654321098:role/platform/service/MyRole") == "987654321098"
+    assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:role/path/") is None
     assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:user/not-a-role") is None
     assert parse_role_account_id_from_arn("") is None
 

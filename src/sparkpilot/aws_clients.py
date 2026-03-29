@@ -88,7 +88,10 @@ def parse_role_name_from_arn(role_arn: str | None, *, raise_on_invalid: bool = F
 def parse_role_account_id_from_arn(role_arn: str | None) -> str | None:
     if not role_arn:
         return None
-    match = ROLE_ACCOUNT_ARN_PATTERN.match(role_arn.strip())
+    normalized_role_arn = role_arn.strip()
+    if parse_role_name_from_arn(normalized_role_arn, raise_on_invalid=False) is None:
+        return None
+    match = ROLE_ACCOUNT_ARN_PATTERN.match(normalized_role_arn)
     if not match:
         return None
     return match.group(1)
