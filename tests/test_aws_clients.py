@@ -24,6 +24,7 @@ from sparkpilot.exceptions import SparkPilotError
 
 
 def test_assume_role_session_includes_external_id_from_settings(monkeypatch) -> None:
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
     monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "tenant-external-id-123")
     get_settings.cache_clear()
 
@@ -88,6 +89,7 @@ def test_assume_role_session_omits_external_id_when_unset(monkeypatch) -> None:
 
 
 def test_assume_role_session_explicit_external_id_overrides_setting(monkeypatch) -> None:
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
     monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-default-id")
     get_settings.cache_clear()
 
@@ -122,6 +124,7 @@ def test_assume_role_session_explicit_external_id_overrides_setting(monkeypatch)
 
 
 def test_assume_role_session_explicit_empty_external_id_disables_fallback(monkeypatch) -> None:
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
     monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-default-id")
     get_settings.cache_clear()
 
@@ -210,6 +213,39 @@ def test_discover_eks_clusters_for_role_returns_sorted_clusters(monkeypatch) -> 
     assert result["account_id"] == "123456789012"
     assert [item["name"] for item in result["clusters"]] == ["cluster-a", "cluster-b"]
     assert all(item["has_oidc"] for item in result["clusters"])
+    get_settings.cache_clear()
+
+
+def test_discover_eks_clusters_for_role_non_positive_max_clusters_returns_empty_in_dry_run(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
+    get_settings.cache_clear()
+
+    result = discover_eks_clusters_for_role(
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+        region="us-east-1",
+        max_clusters=0,
+    )
+    assert result["account_id"] == "123456789012"
+    assert result["clusters"] == []
+    get_settings.cache_clear()
+
+
+def test_discover_eks_clusters_for_role_non_positive_max_clusters_skips_live_discovery(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    def _should_not_assume(*_args, **_kwargs):
+        raise AssertionError("assume_role_session should not be called when max_clusters <= 0")
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", _should_not_assume)
+
+    result = discover_eks_clusters_for_role(
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+        region="us-east-1",
+        max_clusters=0,
+    )
+    assert result["account_id"] == "123456789012"
+    assert result["clusters"] == []
     get_settings.cache_clear()
 
 

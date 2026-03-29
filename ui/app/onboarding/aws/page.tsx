@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchAuthMe,
   fetchEnvironments,
@@ -59,11 +59,13 @@ export default function AwsOnboardingPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [usageRecords, setUsageRecords] = useState<number | null>(null);
   const [usageWarning, setUsageWarning] = useState<string | null>(null);
+  const currentRequestIdRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
 
     async function load() {
+      const requestId = ++currentRequestIdRef.current;
       try {
         const mem = getInMemoryToken();
         const sessionActive = mem ? true : await isSessionActive();
@@ -95,7 +97,7 @@ export default function AwsOnboardingPage() {
         const scopedJobs = jobRows.filter((row) => scopedEnvironmentIds.has(row.environment_id));
         const scopedRuns = runRows.filter((row) => scopedEnvironmentIds.has(row.environment_id));
 
-        if (!mounted) return;
+        if (!mounted || requestId !== currentRequestIdRef.current) return;
         setActive(hasSession);
         setAuthMe(identity);
         setEnvironments(scopedEnvironments);
@@ -104,7 +106,7 @@ export default function AwsOnboardingPage() {
         setUsageRecords(usageCount);
         setUsageWarning(warning);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted && requestId === currentRequestIdRef.current) setLoading(false);
       }
     }
 
@@ -120,10 +122,8 @@ export default function AwsOnboardingPage() {
     };
   }, [refreshNonce]);
 
-  const tokenInfo = useMemo(() => {
-    const token = getInMemoryToken();
-    return token ? decodeJwtForDisplay(token) : null;
-  }, [active]);
+  const token = getInMemoryToken();
+  const tokenInfo = useMemo(() => (token ? decodeJwtForDisplay(token) : null), [token]);
 
   const readyEnvironments = useMemo(
     () => environments.filter((row) => row.status === "ready"),

@@ -216,8 +216,9 @@ export async function discoverByocLiteTargets(
     customer_role_arn: customerRoleArn.trim(),
     region: region.trim() || "us-east-1",
   });
-  if (tenantId) {
-    params.set("tenant_id", tenantId.trim());
+  const trimmedTenantId = tenantId?.trim();
+  if (trimmedTenantId) {
+    params.set("tenant_id", trimmedTenantId);
   }
   const response = await fetch(`${API_PREFIX}/v1/aws/byoc-lite/discovery?${params.toString()}`, {
     cache: "no-store",

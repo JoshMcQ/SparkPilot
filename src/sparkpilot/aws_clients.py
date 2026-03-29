@@ -428,7 +428,16 @@ def discover_eks_clusters_for_role(
     max_clusters: int = 50,
 ) -> dict[str, Any]:
     role_arn, region_name = _validate_discovery_inputs(customer_role_arn, region)
+    try:
+        normalized_max_clusters = int(max_clusters)
+    except (TypeError, ValueError):
+        raise ValueError("max_clusters must be an integer.") from None
     role_account_id = parse_role_account_id_from_arn(role_arn)
+    if normalized_max_clusters <= 0:
+        return {
+            "account_id": role_account_id,
+            "clusters": [],
+        }
     if get_settings().dry_run_mode:
         sample_account = role_account_id or "123456789012"
         sample_cluster_name = "sparkpilot-dryrun-cluster"
@@ -456,7 +465,7 @@ def discover_eks_clusters_for_role(
         account_id = role_account_id
 
     eks_client = session.client("eks", region_name=region_name)
-    cluster_names = _list_cluster_names(eks_client, max_clusters)
+    cluster_names = _list_cluster_names(eks_client, normalized_max_clusters)
 
     discovered: list[dict[str, Any]] = []
     for cluster_name in sorted(set(cluster_names)):

@@ -35,6 +35,12 @@ def setup_function() -> None:
         _egp(db)
 
 
+def _admin_auth_headers() -> dict[str, str]:
+    from tests.conftest import issue_test_token
+
+    return {"Authorization": f"Bearer {issue_test_token('test-user')}"}
+
+
 def _create_ready_environment_and_run(
     client: TestClient,
     *,
@@ -164,7 +170,8 @@ def test_byoc_lite_discovery_returns_clusters_and_namespace(monkeypatch) -> None
     response = client.get(
         "/v1/aws/byoc-lite/discovery?"
         "customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&"
-        "region=us-east-1&tenant_id=tenant-ops-123"
+        "region=us-east-1&tenant_id=tenant-ops-123",
+        headers=_admin_auth_headers(),
     )
     assert response.status_code == 200
     payload = response.json()
@@ -199,7 +206,8 @@ def test_byoc_lite_discovery_omits_namespace_suggestion_without_target_tenant(mo
     monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery)
 
     response = client.get(
-        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1"
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
     )
     assert response.status_code == 200
     payload = response.json()
@@ -218,7 +226,8 @@ def test_byoc_lite_discovery_returns_actionable_validation_error(monkeypatch) ->
     monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
 
     response = client.get(
-        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1"
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
     )
     assert response.status_code == 422
     assert "Remediation:" in response.json()["detail"]
@@ -233,7 +242,8 @@ def test_byoc_lite_discovery_translates_param_validation_error(monkeypatch) -> N
     monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
 
     response = client.get(
-        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1"
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
     )
     assert response.status_code == 422
     assert "Invalid BYOC-Lite discovery parameters." in response.json()["detail"]
@@ -248,7 +258,8 @@ def test_byoc_lite_discovery_translates_boto_transport_error(monkeypatch) -> Non
     monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
 
     response = client.get(
-        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1"
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
     )
     assert response.status_code == 502
     assert "Unable to complete BYOC-Lite discovery due to an AWS SDK/transport error." in response.json()["detail"]
@@ -266,7 +277,8 @@ def test_byoc_lite_discovery_translates_client_error(monkeypatch) -> None:
     monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
 
     response = client.get(
-        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1"
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
     )
     assert response.status_code == 502
     assert "AWS service error during BYOC-Lite discovery" in response.json()["detail"]

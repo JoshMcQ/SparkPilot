@@ -160,11 +160,26 @@ export default function EnvironmentCreateForm({
   const resolvedRoleArn = roleArnFromValues(values);
   const resolvedClusterArn = clusterArnFromValues(values);
   const discoveryContext = `${resolvedRoleArn}|${(values.region.trim() || "us-east-1").toLowerCase()}`;
+  const valuesRef = useRef(values);
+  const identityTenantIdRef = useRef(identityTenantId);
+  const namespaceSourceRef = useRef(namespaceSource);
   const discoveryContextRef = useRef(discoveryContext);
   const trackingActive = operationId && operationState !== "ready" && operationState !== "failed";
   const remediationSnippet = operationMessage.includes("Remediation:")
     ? operationMessage.slice(operationMessage.indexOf("Remediation:")).trim()
     : "";
+
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
+
+  useEffect(() => {
+    identityTenantIdRef.current = identityTenantId;
+  }, [identityTenantId]);
+
+  useEffect(() => {
+    namespaceSourceRef.current = namespaceSource;
+  }, [namespaceSource]);
 
   useEffect(() => {
     let mounted = true;
@@ -356,16 +371,20 @@ export default function EnvironmentCreateForm({
   }
 
   async function runDiscovery() {
+    const requestRoleArn = resolvedRoleArn;
+    const requestRegion = values.region.trim() || "us-east-1";
+    const requestTenantId = effectiveTenantId;
+    const requestContext = `${requestRoleArn}|${requestRegion.toLowerCase()}|${requestTenantId}`;
     setErrors([]);
     setDiscoveryError("");
     setDiscoveryHint("");
     setDiscoveredNamespaceHint("");
 
-    if (!resolvedRoleArn) {
+    if (!requestRoleArn) {
       setDiscoveryError("Customer role ARN is incomplete. Fill account + role name or set manual role ARN.");
       return;
     }
-    if (!IAM_ROLE_ARN_PATTERN.test(resolvedRoleArn)) {
+    if (!IAM_ROLE_ARN_PATTERN.test(requestRoleArn)) {
       setDiscoveryError("Customer role ARN format is invalid.");
       return;
     }
@@ -373,13 +392,21 @@ export default function EnvironmentCreateForm({
     setDiscoveryLoading(true);
     try {
       const discovered = await discoverByocLiteTargets(
-        resolvedRoleArn,
-        values.region,
-        effectiveTenantId || undefined,
+        requestRoleArn,
+        requestRegion,
+        requestTenantId || undefined,
       );
+      const currentValues = valuesRef.current;
+      const currentRoleArn = roleArnFromValues(currentValues);
+      const currentRegion = currentValues.region.trim() || "us-east-1";
+      const currentTenantId = currentValues.tenantIdOverride.trim() || identityTenantIdRef.current;
+      const currentContext = `${currentRoleArn}|${currentRegion.toLowerCase()}|${currentTenantId}`;
+      if (currentContext !== requestContext) {
+        return;
+      }
       const options = discovered.clusters ?? [];
       setClusters(options);
-      if (!values.accountId.trim() && discovered.account_id && !values.manualRoleArnEnabled) {
+      if (!currentValues.accountId.trim() && discovered.account_id && !currentValues.manualRoleArnEnabled) {
         setValues((prev) => ({ ...prev, accountId: discovered.account_id ?? prev.accountId }));
       }
       if (options.length === 0) {
@@ -392,21 +419,36 @@ export default function EnvironmentCreateForm({
 
       const recommendedArn = discovered.recommended_cluster_arn ?? options[0].arn;
       const selectedCluster = options.find((item) => item.arn === recommendedArn) ?? options[0];
+      const tenantForNamespace = currentTenantId || identityActor;
       const suggestedNamespaceValue = (discovered.namespace_suggestion || "").trim()
-        || suggestedNamespace(effectiveTenantId || identityActor, selectedCluster.name);
+        || suggestedNamespace(tenantForNamespace, selectedCluster.name);
+      const preserveManualNamespace = (
+        namespaceSourceRef.current === "manual"
+        && valuesRef.current.eksNamespace.trim().length > 0
+      );
       setValues((prev) => ({
         ...prev,
         selectedClusterArn: recommendedArn,
-        eksNamespace: prev.eksNamespace.trim() && namespaceSource === "manual"
+        eksNamespace: preserveManualNamespace
           ? prev.eksNamespace
           : suggestedNamespaceValue,
       }));
-      setNamespaceSource("suggested");
-      setDiscoveredNamespaceHint(suggestedNamespaceValue);
+      if (!preserveManualNamespace) {
+        setNamespaceSource("suggested");
+        setDiscoveredNamespaceHint(suggestedNamespaceValue);
+      }
       setDiscoveryHint(
         `Discovered ${options.length} cluster${options.length === 1 ? "" : "s"} in ${discovered.region}.`
       );
     } catch (err: unknown) {
+      const currentValues = valuesRef.current;
+      const currentRoleArn = roleArnFromValues(currentValues);
+      const currentRegion = currentValues.region.trim() || "us-east-1";
+      const currentTenantId = currentValues.tenantIdOverride.trim() || identityTenantIdRef.current;
+      const currentContext = `${currentRoleArn}|${currentRegion.toLowerCase()}|${currentTenantId}`;
+      if (currentContext !== requestContext) {
+        return;
+      }
       setClusters([]);
       setValues((prev) => ({ ...prev, selectedClusterArn: "" }));
       setDiscoveryError(err instanceof Error ? err.message : "Cluster discovery failed.");
