@@ -321,7 +321,7 @@ def _apply_event_log_defaults(spark_conf: dict[str, Any], environment: Environme
 def assume_role_session(role_arn: str, region: str, external_id: str | None = None) -> boto3.Session:
     settings_external_id = get_settings().assume_role_external_id
     resolved_external_id = settings_external_id if external_id is None else external_id
-    resolved_external_id = resolved_external_id.strip()
+    resolved_external_id = (resolved_external_id or "").strip()
     assume_role_kwargs: dict[str, Any] = {
         "RoleArn": role_arn,
         "RoleSessionName": f"sparkpilot-{uuid.uuid4().hex[:8]}",

@@ -88,6 +88,37 @@ def test_assume_role_session_omits_external_id_when_unset(monkeypatch) -> None:
     get_settings.cache_clear()
 
 
+def test_assume_role_session_handles_none_settings_external_id(monkeypatch) -> None:
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.get_settings",
+        lambda: SimpleNamespace(assume_role_external_id=None),
+    )
+
+    session = assume_role_session("arn:aws:iam::123456789012:role/TestRole", "us-east-1")
+
+    assert assume_role_kwargs["RoleArn"] == "arn:aws:iam::123456789012:role/TestRole"
+    assert "ExternalId" not in assume_role_kwargs
+    assert session["region_name"] == "us-east-1"
+
+
 def test_assume_role_session_explicit_external_id_overrides_setting(monkeypatch) -> None:
     monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
     monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-default-id")
