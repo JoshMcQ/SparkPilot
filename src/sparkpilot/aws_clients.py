@@ -354,40 +354,21 @@ def _validate_discovery_inputs(customer_role_arn: str, region: str) -> tuple[str
 
 
 def _assume_customer_role_for_discovery(role_arn: str, region_name: str) -> boto3.Session:
-    try:
-        return assume_role_session(role_arn, region_name)
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
-            raise ValueError(
-                "Unable to assume customer_role_arn for BYOC-Lite discovery. "
-                "Remediation: confirm trust policy allows sts:AssumeRole from SparkPilot runtime role, "
-                "and if your trust policy enforces ExternalId, configure SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID."
-            ) from None
-        raise
+    return assume_role_session(role_arn, region_name)
 
 
 def _list_cluster_names(eks_client: Any, max_clusters: int) -> list[str]:
     cluster_names: list[str] = []
-    try:
-        paginator = eks_client.get_paginator("list_clusters")
-        for page in paginator.paginate():
-            for cluster_name in page.get("clusters", []):
-                if not isinstance(cluster_name, str):
-                    continue
-                cluster_names.append(cluster_name)
-                if len(cluster_names) >= max_clusters:
-                    break
+    paginator = eks_client.get_paginator("list_clusters")
+    for page in paginator.paginate():
+        for cluster_name in page.get("clusters", []):
+            if not isinstance(cluster_name, str):
+                continue
+            cluster_names.append(cluster_name)
             if len(cluster_names) >= max_clusters:
                 break
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
-            raise ValueError(
-                "Access denied while listing EKS clusters for BYOC-Lite discovery. "
-                "Remediation: grant customer_role_arn eks:ListClusters and retry."
-            ) from None
-        raise
+        if len(cluster_names) >= max_clusters:
+            break
     return cluster_names
 
 
@@ -403,11 +384,6 @@ def _describe_and_normalize_cluster(
         code = exc.response.get("Error", {}).get("Code", "")
         if code in {"ResourceNotFoundException", "NotFoundException"}:
             return None
-        if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
-            raise ValueError(
-                "Access denied while describing EKS clusters for BYOC-Lite discovery. "
-                "Remediation: grant customer_role_arn eks:DescribeCluster and retry."
-            ) from None
         raise
 
     cluster_arn = str(cluster.get("arn") or "").strip()

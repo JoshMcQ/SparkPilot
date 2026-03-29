@@ -214,14 +214,11 @@ def test_byoc_lite_discovery_omits_namespace_suggestion_without_target_tenant(mo
     assert payload["namespace_suggestion"] is None
 
 
-def test_byoc_lite_discovery_returns_actionable_validation_error(monkeypatch) -> None:
+def test_byoc_lite_discovery_translates_validation_value_error(monkeypatch) -> None:
     client = TestClient(app)
 
     def _fake_discovery_error(*, customer_role_arn: str, region: str) -> dict[str, object]:
-        raise ValueError(
-            "Access denied while listing EKS clusters for BYOC-Lite discovery. "
-            "Remediation: grant customer_role_arn eks:ListClusters and retry."
-        )
+        raise ValueError("customer_role_arn must match arn:aws:iam::<12-digit-account-id>:role/<role-name>.")
 
     monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
 
@@ -230,7 +227,7 @@ def test_byoc_lite_discovery_returns_actionable_validation_error(monkeypatch) ->
         headers=_admin_auth_headers(),
     )
     assert response.status_code == 422
-    assert "Remediation:" in response.json()["detail"]
+    assert "customer_role_arn must match" in response.json()["detail"]
 
 
 def test_byoc_lite_discovery_translates_param_validation_error(monkeypatch) -> None:

@@ -292,7 +292,7 @@ def test_discover_eks_clusters_for_role_rejects_invalid_role_arn(monkeypatch) ->
     get_settings.cache_clear()
 
 
-def test_discover_eks_clusters_for_role_surfaces_list_permission_remediation(monkeypatch) -> None:
+def test_discover_eks_clusters_for_role_propagates_list_permission_client_error(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     get_settings.cache_clear()
 
@@ -320,11 +320,12 @@ def test_discover_eks_clusters_for_role_surfaces_list_permission_remediation(mon
         lambda role_arn, region, external_id=None: _FakeSession(),
     )
 
-    with pytest.raises(ValueError, match="eks:ListClusters"):
+    with pytest.raises(ClientError) as exc_info:
         discover_eks_clusters_for_role(
             customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
             region="us-east-1",
         )
+    assert exc_info.value.response["Error"]["Code"] == "AccessDeniedException"
     get_settings.cache_clear()
 
 
