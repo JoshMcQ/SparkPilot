@@ -117,8 +117,9 @@ def validate_assume_role_chain(
             "RoleSessionName": "sparkpilot-credential-chain-validation",
             "DurationSeconds": 900,
         }
-        if external_id:
-            kwargs["ExternalId"] = external_id
+        resolved_external_id = (external_id or settings.assume_role_external_id).strip()
+        if resolved_external_id:
+            kwargs["ExternalId"] = resolved_external_id
 
         response = sts.assume_role(**kwargs)
         assumed_arn = response.get("AssumedRoleUser", {}).get("Arn", "")

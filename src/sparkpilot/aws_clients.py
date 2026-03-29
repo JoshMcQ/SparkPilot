@@ -300,12 +300,17 @@ def _safe_k8s_label_value(value: str | None) -> str:
     return text or "unknown"
 
 
-def assume_role_session(role_arn: str, region: str) -> boto3.Session:
+def assume_role_session(role_arn: str, region: str, external_id: str | None = None) -> boto3.Session:
+    resolved_external_id = (external_id or get_settings().assume_role_external_id).strip()
+    assume_role_kwargs: dict[str, Any] = {
+        "RoleArn": role_arn,
+        "RoleSessionName": f"sparkpilot-{uuid.uuid4().hex[:8]}",
+    }
+    if resolved_external_id:
+        assume_role_kwargs["ExternalId"] = resolved_external_id
+
     sts = boto3.client("sts", region_name=region)
-    response = sts.assume_role(
-        RoleArn=role_arn,
-        RoleSessionName=f"sparkpilot-{uuid.uuid4().hex[:8]}",
-    )
+    response = sts.assume_role(**assume_role_kwargs)
     creds = response["Credentials"]
     return boto3.Session(
         aws_access_key_id=creds["AccessKeyId"],

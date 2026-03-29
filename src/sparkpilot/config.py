@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     log_group_prefix: str = "/sparkpilot/runs"
     emr_release_label: str = "emr-7.10.0-latest"
     emr_execution_role_arn: str = ""
+    assume_role_external_id: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID",
+            "ASSUME_ROLE_EXTERNAL_ID",
+        ),
+    )
     queue_batch_size: int = 20
     poll_interval_seconds: int = 15
     accepted_stale_minutes: int = 15
