@@ -14,10 +14,249 @@ from sparkpilot.aws_clients import (
     _emr_job_run_name,
     _emr_sa_pattern,
     _is_sparkpilot_emr_web_identity_statement,
+    assume_role_session,
+    discover_eks_clusters_for_role,
+    parse_role_account_id_from_arn,
     parse_role_name_from_arn,
 )
 from sparkpilot.config import get_settings
 from sparkpilot.exceptions import SparkPilotError
+
+
+def test_assume_role_session_includes_external_id_from_settings(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "tenant-external-id-123")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    session = assume_role_session("arn:aws:iam::123456789012:role/TestRole", "us-east-1")
+
+    assert assume_role_kwargs["RoleArn"] == "arn:aws:iam::123456789012:role/TestRole"
+    assert assume_role_kwargs["ExternalId"] == "tenant-external-id-123"
+    assert str(assume_role_kwargs["RoleSessionName"]).startswith("sparkpilot-")
+    assert session["region_name"] == "us-east-1"
+
+    get_settings.cache_clear()
+
+
+def test_assume_role_session_omits_external_id_when_unset(monkeypatch) -> None:
+    monkeypatch.delenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    assume_role_session("arn:aws:iam::123456789012:role/TestRole", "us-east-1")
+
+    assert "ExternalId" not in assume_role_kwargs
+
+    get_settings.cache_clear()
+
+
+def test_assume_role_session_explicit_external_id_overrides_setting(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-default-id")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    assume_role_session(
+        "arn:aws:iam::123456789012:role/TestRole",
+        "us-east-1",
+        external_id="env-override-id",
+    )
+
+    assert assume_role_kwargs["ExternalId"] == "env-override-id"
+
+    get_settings.cache_clear()
+
+
+def test_assume_role_session_explicit_empty_external_id_disables_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-default-id")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    assume_role_session(
+        "arn:aws:iam::123456789012:role/TestRole",
+        "us-east-1",
+        external_id="",
+    )
+
+    assert "ExternalId" not in assume_role_kwargs
+
+    get_settings.cache_clear()
+
+
+def test_parse_role_account_id_from_arn() -> None:
+    assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:role/SparkPilotByocLiteRole") == "123456789012"
+    assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:user/not-a-role") is None
+    assert parse_role_account_id_from_arn("") is None
+
+
+def test_discover_eks_clusters_for_role_returns_sorted_clusters(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakeEksPaginator:
+        def paginate(self):
+            return [{"clusters": ["cluster-b", "cluster-a"]}]
+
+    class _FakeEksClient:
+        def get_paginator(self, operation_name: str):
+            assert operation_name == "list_clusters"
+            return _FakeEksPaginator()
+
+        def describe_cluster(self, name: str):
+            return {
+                "cluster": {
+                    "arn": f"arn:aws:eks:us-east-1:123456789012:cluster/{name}",
+                    "status": "ACTIVE",
+                    "version": "1.31",
+                    "identity": {"oidc": {"issuer": f"https://oidc.eks.us-east-1.amazonaws.com/id/{name.upper()}"}},
+                }
+            }
+
+    class _FakeStsClient:
+        def get_caller_identity(self):
+            return {"Account": "123456789012"}
+
+    class _FakeSession:
+        def client(self, service_name: str, region_name: str | None = None):
+            assert region_name == "us-east-1"
+            if service_name == "eks":
+                return _FakeEksClient()
+            if service_name == "sts":
+                return _FakeStsClient()
+            raise AssertionError(f"Unexpected AWS service: {service_name}")
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.assume_role_session",
+        lambda role_arn, region, external_id=None: _FakeSession(),
+    )
+
+    result = discover_eks_clusters_for_role(
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+        region="us-east-1",
+    )
+    assert result["account_id"] == "123456789012"
+    assert [item["name"] for item in result["clusters"]] == ["cluster-a", "cluster-b"]
+    assert all(item["has_oidc"] for item in result["clusters"])
+    get_settings.cache_clear()
+
+
+def test_discover_eks_clusters_for_role_rejects_invalid_role_arn(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+    with pytest.raises(ValueError, match="customer_role_arn must match"):
+        discover_eks_clusters_for_role(
+            customer_role_arn="not-an-arn",
+            region="us-east-1",
+        )
+    get_settings.cache_clear()
+
+
+def test_discover_eks_clusters_for_role_surfaces_list_permission_remediation(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakeEksClient:
+        def get_paginator(self, operation_name: str):
+            raise ClientError(
+                {"Error": {"Code": "AccessDeniedException", "Message": "not allowed"}},
+                operation_name,
+            )
+
+    class _FakeStsClient:
+        def get_caller_identity(self):
+            return {"Account": "123456789012"}
+
+    class _FakeSession:
+        def client(self, service_name: str, region_name: str | None = None):
+            if service_name == "eks":
+                return _FakeEksClient()
+            if service_name == "sts":
+                return _FakeStsClient()
+            raise AssertionError(f"Unexpected AWS service: {service_name}")
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.assume_role_session",
+        lambda role_arn, region, external_id=None: _FakeSession(),
+    )
+
+    with pytest.raises(ValueError, match="eks:ListClusters"):
+        discover_eks_clusters_for_role(
+            customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+            region="us-east-1",
+        )
+    get_settings.cache_clear()
 
 
 def test_fetch_lines_returns_empty_on_client_error(monkeypatch) -> None:

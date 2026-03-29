@@ -73,6 +73,7 @@ locals {
     { name = "SPARKPILOT_POLL_INTERVAL_SECONDS", value = tostring(var.poll_interval_seconds) },
     { name = "SPARKPILOT_CORS_ORIGINS", value = join(",", var.cors_origins) },
     { name = "SPARKPILOT_EMR_EXECUTION_ROLE_ARN", value = var.emr_execution_role_arn },
+    { name = "SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", value = var.assume_role_external_id },
     { name = "SPARKPILOT_CUR_ATHENA_DATABASE", value = var.cur_athena_database },
     { name = "SPARKPILOT_CUR_ATHENA_TABLE", value = var.cur_athena_table },
     { name = "SPARKPILOT_CUR_ATHENA_WORKGROUP", value = var.cur_athena_workgroup },

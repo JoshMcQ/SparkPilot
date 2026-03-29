@@ -59,6 +59,38 @@ def test_issue3_dispatch_gate_short_circuits_when_sts_fails(monkeypatch) -> None
     assert checks[3]["status"] == "warning"
 
 
+def test_issue3_sts_check_passes_configured_external_id(monkeypatch) -> None:
+    env = _env()
+    checks, add_check = _collector()
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        preflight_checks,
+        "get_settings",
+        lambda: SimpleNamespace(assume_role_external_id="tenant-external-id-123"),
+    )
+
+    def _validate(role_arn: str, region: str, external_id: str | None = None) -> dict[str, object]:
+        observed["role_arn"] = role_arn
+        observed["region"] = region
+        observed["external_id"] = external_id
+        return {
+            "success": True,
+            "assumed_identity_arn": "arn:aws:sts::123456789012:assumed-role/SparkPilotCustomerRole/session",
+            "assumed_account": "123456789012",
+        }
+
+    monkeypatch.setattr(preflight_checks, "validate_assume_role_chain", _validate)
+
+    ready = preflight_checks._add_issue3_sts_caller_identity_check(environment=env, add_check=add_check)
+
+    assert ready is True
+    assert observed["role_arn"] == env.customer_role_arn
+    assert observed["region"] == env.region
+    assert observed["external_id"] == "tenant-external-id-123"
+    assert checks[0]["details"]["external_id_configured"] is True
+
+
 class _FakeIamClient:
     def simulate_principal_policy(self, **kwargs):
         action_names = kwargs.get("ActionNames", [])

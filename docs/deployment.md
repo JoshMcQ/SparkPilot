@@ -92,6 +92,10 @@ Required secrets per environment:
 - `<ENV>_BOOTSTRAP_SECRET` (minimum 16 characters)
 - `<ENV>_EMR_EXECUTION_ROLE_ARN`
 
+Optional security secret per environment:
+
+- `<ENV>_ASSUME_ROLE_EXTERNAL_ID` (required when customer role trust policy enforces `sts:ExternalId`)
+
 Required variables per environment:
 
 - `<ENV>_DRY_RUN_MODE` (`true`/`false`)
@@ -147,6 +151,7 @@ export OIDC_ISSUER=<issuer-url>
 export OIDC_AUDIENCE=<audience>
 export OIDC_JWKS_URI=<jwks-uri>
 export BOOTSTRAP_SECRET=<bootstrap-secret>
+export ASSUME_ROLE_EXTERNAL_ID=<external-id-used-in-customer-role-trust-policy>
 export DRY_RUN_MODE=false
 export ENABLE_FULL_BYOC_MODE=false
 export EMR_EXECUTION_ROLE_ARN=<iam-role-arn>
@@ -162,6 +167,10 @@ Deploy `infra/cloudformation/customer-bootstrap.yaml` in each customer account w
 - optional `RoleName`
 
 Register the resulting `SparkPilotRoleArn` in SparkPilot via `POST /v1/environments`.
+
+Runtime note: set `SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID` (or `ASSUME_ROLE_EXTERNAL_ID`)
+to the same value used in the customer trust policy so SparkPilot runtime
+`AssumeRole` calls include `ExternalId`.
 
 For full-BYOC architecture and sequencing:
 

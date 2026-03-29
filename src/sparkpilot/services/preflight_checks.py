@@ -75,7 +75,13 @@ def _add_issue3_sts_caller_identity_check(*, environment: Environment, add_check
         )
         return False
 
-    result = validate_assume_role_chain(environment.customer_role_arn, environment.region)
+    runtime_settings = get_settings()
+    configured_external_id = str(getattr(runtime_settings, "assume_role_external_id", "") or "").strip()
+    result = validate_assume_role_chain(
+        environment.customer_role_arn,
+        environment.region,
+        external_id=configured_external_id or None,
+    )
     if result.get("success"):
         add_check(
             code=ISSUE3_CHECK_CODES["sts"],
@@ -84,6 +90,7 @@ def _add_issue3_sts_caller_identity_check(*, environment: Environment, add_check
             details={
                 "assumed_identity_arn": str(result.get("assumed_identity_arn") or result.get("assumed_role_arn") or ""),
                 "assumed_account": str(result.get("assumed_account") or ""),
+                "external_id_configured": bool(configured_external_id),
             },
         )
         return True
@@ -96,7 +103,10 @@ def _add_issue3_sts_caller_identity_check(*, environment: Environment, add_check
             result.get("remediation")
             or "Grant sts:AssumeRole for the runtime principal and verify customer role trust policy."
         ),
-        details={"customer_role_arn": environment.customer_role_arn},
+        details={
+            "customer_role_arn": environment.customer_role_arn,
+            "external_id_configured": bool(configured_external_id),
+        },
     )
     return False
 
