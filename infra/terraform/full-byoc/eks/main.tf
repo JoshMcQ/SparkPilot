@@ -19,7 +19,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = local.cluster_name
-  cluster_version = "1.29"
+  cluster_version = "1.35"
 
   vpc_id                         = var.vpc_id
   subnet_ids                     = var.private_subnet_ids
@@ -42,6 +42,7 @@ module "eks" {
 
       capacity_type  = "ON_DEMAND"
       instance_types = ["m7i.xlarge"]
+      ami_type       = "AL2_x86_64"
 
       # AWS enforces a 38-char limit on IAM role name_prefix; the auto-generated
       # prefix ("{nodegroup_name}-eks-node-group-") exceeds that when cluster_name

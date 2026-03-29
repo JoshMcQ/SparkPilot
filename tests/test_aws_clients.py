@@ -119,6 +119,40 @@ def test_assume_role_session_explicit_external_id_overrides_setting(monkeypatch)
     get_settings.cache_clear()
 
 
+def test_assume_role_session_explicit_empty_external_id_disables_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-default-id")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    assume_role_session(
+        "arn:aws:iam::123456789012:role/TestRole",
+        "us-east-1",
+        external_id="",
+    )
+
+    assert "ExternalId" not in assume_role_kwargs
+
+    get_settings.cache_clear()
+
+
 def test_fetch_lines_returns_empty_on_client_error(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     get_settings.cache_clear()

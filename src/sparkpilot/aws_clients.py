@@ -301,7 +301,9 @@ def _safe_k8s_label_value(value: str | None) -> str:
 
 
 def assume_role_session(role_arn: str, region: str, external_id: str | None = None) -> boto3.Session:
-    resolved_external_id = (external_id or get_settings().assume_role_external_id).strip()
+    settings_external_id = get_settings().assume_role_external_id
+    resolved_external_id = settings_external_id if external_id is None else external_id
+    resolved_external_id = resolved_external_id.strip()
     assume_role_kwargs: dict[str, Any] = {
         "RoleArn": role_arn,
         "RoleSessionName": f"sparkpilot-{uuid.uuid4().hex[:8]}",
