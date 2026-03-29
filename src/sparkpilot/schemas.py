@@ -95,7 +95,7 @@ class AwsByocLiteDiscoveryResponse(BaseModel):
     region: str
     account_id: str | None = None
     recommended_cluster_arn: str | None = None
-    namespace_suggestion: str
+    namespace_suggestion: str | None = None
     clusters: list[AwsByocLiteClusterDiscoveryItem]
 
 

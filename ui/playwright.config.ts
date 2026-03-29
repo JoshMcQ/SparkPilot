@@ -16,8 +16,8 @@ export default defineConfig({
   },
   webServer: {
     command: "npm run dev -- --hostname 127.0.0.1 --port 3001",
-    url: "http://127.0.0.1:3001/onboarding/aws",
-    reuseExistingServer: true,
+    url: "http://127.0.0.1:3001/",
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       NEXT_PUBLIC_OIDC_ISSUER: "https://issuer.example.com",

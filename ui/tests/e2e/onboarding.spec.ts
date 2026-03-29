@@ -14,7 +14,9 @@ test.describe("AWS onboarding flow", () => {
 
     await expect(page.getByTestId("onboarding-title")).toHaveText(/guided onboarding to first successful spark run/i);
     await expect(page.getByTestId("session-status")).toHaveText("Not authenticated");
-    await expect(page.getByRole("button", { name: /sign in with oidc/i })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /sign in with oidc/i }).or(page.getByRole("link", { name: /open login/i }))
+    ).toBeVisible();
     await expect(page.getByText(/Start an authenticated browser session before using environments or runs./i).first()).toBeVisible();
   });
 
@@ -142,6 +144,12 @@ test.describe("AWS onboarding flow", () => {
 
     await page.route("**/api/sparkpilot/v1/environments", async (route) => {
       if (route.request().method() === "POST") {
+        const payload = route.request().postDataJSON() as Record<string, unknown>;
+        expect(payload).toMatchObject({
+          customer_role_arn: "arn:aws:iam::123456789012:role/team/platform/SparkPilotByocLiteRole",
+          eks_cluster_arn: "arn:aws:eks:us-east-1:123456789012:cluster/primary-cluster",
+          eks_namespace: "sparkpilot-tenant-ops-123-primary-cluster",
+        });
         environmentCreated = true;
         await route.fulfill({
           status: 201,
@@ -229,11 +237,17 @@ test.describe("AWS onboarding flow", () => {
     });
 
     await page.route("**/api/sparkpilot/v1/aws/byoc-lite/discovery*", async (route) => {
+      const url = new URL(route.request().url());
+      expect(url.searchParams.get("customer_role_arn")).toBe(
+        "arn:aws:iam::123456789012:role/team/platform/SparkPilotByocLiteRole"
+      );
+      expect(url.searchParams.get("region")).toBe("us-east-1");
+      expect(url.searchParams.get("tenant_id")).toBe("tenant-ops-123");
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          customer_role_arn: "arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+          customer_role_arn: "arn:aws:iam::123456789012:role/team/platform/SparkPilotByocLiteRole",
           region: "us-east-1",
           account_id: "123456789012",
           recommended_cluster_arn: "arn:aws:eks:us-east-1:123456789012:cluster/primary-cluster",
@@ -319,7 +333,8 @@ test.describe("AWS onboarding flow", () => {
 
     await expect(page.getByTestId("create-environment-button")).toBeEnabled();
     await page.getByTestId("create-environment-button").click();
-    await expect(page.getByText(/Environment queued\. operation_id=/i)).toBeVisible();
+    await expect(page.getByTestId("assisted-environment-setup")).toHaveCount(0);
+    await expect(page.getByText(/1 total visible environment\(s\)\./i).first()).toBeVisible();
   });
 
   test("allows manual ARN fallback after discovery remediation error", async ({ page }) => {
@@ -347,6 +362,12 @@ test.describe("AWS onboarding flow", () => {
 
     await page.route("**/api/sparkpilot/v1/environments", async (route) => {
       if (route.request().method() === "POST") {
+        const payload = route.request().postDataJSON() as Record<string, unknown>;
+        expect(payload).toMatchObject({
+          customer_role_arn: "arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+          eks_cluster_arn: "arn:aws:eks:us-east-1:123456789012:cluster/manual-cluster",
+          eks_namespace: "sparkpilot-tenant-ops-manual",
+        });
         await route.fulfill({
           status: 201,
           contentType: "application/json",
@@ -402,6 +423,12 @@ test.describe("AWS onboarding flow", () => {
     });
 
     await page.route("**/api/sparkpilot/v1/aws/byoc-lite/discovery*", async (route) => {
+      const url = new URL(route.request().url());
+      expect(url.searchParams.get("customer_role_arn")).toBe(
+        "arn:aws:iam::123456789012:role/SparkPilotByocLiteRole"
+      );
+      expect(url.searchParams.get("region")).toBe("us-east-1");
+      expect(url.searchParams.get("tenant_id")).toBe("tenant-ops-123");
       await route.fulfill({
         status: 422,
         contentType: "application/json",
@@ -533,6 +560,12 @@ test.describe("AWS onboarding flow", () => {
       });
     });
     await page.route("**/api/sparkpilot/v1/aws/byoc-lite/discovery*", async (route) => {
+      const url = new URL(route.request().url());
+      expect(url.searchParams.get("customer_role_arn")).toBe(
+        "arn:aws:iam::123456789012:role/SparkPilotByocLiteRole"
+      );
+      expect(url.searchParams.get("region")).toBe("us-east-1");
+      expect(url.searchParams.get("tenant_id")).toBe("tenant-ops-123");
       await route.fulfill({
         status: 200,
         contentType: "application/json",

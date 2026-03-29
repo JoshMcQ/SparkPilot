@@ -301,14 +301,17 @@ variable "assume_role_external_id" {
   default     = ""
   validation {
     condition = (
-      trimspace(var.assume_role_external_id) == "" ||
+      var.assume_role_external_id == trimspace(var.assume_role_external_id) &&
       (
-        length(trimspace(var.assume_role_external_id)) >= 2 &&
-        length(trimspace(var.assume_role_external_id)) <= 1224 &&
-        can(regex("^[A-Za-z0-9_+=,.@:/-]+$", trimspace(var.assume_role_external_id)))
+        var.assume_role_external_id == "" ||
+        (
+          length(var.assume_role_external_id) >= 2 &&
+          length(var.assume_role_external_id) <= 1224 &&
+          can(regex("^[A-Za-z0-9_+=,.@:/-]+$", var.assume_role_external_id))
+        )
       )
     )
-    error_message = "assume_role_external_id must be empty or 2-1224 chars matching [A-Za-z0-9_+=,.@:/-]."
+    error_message = "assume_role_external_id must be empty or a trimmed 2-1224 char token matching [A-Za-z0-9_+=,.@:/-]."
   }
 }
 

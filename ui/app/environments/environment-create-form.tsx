@@ -225,7 +225,10 @@ export default function EnvironmentCreateForm({
   }, [discoveryContext, namespaceSource]);
 
   useEffect(() => {
-    if (!values.selectedClusterArn || values.eksNamespace.trim()) {
+    if (!values.selectedClusterArn) {
+      return;
+    }
+    if (values.eksNamespace.trim() && namespaceSource !== "suggested") {
       return;
     }
     const selectedCluster = clusters.find((item) => item.arn === values.selectedClusterArn);
@@ -233,12 +236,15 @@ export default function EnvironmentCreateForm({
     if (!clusterName || !effectiveTenantId) {
       return;
     }
-    setValues((prev) => ({
-      ...prev,
-      eksNamespace: suggestedNamespace(effectiveTenantId, clusterName),
-    }));
+    const nextNamespace = suggestedNamespace(effectiveTenantId, clusterName);
+    setValues((prev) => (
+      prev.eksNamespace === nextNamespace
+        ? prev
+        : { ...prev, eksNamespace: nextNamespace }
+    ));
     setNamespaceSource("suggested");
-  }, [clusters, effectiveTenantId, values.eksNamespace, values.selectedClusterArn]);
+    setDiscoveredNamespaceHint(nextNamespace);
+  }, [clusters, effectiveTenantId, namespaceSource, values.eksNamespace, values.selectedClusterArn]);
 
   const setupReadiness = useMemo((): { status: SetupStatus; detail: string; remediation?: string } => {
     if (identityLoading) {
@@ -366,7 +372,11 @@ export default function EnvironmentCreateForm({
 
     setDiscoveryLoading(true);
     try {
-      const discovered = await discoverByocLiteTargets(resolvedRoleArn, values.region);
+      const discovered = await discoverByocLiteTargets(
+        resolvedRoleArn,
+        values.region,
+        effectiveTenantId || undefined,
+      );
       const options = discovered.clusters ?? [];
       setClusters(options);
       if (!values.accountId.trim() && discovered.account_id && !values.manualRoleArnEnabled) {

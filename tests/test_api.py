@@ -162,16 +162,48 @@ def test_byoc_lite_discovery_returns_clusters_and_namespace(monkeypatch) -> None
     monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery)
 
     response = client.get(
-        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1"
+        "/v1/aws/byoc-lite/discovery?"
+        "customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&"
+        "region=us-east-1&tenant_id=tenant-ops-123"
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["account_id"] == "123456789012"
     assert payload["recommended_cluster_arn"] == "arn:aws:eks:us-east-1:123456789012:cluster/primary-cluster"
-    assert payload["namespace_suggestion"].startswith("sparkpilot-test-user")
+    assert payload["namespace_suggestion"].startswith("sparkpilot-tenant-ops-123")
     assert len(payload["clusters"]) == 2
     assert payload["clusters"][0]["name"] == "primary-cluster"
     assert payload["clusters"][0]["has_oidc"] is True
+
+
+def test_byoc_lite_discovery_omits_namespace_suggestion_without_target_tenant(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        assert customer_role_arn == "arn:aws:iam::123456789012:role/SparkPilotByocLiteRole"
+        assert region == "us-east-1"
+        return {
+            "account_id": "123456789012",
+            "clusters": [
+                {
+                    "name": "primary-cluster",
+                    "arn": "arn:aws:eks:us-east-1:123456789012:cluster/primary-cluster",
+                    "status": "ACTIVE",
+                    "version": "1.31",
+                    "oidc_issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/PRIMARY",
+                    "has_oidc": True,
+                },
+            ],
+        }
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["namespace_suggestion"] is None
 
 
 def test_byoc_lite_discovery_returns_actionable_validation_error(monkeypatch) -> None:

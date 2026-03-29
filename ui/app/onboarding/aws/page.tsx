@@ -87,12 +87,20 @@ export default function AwsOnboardingPage() {
           }
         }
 
+        const tenantId = identity?.tenant_id ?? null;
+        const scopedEnvironments = envRows.filter(
+          (row) => row.status !== "deleted" && tenantId != null && row.tenant_id === tenantId
+        );
+        const scopedEnvironmentIds = new Set(scopedEnvironments.map((row) => row.id));
+        const scopedJobs = jobRows.filter((row) => scopedEnvironmentIds.has(row.environment_id));
+        const scopedRuns = runRows.filter((row) => scopedEnvironmentIds.has(row.environment_id));
+
         if (!mounted) return;
         setActive(hasSession);
         setAuthMe(identity);
-        setEnvironments(envRows.filter((row) => row.status !== "deleted"));
-        setJobs(jobRows);
-        setRuns(runRows);
+        setEnvironments(scopedEnvironments);
+        setJobs(scopedJobs);
+        setRuns(scopedRuns);
         setUsageRecords(usageCount);
         setUsageWarning(warning);
       } finally {
@@ -149,13 +157,13 @@ export default function AwsOnboardingPage() {
     {
       id: "identity",
       title: "Verify identity mapping",
-      status: !active ? "blocked" : authMe ? "done" : "blocked",
+      status: !active ? "blocked" : authMe?.tenant_id ? "done" : "blocked",
       detail: authMe
         ? `Role: ${authMe.role}. Tenant: ${authMe.tenant_id ?? "not bound"}. Team: ${authMe.team_id ?? "not bound"}.`
         : active
           ? "Signed in, but /v1/auth/me did not return scoped identity details."
           : "Identity checks run after session authentication.",
-      remediation: authMe
+      remediation: authMe?.tenant_id
         ? undefined
         : active
           ? "Map your identity in Access before creating environments or submitting runs."
@@ -198,8 +206,10 @@ export default function AwsOnboardingPage() {
               ? "Wait for provisioning to complete or open Environments for retry/remediation."
               : "Run assisted setup: discover cluster, use suggested namespace, then create environment."
             : "Ask an admin to create the first environment, then continue here.",
-      action: !active || !authMe || !authMe.tenant_id || environments.length > 0
-        ? { kind: "link", label: "Open Environments", href: "/environments" }
+      action: !active || !authMe || !authMe.tenant_id
+        ? { kind: "link", label: "Open Access", href: "/access" }
+        : environments.length > 0
+          ? { kind: "link", label: "Open Environments", href: "/environments" }
         : canCreateEnvironment
           ? { kind: "link", label: "Open assisted setup", href: "#assisted-environment-setup" }
           : { kind: "link", label: "Open Environments", href: "/environments" },
@@ -207,10 +217,10 @@ export default function AwsOnboardingPage() {
     {
       id: "job",
       title: "Create one job template",
-      status: !active || !authMe || readyEnvironments.length === 0 ? "blocked" : jobs.length > 0 ? "done" : "todo",
+      status: !active || !authMe || !authMe.tenant_id || readyEnvironments.length === 0 ? "blocked" : jobs.length > 0 ? "done" : "todo",
       detail: jobs.length > 0
         ? `${jobs.length} job template(s) available.`
-        : !active || !authMe || readyEnvironments.length === 0
+        : !active || !authMe || !authMe.tenant_id || readyEnvironments.length === 0
           ? "Job creation is blocked until a ready environment exists."
           : "Create your first job template from the Runs workspace.",
       remediation: jobs.length > 0
@@ -221,7 +231,7 @@ export default function AwsOnboardingPage() {
     {
       id: "run",
       title: "Reach first successful run",
-      status: !active || !authMe || readyEnvironments.length === 0 || jobs.length === 0
+      status: !active || !authMe || !authMe.tenant_id || readyEnvironments.length === 0 || jobs.length === 0
         ? "blocked"
         : succeededRuns.length > 0
           ? "done"
@@ -230,7 +240,7 @@ export default function AwsOnboardingPage() {
             : "todo",
       detail: succeededRuns.length > 0
         ? `${succeededRuns.length} succeeded run(s).`
-        : !active || !authMe || readyEnvironments.length === 0 || jobs.length === 0
+        : !active || !authMe || !authMe.tenant_id || readyEnvironments.length === 0 || jobs.length === 0
           ? "Run submission is blocked by incomplete prerequisites."
           : runs.length > 0
             ? "Run submitted; waiting for terminal success."
@@ -245,10 +255,14 @@ export default function AwsOnboardingPage() {
     {
       id: "value",
       title: "Verify proof of value",
-      status: succeededRuns.length === 0 ? "blocked" : usageRecords != null && usageRecords > 0 ? "done" : "waiting",
+      status: !active || !authMe || !authMe.tenant_id || succeededRuns.length === 0
+        ? "blocked"
+        : usageRecords != null && usageRecords > 0
+          ? "done"
+          : "waiting",
       detail: usageRecords != null && usageRecords > 0
         ? `${usageRecords} usage record(s) visible for cost/usage evidence.`
-        : succeededRuns.length === 0
+        : !active || !authMe || !authMe.tenant_id || succeededRuns.length === 0
           ? "Proof of value unlocks after first successful run."
           : "Run succeeded; waiting for usage/cost records to appear.",
       remediation: usageRecords != null && usageRecords > 0

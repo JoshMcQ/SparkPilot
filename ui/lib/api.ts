@@ -191,7 +191,7 @@ export type ByocLiteDiscoveryResponse = {
   region: string;
   account_id: string | null;
   recommended_cluster_arn: string | null;
-  namespace_suggestion: string;
+  namespace_suggestion: string | null;
   clusters: ByocLiteDiscoveredCluster[];
 };
 
@@ -209,12 +209,16 @@ export async function fetchProvisioningOperation(operationId: string): Promise<P
 
 export async function discoverByocLiteTargets(
   customerRoleArn: string,
-  region: string
+  region: string,
+  tenantId?: string
 ): Promise<ByocLiteDiscoveryResponse> {
   const params = new URLSearchParams({
     customer_role_arn: customerRoleArn.trim(),
     region: region.trim() || "us-east-1",
   });
+  if (tenantId) {
+    params.set("tenant_id", tenantId.trim());
+  }
   const response = await fetch(`${API_PREFIX}/v1/aws/byoc-lite/discovery?${params.toString()}`, {
     cache: "no-store",
     headers: _headers(false),

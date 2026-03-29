@@ -157,6 +157,7 @@ def test_assume_role_session_explicit_empty_external_id_disables_fallback(monkey
 
 def test_parse_role_account_id_from_arn() -> None:
     assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:role/SparkPilotByocLiteRole") == "123456789012"
+    assert parse_role_account_id_from_arn("arn:aws:iam::987654321098:role/platform/service/MyRole") == "987654321098"
     assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:user/not-a-role") is None
     assert parse_role_account_id_from_arn("") is None
 
@@ -985,6 +986,7 @@ def test_start_job_run_adds_chargeback_tags_and_labels(monkeypatch) -> None:
         region="us-east-1",
         tenant_id="tenant-123",
         eks_namespace="sparkpilot-team-a",
+        event_log_s3_uri="s3://sparkpilot-event-logs/team-a/",
     )
     job = SimpleNamespace(
         id="job-123",
@@ -1014,6 +1016,8 @@ def test_start_job_run_adds_chargeback_tags_and_labels(monkeypatch) -> None:
     assert "--conf spark.kubernetes.executor.label.sparkpilot-project=sparkpilot-team-a" in parameters
     assert "--conf spark.kubernetes.driver.label.sparkpilot-cost-center=cc-analytics" in parameters
     assert "--conf spark.kubernetes.executor.label.sparkpilot-cost-center=cc-analytics" in parameters
+    assert "--conf spark.eventLog.enabled=true" in parameters
+    assert "--conf spark.eventLog.dir=s3://sparkpilot-event-logs/team-a/" in parameters
     run_name = str(captured_request["name"])
     assert len(run_name) <= 64
     assert run_name.endswith("run-123")

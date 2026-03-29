@@ -689,6 +689,7 @@ def get_byoc_lite_discovery(
     request: Request,
     customer_role_arn: str = Query(..., min_length=20, max_length=1024),
     region: str = Query(default="us-east-1", min_length=2, max_length=64),
+    tenant_id: str | None = Query(default=None, min_length=1, max_length=128),
     db: Session = Depends(get_db),
 ) -> AwsByocLiteDiscoveryResponse:
     actor, _ = _actor_and_ip(request)
@@ -743,10 +744,15 @@ def get_byoc_lite_discovery(
     ]
     clusters = [item for item in clusters if item.name and item.arn]
     recommended = _recommended_cluster(clusters)
-    namespace_suggestion = _suggest_namespace(
-        tenant_id=access.tenant_id,
-        actor=access.actor,
-        cluster_name=recommended.name if recommended else None,
+    target_tenant = (tenant_id or access.tenant_id or "").strip() or None
+    namespace_suggestion = (
+        _suggest_namespace(
+            tenant_id=target_tenant,
+            actor=target_tenant,
+            cluster_name=recommended.name if recommended else None,
+        )
+        if target_tenant
+        else None
     )
 
     return AwsByocLiteDiscoveryResponse(
