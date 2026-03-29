@@ -765,9 +765,12 @@ def _add_iam_credential_chain_check(
 
     # 3. AssumeRole into customer role
     if environment.customer_role_arn:
+        runtime_settings = get_settings()
+        configured_external_id = str(getattr(runtime_settings, "assume_role_external_id", "") or "").strip()
         assume_result = validate_assume_role_chain(
             environment.customer_role_arn,
             environment.region,
+            external_id=configured_external_id or None,
         )
         if assume_result.get("success"):
             add_check(
@@ -777,6 +780,7 @@ def _add_iam_credential_chain_check(
                 details={
                     "customer_role_arn": environment.customer_role_arn,
                     "assumed_account": str(assume_result.get("assumed_account", "")),
+                    "external_id_configured": bool(configured_external_id),
                 },
             )
         else:
@@ -785,7 +789,10 @@ def _add_iam_credential_chain_check(
                 status_value="fail",
                 message=assume_result.get("error", "Failed to assume customer role."),
                 remediation=assume_result.get("remediation", "Review IAM role trust policy."),
-                details={"customer_role_arn": environment.customer_role_arn},
+                details={
+                    "customer_role_arn": environment.customer_role_arn,
+                    "external_id_configured": bool(configured_external_id),
+                },
             )
 
 

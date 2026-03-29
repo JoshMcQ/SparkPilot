@@ -92,6 +92,10 @@ Required secrets per environment:
 - `<ENV>_BOOTSTRAP_SECRET` (minimum 16 characters)
 - `<ENV>_EMR_EXECUTION_ROLE_ARN`
 
+Optional security secret per environment:
+
+- `<ENV>_ASSUME_ROLE_EXTERNAL_ID` (required when customer role trust policy enforces `sts:ExternalId`)
+
 Required variables per environment:
 
 - `<ENV>_DRY_RUN_MODE` (`true`/`false`)

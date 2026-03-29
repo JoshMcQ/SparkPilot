@@ -295,6 +295,12 @@ variable "emr_execution_role_arn" {
   }
 }
 
+variable "assume_role_external_id" {
+  type        = string
+  description = "Optional ExternalId included in SparkPilot runtime AssumeRole calls."
+  default     = ""
+}
+
 variable "poll_interval_seconds" {
   type        = number
   description = "Worker polling interval seconds."
