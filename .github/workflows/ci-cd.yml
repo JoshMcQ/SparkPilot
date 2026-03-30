@@ -270,6 +270,10 @@ jobs:
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}
+          ECS_CLUSTER_NAME: ${{ steps.terraform_deploy.outputs.ecs_cluster_name }}
+          ECS_API_SERVICE_NAME: ${{ steps.terraform_deploy.outputs.ecs_api_service_name }}
+          ALB_INTERNAL: ${{ steps.terraform_deploy.outputs.alb_internal }}
+          AWS_REGION: ${{ env.AWS_REGION }}
           SMOKE_MAX_ATTEMPTS: "30"
           SMOKE_SLEEP_SECONDS: "5"
         run: bash scripts/smoke/control_plane_api.sh
@@ -381,6 +385,10 @@ jobs:
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}
+          ECS_CLUSTER_NAME: ${{ steps.terraform_deploy.outputs.ecs_cluster_name }}
+          ECS_API_SERVICE_NAME: ${{ steps.terraform_deploy.outputs.ecs_api_service_name }}
+          ALB_INTERNAL: ${{ steps.terraform_deploy.outputs.alb_internal }}
+          AWS_REGION: ${{ env.AWS_REGION }}
           SMOKE_MAX_ATTEMPTS: "40"
           SMOKE_SLEEP_SECONDS: "5"
         run: bash scripts/smoke/control_plane_api.sh
@@ -492,6 +500,10 @@ jobs:
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}
+          ECS_CLUSTER_NAME: ${{ steps.terraform_deploy.outputs.ecs_cluster_name }}
+          ECS_API_SERVICE_NAME: ${{ steps.terraform_deploy.outputs.ecs_api_service_name }}
+          ALB_INTERNAL: ${{ steps.terraform_deploy.outputs.alb_internal }}
+          AWS_REGION: ${{ env.AWS_REGION }}
           SMOKE_MAX_ATTEMPTS: "40"
           SMOKE_SLEEP_SECONDS: "5"
         run: bash scripts/smoke/control_plane_api.sh

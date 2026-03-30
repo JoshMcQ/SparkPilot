@@ -26,8 +26,88 @@ health_url="${api_base_url}/healthz"
 auth_probe_url="${api_base_url}/v1/environments"
 max_attempts="${SMOKE_MAX_ATTEMPTS:-30}"
 sleep_seconds="${SMOKE_SLEEP_SECONDS:-5}"
+api_host="${api_base_url#*://}"
+api_host="${api_host%%/*}"
+alb_internal_raw="${ALB_INTERNAL:-}"
+alb_internal_normalized="$(echo "${alb_internal_raw}" | tr '[:upper:]' '[:lower:]')"
+is_internal_alb="false"
+
+if [[ "${alb_internal_normalized}" == "true" ]]; then
+  is_internal_alb="true"
+elif [[ "${alb_internal_normalized}" == "false" ]]; then
+  is_internal_alb="false"
+elif [[ "${api_host}" == internal-* ]]; then
+  # Backward compatibility if ALB_INTERNAL was not exported yet.
+  is_internal_alb="true"
+fi
 
 echo "Running control-plane smoke checks against ${api_base_url}"
+
+# GitHub-hosted runners cannot reach private/internal ALBs directly.
+# For internal endpoints, validate ECS service health via the ECS API instead.
+if [[ "${is_internal_alb}" == "true" ]]; then
+  require_env "ECS_CLUSTER_NAME"
+  require_env "ECS_API_SERVICE_NAME"
+  require_env "AWS_REGION"
+
+  if ! command -v aws >/dev/null 2>&1; then
+    echo "::error::aws CLI is required for internal endpoint smoke checks." >&2
+    exit 1
+  fi
+
+  echo "::notice::Detected internal ALB endpoint (${api_host}); using ECS service health checks instead of direct HTTP."
+
+  attempt=1
+  last_service_payload=""
+  while [[ "${attempt}" -le "${max_attempts}" ]]; do
+    service_payload="$(
+      aws ecs describe-services \
+        --cluster "${ECS_CLUSTER_NAME}" \
+        --services "${ECS_API_SERVICE_NAME}" \
+        --region "${AWS_REGION}" \
+        --output json || true
+    )"
+
+    if [[ -n "${service_payload}" ]]; then
+      last_service_payload="${service_payload}"
+      service_count="$(echo "${service_payload}" | jq -r '.services | length')"
+      if [[ "${service_count}" -gt 0 ]]; then
+        service_status="$(echo "${service_payload}" | jq -r '.services[0].status // ""')"
+        desired_count="$(echo "${service_payload}" | jq -r '.services[0].desiredCount // 0')"
+        running_count="$(echo "${service_payload}" | jq -r '.services[0].runningCount // 0')"
+        pending_count="$(echo "${service_payload}" | jq -r '.services[0].pendingCount // 0')"
+        failed_rollouts="$(echo "${service_payload}" | jq -r '[.services[0].deployments[]? | select(.rolloutState == "FAILED")] | length')"
+
+        if [[ "${service_status}" == "ACTIVE" && "${desired_count}" -gt 0 && "${running_count}" -ge "${desired_count}" && "${pending_count}" -eq 0 && "${failed_rollouts}" -eq 0 ]]; then
+          echo "ECS service health check passed on attempt ${attempt}/${max_attempts}."
+          echo "Skipping unauthenticated HTTP probe for internal endpoint."
+          echo "Smoke checks passed."
+          exit 0
+        fi
+
+        echo "ECS service not ready (attempt ${attempt}/${max_attempts}): status=${service_status}, desired=${desired_count}, running=${running_count}, pending=${pending_count}, failed_rollouts=${failed_rollouts}"
+      else
+        echo "ECS service lookup returned no services (attempt ${attempt}/${max_attempts})."
+      fi
+    else
+      echo "ECS service lookup failed (attempt ${attempt}/${max_attempts})."
+    fi
+
+    if [[ "${attempt}" -eq "${max_attempts}" ]]; then
+      echo "::error::ECS service did not reach a healthy state within ${max_attempts} attempts." >&2
+      if [[ -n "${last_service_payload}" ]]; then
+        echo "Last ECS describe-services payload:"
+        echo "${last_service_payload}" | jq .
+      fi
+      exit 1
+    fi
+
+    sleep "${sleep_seconds}"
+    attempt=$((attempt + 1))
+  done
+fi
+
+echo "::notice::Endpoint (${api_host}) is external; proceeding with HTTP health checks."
 
 attempt=1
 last_payload=""
