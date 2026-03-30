@@ -133,7 +133,6 @@ export default function AwsOnboardingPage() {
     () => runs.filter((row) => row.state === "succeeded"),
     [runs]
   );
-  const canCreateEnvironment = authMe?.role === "admin";
   const isAdmin = authMe?.role === "admin";
   const identityBound = Boolean(authMe?.tenant_id);
 
@@ -193,7 +192,7 @@ export default function AwsOnboardingPage() {
           ? "blocked"
         : readyEnvironments.length > 0
           ? "done"
-          : canCreateEnvironment
+          : isAdmin
             ? environments.length > 0
               ? "waiting"
               : "todo"
@@ -204,7 +203,7 @@ export default function AwsOnboardingPage() {
           ? "Environment setup is blocked until access mapping is complete."
         : !identityBound
           ? "Environment setup is blocked because your identity is not mapped to a tenant."
-        : canCreateEnvironment
+        : isAdmin
           ? environments.length > 0
             ? "Environment exists but is not ready yet."
             : "Create your first BYOC-Lite environment."
@@ -217,7 +216,7 @@ export default function AwsOnboardingPage() {
             ? isAdmin
               ? "Map this identity to a tenant in Access, then continue with assisted setup."
               : "Ask your SparkPilot admin to map your identity in Access before environment setup."
-          : canCreateEnvironment
+          : isAdmin
             ? environments.length > 0
               ? "Wait for provisioning to complete or open Environments for retry/remediation."
               : "Run assisted setup: discover cluster, use suggested namespace, then create environment."
@@ -230,7 +229,7 @@ export default function AwsOnboardingPage() {
             : { kind: "link", label: "Request access", href: "/contact" }
         : environments.length > 0
           ? { kind: "link", label: "Open Environments", href: "/environments" }
-        : canCreateEnvironment
+        : isAdmin
           ? { kind: "link", label: "Open assisted setup", href: "#assisted-environment-setup" }
           : { kind: "link", label: "Open Environments", href: "/environments" },
     },
@@ -295,7 +294,7 @@ export default function AwsOnboardingPage() {
   const completedCount = steps.filter((step) => step.status === "done").length;
   const progressPct = Math.round((completedCount / steps.length) * 100);
   const nextStep = steps.find((step) => step.status !== "done") ?? null;
-  const showEmbeddedEnvironmentSetup = active && Boolean(authMe?.tenant_id) && canCreateEnvironment && environments.length === 0;
+  const showEmbeddedEnvironmentSetup = active && Boolean(authMe?.tenant_id) && isAdmin && environments.length === 0;
 
   async function handleSignIn() {
     setLoginPending(true);

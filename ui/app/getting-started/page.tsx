@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";
+
+export const metadata: Metadata = {
+  title: "Getting Started | SparkPilot",
+  description: "Clear path from signup to first successful Spark run on AWS.",
+};
 
 const FLOW_STEPS = [
   {
