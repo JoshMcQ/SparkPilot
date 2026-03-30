@@ -249,14 +249,14 @@ aws secretsmanager put-secret-value \
   --secret-id "${database_url_secret_arn}" \
   --secret-string "${db_url}" \
   --region "${AWS_REGION}" \
-  --output none
+  --output json > /dev/null
 
 echo "Writing bootstrap secret to Secrets Manager..."
 aws secretsmanager put-secret-value \
   --secret-id "${bootstrap_secret_arn}" \
   --secret-string "${BOOTSTRAP_SECRET}" \
   --region "${AWS_REGION}" \
-  --output none
+  --output json > /dev/null
 
 echo "Secrets written. Forcing ECS service update to pull AWSCURRENT versions..."
 if [[ -n "${ecs_cluster_name}" && -n "${ecs_api_service_name}" ]]; then
@@ -265,7 +265,7 @@ if [[ -n "${ecs_cluster_name}" && -n "${ecs_api_service_name}" ]]; then
     --service "${ecs_api_service_name}" \
     --force-new-deployment \
     --region "${AWS_REGION}" \
-    --output none
+    --output json > /dev/null
   echo "ECS API service update triggered."
 
   # Redeploy worker services — they consume the same secrets and must also pick
@@ -278,7 +278,7 @@ if [[ -n "${ecs_cluster_name}" && -n "${ecs_api_service_name}" ]]; then
       --service "${worker_svc}" \
       --force-new-deployment \
       --region "${AWS_REGION}" \
-      --output none
+      --output json > /dev/null
     echo "ECS worker service update triggered: ${worker_svc}"
   done <<< "${worker_service_names}"
 else
