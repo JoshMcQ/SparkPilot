@@ -26,6 +26,7 @@ health_url="${api_base_url}/healthz"
 auth_probe_url="${api_base_url}/v1/environments"
 max_attempts="${SMOKE_MAX_ATTEMPTS:-30}"
 sleep_seconds="${SMOKE_SLEEP_SECONDS:-5}"
+internal_max_attempts="${SMOKE_INTERNAL_MAX_ATTEMPTS:-90}"
 api_host="${api_base_url#*://}"
 api_host="${api_host%%/*}"
 alb_internal_raw="${ALB_INTERNAL:-}"
@@ -59,7 +60,7 @@ if [[ "${is_internal_alb}" == "true" ]]; then
 
   attempt=1
   last_service_payload=""
-  while [[ "${attempt}" -le "${max_attempts}" ]]; do
+  while [[ "${attempt}" -le "${internal_max_attempts}" ]]; do
     service_payload="$(
       aws ecs describe-services \
         --cluster "${ECS_CLUSTER_NAME}" \
@@ -79,22 +80,22 @@ if [[ "${is_internal_alb}" == "true" ]]; then
         primary_rollout_state="$(echo "${service_payload}" | jq -r '([.services[0].deployments[]? | select(.status == "PRIMARY")][0].rolloutState) // ""')"
 
         if [[ "${service_status}" == "ACTIVE" && "${desired_count}" -gt 0 && "${running_count}" -ge "${desired_count}" && "${pending_count}" -eq 0 && "${primary_rollout_state}" != "FAILED" ]]; then
-          echo "ECS service health check passed on attempt ${attempt}/${max_attempts}."
+          echo "ECS service health check passed on attempt ${attempt}/${internal_max_attempts}."
           echo "Skipping unauthenticated HTTP probe for internal endpoint."
           echo "Smoke checks passed."
           exit 0
         fi
 
-        echo "ECS service not ready (attempt ${attempt}/${max_attempts}): status=${service_status}, desired=${desired_count}, running=${running_count}, pending=${pending_count}, primary_rollout_state=${primary_rollout_state}"
+        echo "ECS service not ready (attempt ${attempt}/${internal_max_attempts}): status=${service_status}, desired=${desired_count}, running=${running_count}, pending=${pending_count}, primary_rollout_state=${primary_rollout_state}"
       else
-        echo "ECS service lookup returned no services (attempt ${attempt}/${max_attempts})."
+        echo "ECS service lookup returned no services (attempt ${attempt}/${internal_max_attempts})."
       fi
     else
-      echo "ECS service lookup failed (attempt ${attempt}/${max_attempts})."
+      echo "ECS service lookup failed (attempt ${attempt}/${internal_max_attempts})."
     fi
 
-    if [[ "${attempt}" -eq "${max_attempts}" ]]; then
-      echo "::error::ECS service did not reach a healthy state within ${max_attempts} attempts." >&2
+    if [[ "${attempt}" -eq "${internal_max_attempts}" ]]; then
+      echo "::error::ECS service did not reach a healthy state within ${internal_max_attempts} attempts." >&2
       if [[ -n "${last_service_payload}" ]]; then
         echo "Last ECS describe-services payload:"
         echo "${last_service_payload}" | jq .
