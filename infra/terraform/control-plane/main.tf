@@ -147,7 +147,7 @@ locals {
 }
 
 data "aws_route_table" "endpoint_subnet_route_tables" {
-  for_each  = toset(concat(var.private_subnet_ids, var.public_subnet_ids))
+  for_each  = toset(var.private_subnet_ids)
   subnet_id = each.value
 }
 
@@ -404,6 +404,26 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
 resource "aws_vpc_endpoint" "cloudwatch_logs" {
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.logs"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  tags                = local.tags
+}
+
+resource "aws_vpc_endpoint" "sqs" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.sqs"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  tags                = local.tags
+}
+
+resource "aws_vpc_endpoint" "sts" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.sts"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = var.private_subnet_ids
