@@ -81,6 +81,24 @@ class AuthMeResponse(BaseModel):
     scoped_environment_ids: list[str]
 
 
+class AwsByocLiteClusterDiscoveryItem(BaseModel):
+    name: str
+    arn: str
+    status: str
+    version: str | None = None
+    oidc_issuer: str | None = None
+    has_oidc: bool
+
+
+class AwsByocLiteDiscoveryResponse(BaseModel):
+    customer_role_arn: str
+    region: str
+    account_id: str | None = None
+    recommended_cluster_arn: str | None = None
+    namespace_suggestion: str | None = None
+    clusters: list[AwsByocLiteClusterDiscoveryItem]
+
+
 class TeamEnvironmentScopeResponse(BaseModel):
     id: str
     team_id: str

@@ -100,6 +100,7 @@ cur_athena_output_location="$(echo "${CUR_ATHENA_OUTPUT_LOCATION:-}" | xargs)"
 cur_run_id_column="$(echo "${CUR_RUN_ID_COLUMN:-resource_tags_user_sparkpilot_run_id}" | xargs)"
 cur_cost_column="$(echo "${CUR_COST_COLUMN:-line_item_unblended_cost}" | xargs)"
 cost_center_policy_json="${COST_CENTER_POLICY_JSON:-}"
+assume_role_external_id="$(echo "${ASSUME_ROLE_EXTERNAL_ID:-}" | xargs)"
 
 if [[ -n "${cur_athena_database}" || -n "${cur_athena_table}" || -n "${cur_athena_output_location}" ]]; then
   if [[ -z "${cur_athena_database}" || -z "${cur_athena_table}" || -z "${cur_athena_output_location}" ]]; then
@@ -141,6 +142,7 @@ jq -n \
   --argjson dry_run_mode "${dry_run_mode}" \
   --argjson enable_full_byoc_mode "${enable_full_byoc_mode}" \
   --arg emr_execution_role_arn "${EMR_EXECUTION_ROLE_ARN}" \
+  --arg assume_role_external_id "${assume_role_external_id}" \
   --argjson allow_unsafe_rds_configuration "${allow_unsafe_rds_configuration}" \
   --argjson rds_deletion_protection "${rds_deletion_protection}" \
   --argjson rds_skip_final_snapshot "${rds_skip_final_snapshot}" \
@@ -169,6 +171,7 @@ jq -n \
     dry_run_mode: $dry_run_mode,
     enable_full_byoc_mode: $enable_full_byoc_mode,
     emr_execution_role_arn: $emr_execution_role_arn,
+    assume_role_external_id: $assume_role_external_id,
     allow_unsafe_rds_configuration: $allow_unsafe_rds_configuration,
     rds_deletion_protection: $rds_deletion_protection,
     rds_skip_final_snapshot: $rds_skip_final_snapshot,

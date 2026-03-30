@@ -14,10 +14,319 @@ from sparkpilot.aws_clients import (
     _emr_job_run_name,
     _emr_sa_pattern,
     _is_sparkpilot_emr_web_identity_statement,
+    assume_role_session,
+    discover_eks_clusters_for_role,
+    parse_role_account_id_from_arn,
     parse_role_name_from_arn,
 )
 from sparkpilot.config import get_settings
 from sparkpilot.exceptions import SparkPilotError
+
+
+def test_assume_role_session_includes_external_id_from_settings(monkeypatch) -> None:
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "tenant-external-id-123")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    session = assume_role_session("arn:aws:iam::123456789012:role/TestRole", "us-east-1")
+
+    assert assume_role_kwargs["RoleArn"] == "arn:aws:iam::123456789012:role/TestRole"
+    assert assume_role_kwargs["ExternalId"] == "tenant-external-id-123"
+    assert str(assume_role_kwargs["RoleSessionName"]).startswith("sparkpilot-")
+    assert session["region_name"] == "us-east-1"
+
+    get_settings.cache_clear()
+
+
+def test_assume_role_session_omits_external_id_when_unset(monkeypatch) -> None:
+    monkeypatch.delenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    assume_role_session("arn:aws:iam::123456789012:role/TestRole", "us-east-1")
+
+    assert "ExternalId" not in assume_role_kwargs
+
+    get_settings.cache_clear()
+
+
+def test_assume_role_session_handles_none_settings_external_id(monkeypatch) -> None:
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.get_settings",
+        lambda: SimpleNamespace(assume_role_external_id=None),
+    )
+
+    session = assume_role_session("arn:aws:iam::123456789012:role/TestRole", "us-east-1")
+
+    assert assume_role_kwargs["RoleArn"] == "arn:aws:iam::123456789012:role/TestRole"
+    assert "ExternalId" not in assume_role_kwargs
+    assert session["region_name"] == "us-east-1"
+
+
+def test_assume_role_session_explicit_external_id_overrides_setting(monkeypatch) -> None:
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-default-id")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    assume_role_session(
+        "arn:aws:iam::123456789012:role/TestRole",
+        "us-east-1",
+        external_id="env-override-id",
+    )
+
+    assert assume_role_kwargs["ExternalId"] == "env-override-id"
+
+    get_settings.cache_clear()
+
+
+def test_assume_role_session_explicit_empty_external_id_disables_fallback(monkeypatch) -> None:
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-default-id")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _FakeStsClient(),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    assume_role_session(
+        "arn:aws:iam::123456789012:role/TestRole",
+        "us-east-1",
+        external_id="",
+    )
+
+    assert "ExternalId" not in assume_role_kwargs
+
+    get_settings.cache_clear()
+
+
+def test_parse_role_account_id_from_arn() -> None:
+    assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:role/SparkPilotByocLiteRole") == "123456789012"
+    assert parse_role_account_id_from_arn("arn:aws:iam::987654321098:role/platform/service/MyRole") == "987654321098"
+    assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:role/path/") is None
+    assert parse_role_account_id_from_arn("arn:aws:iam::123456789012:user/not-a-role") is None
+    assert parse_role_account_id_from_arn("") is None
+
+
+def test_discover_eks_clusters_for_role_returns_sorted_clusters(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakeEksPaginator:
+        def paginate(self):
+            return [{"clusters": ["cluster-b", "cluster-a"]}]
+
+    class _FakeEksClient:
+        def get_paginator(self, operation_name: str):
+            assert operation_name == "list_clusters"
+            return _FakeEksPaginator()
+
+        def describe_cluster(self, name: str):
+            return {
+                "cluster": {
+                    "arn": f"arn:aws:eks:us-east-1:123456789012:cluster/{name}",
+                    "status": "ACTIVE",
+                    "version": "1.31",
+                    "identity": {"oidc": {"issuer": f"https://oidc.eks.us-east-1.amazonaws.com/id/{name.upper()}"}},
+                }
+            }
+
+    class _FakeStsClient:
+        def get_caller_identity(self):
+            return {"Account": "123456789012"}
+
+    class _FakeSession:
+        def client(self, service_name: str, region_name: str | None = None):
+            assert region_name == "us-east-1"
+            if service_name == "eks":
+                return _FakeEksClient()
+            if service_name == "sts":
+                return _FakeStsClient()
+            raise AssertionError(f"Unexpected AWS service: {service_name}")
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.assume_role_session",
+        lambda role_arn, region, external_id=None: _FakeSession(),
+    )
+
+    result = discover_eks_clusters_for_role(
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+        region="us-east-1",
+    )
+    assert result["account_id"] == "123456789012"
+    assert [item["name"] for item in result["clusters"]] == ["cluster-a", "cluster-b"]
+    assert all(item["has_oidc"] for item in result["clusters"])
+    get_settings.cache_clear()
+
+
+def test_discover_eks_clusters_for_role_non_positive_max_clusters_returns_empty_in_dry_run(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
+    get_settings.cache_clear()
+
+    result = discover_eks_clusters_for_role(
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+        region="us-east-1",
+        max_clusters=0,
+    )
+    assert result["account_id"] == "123456789012"
+    assert result["clusters"] == []
+    get_settings.cache_clear()
+
+
+def test_discover_eks_clusters_for_role_non_positive_max_clusters_skips_live_discovery(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    def _should_not_assume(*_args, **_kwargs):
+        raise AssertionError("assume_role_session should not be called when max_clusters <= 0")
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", _should_not_assume)
+
+    result = discover_eks_clusters_for_role(
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+        region="us-east-1",
+        max_clusters=0,
+    )
+    assert result["account_id"] == "123456789012"
+    assert result["clusters"] == []
+    get_settings.cache_clear()
+
+
+def test_discover_eks_clusters_for_role_rejects_invalid_role_arn(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+    with pytest.raises(ValueError, match="customer_role_arn must match"):
+        discover_eks_clusters_for_role(
+            customer_role_arn="not-an-arn",
+            region="us-east-1",
+        )
+    get_settings.cache_clear()
+
+
+def test_discover_eks_clusters_for_role_propagates_list_permission_client_error(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    get_settings.cache_clear()
+
+    class _FakeEksClient:
+        def get_paginator(self, operation_name: str):
+            raise ClientError(
+                {"Error": {"Code": "AccessDeniedException", "Message": "not allowed"}},
+                operation_name,
+            )
+
+    class _FakeStsClient:
+        def get_caller_identity(self):
+            return {"Account": "123456789012"}
+
+    class _FakeSession:
+        def client(self, service_name: str, region_name: str | None = None):
+            if service_name == "eks":
+                return _FakeEksClient()
+            if service_name == "sts":
+                return _FakeStsClient()
+            raise AssertionError(f"Unexpected AWS service: {service_name}")
+
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.assume_role_session",
+        lambda role_arn, region, external_id=None: _FakeSession(),
+    )
+
+    with pytest.raises(ClientError) as exc_info:
+        discover_eks_clusters_for_role(
+            customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotByocLiteRole",
+            region="us-east-1",
+        )
+    assert exc_info.value.response["Error"]["Code"] == "AccessDeniedException"
+    get_settings.cache_clear()
 
 
 def test_fetch_lines_returns_empty_on_client_error(monkeypatch) -> None:
@@ -746,6 +1055,7 @@ def test_start_job_run_adds_chargeback_tags_and_labels(monkeypatch) -> None:
         region="us-east-1",
         tenant_id="tenant-123",
         eks_namespace="sparkpilot-team-a",
+        event_log_s3_uri="s3://sparkpilot-event-logs/team-a/",
     )
     job = SimpleNamespace(
         id="job-123",
@@ -775,6 +1085,8 @@ def test_start_job_run_adds_chargeback_tags_and_labels(monkeypatch) -> None:
     assert "--conf spark.kubernetes.executor.label.sparkpilot-project=sparkpilot-team-a" in parameters
     assert "--conf spark.kubernetes.driver.label.sparkpilot-cost-center=cc-analytics" in parameters
     assert "--conf spark.kubernetes.executor.label.sparkpilot-cost-center=cc-analytics" in parameters
+    assert "--conf spark.eventLog.enabled=true" in parameters
+    assert "--conf spark.eventLog.dir=s3://sparkpilot-event-logs/team-a/" in parameters
     run_name = str(captured_request["name"])
     assert len(run_name) <= 64
     assert run_name.endswith("run-123")
@@ -782,6 +1094,133 @@ def test_start_job_run_adds_chargeback_tags_and_labels(monkeypatch) -> None:
     assert captured_request["tags"]["sparkpilot:team"] == "tenant-123"
     assert captured_request["tags"]["sparkpilot:project"] == "sparkpilot-team-a"
     assert captured_request["tags"]["sparkpilot:cost_center"] == "cc-analytics"
+
+    get_settings.cache_clear()
+
+
+def test_serverless_start_job_run_applies_event_log_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv("SPARKPILOT_LOG_GROUP_PREFIX", "/sparkpilot/runs")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+    )
+    get_settings.cache_clear()
+
+    captured_request: dict[str, object] = {}
+
+    class _FakeServerlessClient:
+        def get_application(self, **kwargs):
+            assert kwargs["applicationId"] == "app-abc123"
+            return {"application": {"state": "STARTED"}}
+
+        def start_job_run(self, **kwargs):
+            captured_request.update(kwargs)
+            return {
+                "jobRunId": "jr-serverless-001",
+                "ResponseMetadata": {"RequestId": "req-serverless-001"},
+            }
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr-serverless"
+            assert region_name == "us-east-1"
+            return _FakeServerlessClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        id="env-123",
+        emr_serverless_application_id="app-abc123",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+        tenant_id="tenant-123",
+        event_log_s3_uri="s3://sparkpilot-event-logs/team-a/",
+    )
+    job = SimpleNamespace(
+        id="job-123",
+        name="demo-job",
+        artifact_uri="s3://bucket/jobs/demo.py",
+        args_json=["--date", "2026-03-29"],
+        spark_conf_json={},
+    )
+    run = SimpleNamespace(
+        id="run-123",
+        attempt=1,
+        args_overrides_json=[],
+        spark_conf_overrides_json={},
+    )
+
+    result = EmrServerlessClient().start_job_run(environment, job, run)
+
+    assert result.job_run_id == "jr-serverless-001"
+    spark_submit = captured_request["jobDriver"]["sparkSubmit"]
+    params = spark_submit["sparkSubmitParameters"]
+    assert "--conf spark.eventLog.enabled=true" in params
+    assert "--conf spark.eventLog.dir=s3://sparkpilot-event-logs/team-a/" in params
+
+    get_settings.cache_clear()
+
+
+def test_ec2_start_job_run_applies_event_log_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv("SPARKPILOT_LOG_GROUP_PREFIX", "/sparkpilot/runs")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotEmrExecutionRole",
+    )
+    get_settings.cache_clear()
+
+    captured_request: dict[str, object] = {}
+
+    class _FakeEmrClient:
+        def describe_cluster(self, **kwargs):
+            assert kwargs["ClusterId"] == "j-CLUSTER123"
+            return {"Cluster": {"Status": {"State": "WAITING"}}}
+
+        def add_job_flow_steps(self, **kwargs):
+            captured_request.update(kwargs)
+            return {
+                "StepIds": ["s-EC2STEP001"],
+                "ResponseMetadata": {"RequestId": "req-ec2-001"},
+            }
+
+    class _FakeSession:
+        def client(self, service_name, region_name=None):
+            assert service_name == "emr"
+            assert region_name == "us-east-1"
+            return _FakeEmrClient()
+
+    monkeypatch.setattr("sparkpilot.aws_clients.assume_role_session", lambda *_args, **_kwargs: _FakeSession())
+
+    environment = SimpleNamespace(
+        id="env-123",
+        emr_on_ec2_cluster_id="j-CLUSTER123",
+        customer_role_arn="arn:aws:iam::123456789012:role/SparkPilotCustomerRole",
+        region="us-east-1",
+        event_log_s3_uri="s3://sparkpilot-event-logs/team-a/",
+    )
+    job = SimpleNamespace(
+        id="job-123",
+        name="demo-job",
+        artifact_uri="s3://bucket/jobs/demo.py",
+        args_json=["--date", "2026-03-29"],
+        spark_conf_json={},
+    )
+    run = SimpleNamespace(
+        id="run-123",
+        attempt=1,
+        args_overrides_json=[],
+        spark_conf_overrides_json={},
+    )
+
+    result = EmrEc2Client().start_job_run(environment, job, run)
+
+    assert result.step_id == "s-EC2STEP001"
+    step_args = captured_request["Steps"][0]["HadoopJarStep"]["Args"]
+    assert "--conf" in step_args
+    assert "spark.eventLog.enabled=true" in step_args
+    assert "spark.eventLog.dir=s3://sparkpilot-event-logs/team-a/" in step_args
 
     get_settings.cache_clear()
 

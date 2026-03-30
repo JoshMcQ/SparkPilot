@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 import os
 
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError, ParamValidationError
 from fastapi.testclient import TestClient
 from sqlalchemy import and_, select
 
@@ -32,6 +33,12 @@ def setup_function() -> None:
     from sparkpilot.services import ensure_default_golden_paths as _egp
     with SessionLocal() as db:
         _egp(db)
+
+
+def _admin_auth_headers() -> dict[str, str]:
+    from tests.conftest import issue_test_token
+
+    return {"Authorization": f"Bearer {issue_test_token('test-user')}"}
 
 
 def _create_ready_environment_and_run(
@@ -128,6 +135,162 @@ def test_healthz_reports_database_and_aws_checks() -> None:
     assert payload["status"] == "ok"
     assert payload["checks"]["database"]["status"] == "ok"
     assert payload["checks"]["aws"]["status"] in {"ok", "skipped"}
+
+
+def test_byoc_lite_discovery_returns_clusters_and_namespace(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        assert customer_role_arn == "arn:aws:iam::123456789012:role/SparkPilotByocLiteRole"
+        assert region == "us-east-1"
+        return {
+            "account_id": "123456789012",
+            "clusters": [
+                {
+                    "name": "primary-cluster",
+                    "arn": "arn:aws:eks:us-east-1:123456789012:cluster/primary-cluster",
+                    "status": "ACTIVE",
+                    "version": "1.31",
+                    "oidc_issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/PRIMARY",
+                    "has_oidc": True,
+                },
+                {
+                    "name": "secondary-cluster",
+                    "arn": "arn:aws:eks:us-east-1:123456789012:cluster/secondary-cluster",
+                    "status": "CREATING",
+                    "version": "1.31",
+                    "oidc_issuer": None,
+                    "has_oidc": False,
+                },
+            ],
+        }
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?"
+        "customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&"
+        "region=us-east-1&tenant_id=tenant-ops-123",
+        headers=_admin_auth_headers(),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["account_id"] == "123456789012"
+    assert payload["recommended_cluster_arn"] == "arn:aws:eks:us-east-1:123456789012:cluster/primary-cluster"
+    assert payload["namespace_suggestion"].startswith("sparkpilot-tenant-ops-123")
+    assert len(payload["clusters"]) == 2
+    assert payload["clusters"][0]["name"] == "primary-cluster"
+    assert payload["clusters"][0]["has_oidc"] is True
+
+
+def test_byoc_lite_discovery_omits_namespace_suggestion_without_target_tenant(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        assert customer_role_arn == "arn:aws:iam::123456789012:role/SparkPilotByocLiteRole"
+        assert region == "us-east-1"
+        return {
+            "account_id": "123456789012",
+            "clusters": [
+                {
+                    "name": "primary-cluster",
+                    "arn": "arn:aws:eks:us-east-1:123456789012:cluster/primary-cluster",
+                    "status": "ACTIVE",
+                    "version": "1.31",
+                    "oidc_issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/PRIMARY",
+                    "has_oidc": True,
+                },
+            ],
+        }
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["namespace_suggestion"] is None
+
+
+def test_byoc_lite_discovery_translates_validation_value_error(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def _fake_discovery_error(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        raise ValueError("customer_role_arn must match arn:aws:iam::<12-digit-account-id>:role/<role-name>.")
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
+    )
+    assert response.status_code == 422
+    assert "customer_role_arn must match" in response.json()["detail"]
+
+
+def test_byoc_lite_discovery_translates_param_validation_error(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def _fake_discovery_error(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        raise ParamValidationError(report="invalid parameter")
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
+    )
+    assert response.status_code == 422
+    assert "Invalid BYOC-Lite discovery parameters." in response.json()["detail"]
+
+
+def test_byoc_lite_discovery_translates_boto_transport_error(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def _fake_discovery_error(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        raise EndpointConnectionError(endpoint_url="https://eks.us-east-1.amazonaws.com")
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
+    )
+    assert response.status_code == 502
+    assert "Unable to complete BYOC-Lite discovery due to an AWS SDK/transport error." in response.json()["detail"]
+
+
+def test_byoc_lite_discovery_translates_client_error(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def _fake_discovery_error(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        raise ClientError(
+            error_response={"Error": {"Code": "ServiceUnavailableException", "Message": "temporarily unavailable"}},
+            operation_name="ListClusters",
+        )
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery_error)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers=_admin_auth_headers(),
+    )
+    assert response.status_code == 502
+    assert "AWS service error during BYOC-Lite discovery" in response.json()["detail"]
+    assert "ServiceUnavailableException" in response.json()["detail"]
+
+
+def test_byoc_lite_discovery_requires_admin_role(monkeypatch) -> None:
+    client = TestClient(app)
+    fixtures = _setup_rbac_fixtures(client, monkeypatch)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers={"Authorization": f"Bearer {fixtures['operator_token']}"},
+    )
+    assert response.status_code == 403
 
 
 def test_environment_provisioning_run_and_usage() -> None:

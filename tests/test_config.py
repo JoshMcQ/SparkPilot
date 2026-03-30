@@ -134,3 +134,10 @@ def test_cost_center_policy_json_rejects_unsupported_keys(monkeypatch) -> None:
     with pytest.raises(ValueError, match="unsupported keys"):
         validate_runtime_settings(get_settings())
     _clear_settings_cache()
+
+
+def test_assume_role_external_id_setting(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "tenant-external-id-123")
+    _clear_settings_cache()
+    assert get_settings().assume_role_external_id == "tenant-external-id-123"
+    _clear_settings_cache()

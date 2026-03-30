@@ -295,6 +295,26 @@ variable "emr_execution_role_arn" {
   }
 }
 
+variable "assume_role_external_id" {
+  type        = string
+  description = "Optional ExternalId included in SparkPilot runtime AssumeRole calls."
+  default     = ""
+  validation {
+    condition = (
+      var.assume_role_external_id == trimspace(var.assume_role_external_id) &&
+      (
+        var.assume_role_external_id == "" ||
+        (
+          length(var.assume_role_external_id) >= 2 &&
+          length(var.assume_role_external_id) <= 1224 &&
+          can(regex("^[A-Za-z0-9_+=,.@:/-]+$", var.assume_role_external_id))
+        )
+      )
+    )
+    error_message = "assume_role_external_id must be empty or a trimmed 2-1224 char token matching [A-Za-z0-9_+=,.@:/-]."
+  }
+}
+
 variable "poll_interval_seconds" {
   type        = number
   description = "Worker polling interval seconds."

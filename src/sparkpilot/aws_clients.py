@@ -15,6 +15,7 @@ from sparkpilot.models import Environment, Job, Run
 
 logger = logging.getLogger(__name__)
 ROLE_ARN_PATTERN = re.compile(r"^arn:aws[a-zA-Z-]*:iam::\d{12}:role/(.+)$")
+ROLE_ACCOUNT_ARN_PATTERN = re.compile(r"^arn:aws[a-zA-Z-]*:iam::(\d{12}):role/.+$")
 TRUST_POLICY_REQUIRED_ACTIONS = [
     "eks:DescribeCluster",
     "iam:GetRole",
@@ -82,6 +83,18 @@ def parse_role_name_from_arn(role_arn: str | None, *, raise_on_invalid: bool = F
     if raise_on_invalid:
         raise ValueError("Invalid IAM role ARN.")
     return None
+
+
+def parse_role_account_id_from_arn(role_arn: str | None) -> str | None:
+    if not role_arn:
+        return None
+    normalized_role_arn = role_arn.strip()
+    if parse_role_name_from_arn(normalized_role_arn, raise_on_invalid=False) is None:
+        return None
+    match = ROLE_ACCOUNT_ARN_PATTERN.match(normalized_role_arn)
+    if not match:
+        return None
+    return match.group(1)
 
 
 def _as_str_list(value: Any) -> list[str]:
@@ -300,12 +313,27 @@ def _safe_k8s_label_value(value: str | None) -> str:
     return text or "unknown"
 
 
-def assume_role_session(role_arn: str, region: str) -> boto3.Session:
+def _apply_event_log_defaults(spark_conf: dict[str, Any], environment: Environment) -> None:
+    """Inject Spark event log defaults when environment specifies event_log_s3_uri."""
+    event_log_s3_uri = getattr(environment, "event_log_s3_uri", None)
+    if event_log_s3_uri:
+        spark_conf.setdefault("spark.eventLog.enabled", "true")
+        spark_conf.setdefault("spark.eventLog.dir", event_log_s3_uri)
+
+
+def assume_role_session(role_arn: str, region: str, external_id: str | None = None) -> boto3.Session:
+    settings_external_id = get_settings().assume_role_external_id
+    resolved_external_id = settings_external_id if external_id is None else external_id
+    resolved_external_id = (resolved_external_id or "").strip()
+    assume_role_kwargs: dict[str, Any] = {
+        "RoleArn": role_arn,
+        "RoleSessionName": f"sparkpilot-{uuid.uuid4().hex[:8]}",
+    }
+    if resolved_external_id:
+        assume_role_kwargs["ExternalId"] = resolved_external_id
+
     sts = boto3.client("sts", region_name=region)
-    response = sts.assume_role(
-        RoleArn=role_arn,
-        RoleSessionName=f"sparkpilot-{uuid.uuid4().hex[:8]}",
-    )
+    response = sts.assume_role(**assume_role_kwargs)
     creds = response["Credentials"]
     return boto3.Session(
         aws_access_key_id=creds["AccessKeyId"],
@@ -313,6 +341,126 @@ def assume_role_session(role_arn: str, region: str) -> boto3.Session:
         aws_session_token=creds["SessionToken"],
         region_name=region,
     )
+
+
+def _validate_discovery_inputs(customer_role_arn: str, region: str) -> tuple[str, str]:
+    role_arn = customer_role_arn.strip()
+    region_name = region.strip() or "us-east-1"
+    if not role_arn:
+        raise ValueError("customer_role_arn is required for BYOC-Lite discovery.")
+    if parse_role_name_from_arn(role_arn, raise_on_invalid=False) is None:
+        raise ValueError("customer_role_arn must match arn:aws:iam::<12-digit-account-id>:role/<role-name>.")
+    return role_arn, region_name
+
+
+def _assume_customer_role_for_discovery(role_arn: str, region_name: str) -> boto3.Session:
+    return assume_role_session(role_arn, region_name)
+
+
+def _list_cluster_names(eks_client: Any, max_clusters: int) -> list[str]:
+    cluster_names: list[str] = []
+    paginator = eks_client.get_paginator("list_clusters")
+    for page in paginator.paginate():
+        for cluster_name in page.get("clusters", []):
+            if not isinstance(cluster_name, str):
+                continue
+            cluster_names.append(cluster_name)
+            if len(cluster_names) >= max_clusters:
+                break
+        if len(cluster_names) >= max_clusters:
+            break
+    return cluster_names
+
+
+def _describe_and_normalize_cluster(
+    eks_client: Any,
+    cluster_name: str,
+    region_name: str,
+    account_id: str | None,
+) -> dict[str, Any] | None:
+    try:
+        cluster = eks_client.describe_cluster(name=cluster_name).get("cluster", {})
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in {"ResourceNotFoundException", "NotFoundException"}:
+            return None
+        raise
+
+    cluster_arn = str(cluster.get("arn") or "").strip()
+    if not cluster_arn and account_id:
+        cluster_arn = f"arn:aws:eks:{region_name}:{account_id}:cluster/{cluster_name}"
+    oidc_issuer = str(cluster.get("identity", {}).get("oidc", {}).get("issuer") or "").strip() or None
+    return {
+        "name": cluster_name,
+        "arn": cluster_arn,
+        "status": str(cluster.get("status") or "UNKNOWN"),
+        "version": str(cluster.get("version") or "").strip() or None,
+        "oidc_issuer": oidc_issuer,
+        "has_oidc": bool(oidc_issuer),
+    }
+
+
+def discover_eks_clusters_for_role(
+    *,
+    customer_role_arn: str,
+    region: str,
+    max_clusters: int = 50,
+) -> dict[str, Any]:
+    role_arn, region_name = _validate_discovery_inputs(customer_role_arn, region)
+    try:
+        normalized_max_clusters = int(max_clusters)
+    except (TypeError, ValueError):
+        raise ValueError("max_clusters must be an integer.") from None
+    role_account_id = parse_role_account_id_from_arn(role_arn)
+    if normalized_max_clusters <= 0:
+        return {
+            "account_id": role_account_id,
+            "clusters": [],
+        }
+    if get_settings().dry_run_mode:
+        sample_account = role_account_id or "123456789012"
+        sample_cluster_name = "sparkpilot-dryrun-cluster"
+        return {
+            "account_id": sample_account,
+            "clusters": [
+                {
+                    "name": sample_cluster_name,
+                    "arn": f"arn:aws:eks:{region_name}:{sample_account}:cluster/{sample_cluster_name}",
+                    "status": "ACTIVE",
+                    "version": "1.31",
+                    "oidc_issuer": f"https://oidc.eks.{region_name}.amazonaws.com/id/DRYRUN",
+                    "has_oidc": True,
+                }
+            ],
+        }
+
+    session = _assume_customer_role_for_discovery(role_arn, region_name)
+
+    sts_client = session.client("sts", region_name=region_name)
+    account_id = role_account_id
+    try:
+        account_id = str(sts_client.get_caller_identity().get("Account") or "").strip() or role_account_id
+    except ClientError:
+        account_id = role_account_id
+
+    eks_client = session.client("eks", region_name=region_name)
+    cluster_names = _list_cluster_names(eks_client, normalized_max_clusters)
+
+    discovered: list[dict[str, Any]] = []
+    for cluster_name in sorted(set(cluster_names)):
+        normalized = _describe_and_normalize_cluster(
+            eks_client=eks_client,
+            cluster_name=cluster_name,
+            region_name=region_name,
+            account_id=account_id,
+        )
+        if normalized is not None:
+            discovered.append(normalized)
+
+    return {
+        "account_id": account_id,
+        "clusters": discovered,
+    }
 
 
 @dataclass(slots=True)
@@ -1444,6 +1592,8 @@ class EmrEksClient:
             spark_conf["spark.kubernetes.driver.annotation.yunikorn.apache.org/queue-name"] = _yunikorn_queue
             spark_conf["spark.kubernetes.executor.annotation.yunikorn.apache.org/queue-name"] = _yunikorn_queue
 
+        _apply_event_log_defaults(spark_conf, environment)
+
         spark_submit_driver: dict[str, Any] = {
             "entryPoint": job.artifact_uri,
             "entryPointArguments": run.args_overrides_json or job.args_json,
@@ -1713,6 +1863,7 @@ class EmrServerlessClient:
         self._preflight_application(client, application_id)
 
         spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
+        _apply_event_log_defaults(spark_conf, environment)
         args = run.args_overrides_json or job.args_json or []
         spark_params = " ".join(f"--conf {k}={v}" for k, v in spark_conf.items()) if spark_conf else ""
 
@@ -1836,6 +1987,7 @@ class EmrEc2Client:
         self._preflight_cluster(client, cluster_id)
 
         spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
+        _apply_event_log_defaults(spark_conf, environment)
         args = run.args_overrides_json or job.args_json or []
         conf_flags: list[str] = []
         for k, v in spark_conf.items():

@@ -1,103 +1,281 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchAuthMe,
   fetchEnvironments,
+  fetchJobs,
+  fetchRuns,
+  fetchUsage,
   getInMemoryToken,
   isSessionActive,
   USER_ACCESS_TOKEN_CHANGED_EVENT,
   type AuthMe,
   type Environment,
+  type Job,
+  type Run,
 } from "@/lib/api";
 import { decodeJwtForDisplay, isOidcConfigured, startLoginFlow } from "@/lib/oidc-client";
+import EnvironmentCreateForm from "@/app/environments/environment-create-form";
 
-function statusTone(done: boolean): string {
-  return done ? "success" : "pending";
+type StepStatus = "done" | "todo" | "waiting" | "blocked";
+
+type OnboardingAction =
+  | { kind: "button"; label: string }
+  | { kind: "link"; label: string; href: string }
+  | null;
+
+type OnboardingStep = {
+  id: string;
+  title: string;
+  status: StepStatus;
+  detail: string;
+  remediation?: string;
+  action: OnboardingAction;
+};
+
+function statusLabel(status: StepStatus): string {
+  if (status === "done") return "Done";
+  if (status === "todo") return "Do this now";
+  if (status === "waiting") return "Waiting";
+  return "Blocked";
+}
+
+function statusClass(status: StepStatus): string {
+  return status === "done" ? "success" : "pending";
 }
 
 export default function AwsOnboardingPage() {
   const oidcConfigured = isOidcConfigured();
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loginPending, setLoginPending] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [active, setActive] = useState(false);
   const [authMe, setAuthMe] = useState<AuthMe | null>(null);
   const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [usageRecords, setUsageRecords] = useState<number | null>(null);
+  const [usageWarning, setUsageWarning] = useState<string | null>(null);
+  const currentRequestIdRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
+
     async function load() {
+      const requestId = ++currentRequestIdRef.current;
       try {
         const mem = getInMemoryToken();
-        const hasSession = mem ? true : await isSessionActive();
-        const [identity, envs] = await Promise.all([
-          hasSession ? fetchAuthMe() : Promise.resolve(null),
+        const sessionActive = mem ? true : await isSessionActive();
+        const identity = await fetchAuthMe().catch(() => null);
+        const hasSession = sessionActive || Boolean(mem) || Boolean(identity);
+
+        const [envRows, jobRows, runRows] = await Promise.all([
           hasSession ? fetchEnvironments().catch(() => []) : Promise.resolve([]),
+          hasSession ? fetchJobs().catch(() => []) : Promise.resolve([]),
+          hasSession ? fetchRuns().catch(() => []) : Promise.resolve([]),
         ]);
-        if (!mounted) return;
+
+        let usageCount: number | null = null;
+        let warning: string | null = null;
+        if (hasSession && identity?.tenant_id) {
+          try {
+            const usage = await fetchUsage(identity.tenant_id);
+            usageCount = usage.items.length;
+          } catch {
+            warning = "Usage records are delayed or unavailable. First-run completion can still be validated.";
+          }
+        }
+
+        const tenantId = identity?.tenant_id ?? null;
+        const scopedEnvironments = envRows.filter(
+          (row) => row.status !== "deleted" && tenantId != null && row.tenant_id === tenantId
+        );
+        const scopedEnvironmentIds = new Set(scopedEnvironments.map((row) => row.id));
+        const scopedJobs = jobRows.filter((row) => scopedEnvironmentIds.has(row.environment_id));
+        const scopedRuns = runRows.filter((row) => scopedEnvironmentIds.has(row.environment_id));
+
+        if (!mounted || requestId !== currentRequestIdRef.current) return;
         setActive(hasSession);
         setAuthMe(identity);
-        setEnvironments(envs.filter((row) => row.status !== "deleted"));
+        setEnvironments(scopedEnvironments);
+        setJobs(scopedJobs);
+        setRuns(scopedRuns);
+        setUsageRecords(usageCount);
+        setUsageWarning(warning);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted && requestId === currentRequestIdRef.current) setLoading(false);
       }
     }
+
     function onTokenChanged() {
       void load();
     }
+
     void load();
     window.addEventListener(USER_ACCESS_TOKEN_CHANGED_EVENT, onTokenChanged);
     return () => {
       mounted = false;
       window.removeEventListener(USER_ACCESS_TOKEN_CHANGED_EVENT, onTokenChanged);
     };
-  }, []);
+  }, [refreshNonce]);
 
-  const tokenInfo = useMemo(() => {
-    const token = getInMemoryToken();
-    return token ? decodeJwtForDisplay(token) : null;
-  }, []);
+  const token = getInMemoryToken();
+  const tokenInfo = useMemo(() => (token ? decodeJwtForDisplay(token) : null), [token]);
 
-  const steps = [
+  const readyEnvironments = useMemo(
+    () => environments.filter((row) => row.status === "ready"),
+    [environments]
+  );
+  const succeededRuns = useMemo(
+    () => runs.filter((row) => row.state === "succeeded"),
+    [runs]
+  );
+  const canCreateEnvironment = authMe?.role === "admin";
+
+  const steps: OnboardingStep[] = [
     {
-      title: "Authenticate with AWS-backed identity",
-      done: active,
+      id: "session",
+      title: "Start authenticated session",
+      status: active ? "done" : "todo",
       detail: active
-        ? `Signed in${authMe?.actor ? ` as ${authMe.actor}` : ""}.`
+        ? "Session is active."
+        : "Start an authenticated browser session before using environments or runs.",
+      remediation: active
+        ? undefined
         : oidcConfigured
-          ? "Use OIDC sign-in to establish a browser session before calling the SparkPilot API."
-          : "OIDC is not configured in this deployment, so login falls back to manual token application in the auth panel.",
+          ? "Use OIDC sign-in from this page to establish the session."
+          : "OIDC is not configured. Use the login/manual token path for this environment.",
       action: active
         ? null
         : oidcConfigured
-          ? { label: loginPending ? "Redirecting…" : "Sign in", type: "button" as const }
-          : { label: "Open auth panel guidance", href: "#manual-auth", type: "link" as const },
+          ? { kind: "button", label: loginPending ? "Redirecting..." : "Sign in with OIDC" }
+          : { kind: "link", label: "Open login", href: "/login" },
     },
     {
-      title: "Verify identity mapping and role scope",
-      done: Boolean(authMe),
+      id: "identity",
+      title: "Verify identity mapping",
+      status: !active ? "blocked" : authMe?.tenant_id ? "done" : "blocked",
       detail: authMe
-        ? `Role: ${authMe.role}. Scoped environments: ${authMe.scoped_environment_ids.length}. Tenant: ${authMe.tenant_id ?? "not bound"}. Team: ${authMe.team_id ?? "not bound"}.`
-        : "Confirm /v1/auth/me resolves your actor, tenant/team scope, and environment access before provisioning.",
-      action: { label: "Open Access", href: "/access", type: "link" as const },
+        ? `Role: ${authMe.role}. Tenant: ${authMe.tenant_id ?? "not bound"}. Team: ${authMe.team_id ?? "not bound"}.`
+        : active
+          ? "Signed in, but /v1/auth/me did not return scoped identity details."
+          : "Identity checks run after session authentication.",
+      remediation: authMe?.tenant_id
+        ? undefined
+        : active
+          ? "Map your identity in Access before creating environments or submitting runs."
+          : "Authenticate first, then recheck identity mapping.",
+      action: { kind: "link", label: "Open Access", href: "/access" },
     },
     {
-      title: "Create or review a BYOC-Lite environment",
-      done: environments.length > 0,
-      detail: environments.length > 0
-        ? `${environments.length} environment(s) visible in this session.`
-        : "Use the environment flow with a real customer role ARN, cluster ARN, and namespace. Watch the provisioning operation until ready or failed with remediation.",
-      action: { label: environments.length > 0 ? "Open Environments" : "Start environment setup", href: "/environments", type: "link" as const },
+      id: "environment",
+      title: "Get one ready environment",
+      status: !active || !authMe
+        ? "blocked"
+        : !authMe.tenant_id
+          ? "blocked"
+        : readyEnvironments.length > 0
+          ? "done"
+          : canCreateEnvironment
+            ? environments.length > 0
+              ? "waiting"
+              : "todo"
+            : "blocked",
+      detail: readyEnvironments.length > 0
+        ? `${environments.length} total visible environment(s).`
+        : !active || !authMe
+          ? "Environment setup is blocked until access mapping is complete."
+          : !authMe.tenant_id
+            ? "Environment setup is blocked because your identity is not mapped to a tenant."
+          : canCreateEnvironment
+            ? environments.length > 0
+              ? "Environment exists but is not ready yet."
+              : "Create your first BYOC-Lite environment."
+            : "Environment creation requires admin role.",
+      remediation: readyEnvironments.length > 0
+        ? undefined
+        : !active || !authMe
+          ? "Complete sign-in and identity mapping first."
+          : !authMe.tenant_id
+            ? "Map this identity to a tenant in Access, then continue with assisted setup."
+          : canCreateEnvironment
+            ? environments.length > 0
+              ? "Wait for provisioning to complete or open Environments for retry/remediation."
+              : "Run assisted setup: discover cluster, use suggested namespace, then create environment."
+            : "Ask an admin to create the first environment, then continue here.",
+      action: !active || !authMe || !authMe.tenant_id
+        ? { kind: "link", label: "Open Access", href: "/access" }
+        : environments.length > 0
+          ? { kind: "link", label: "Open Environments", href: "/environments" }
+        : canCreateEnvironment
+          ? { kind: "link", label: "Open assisted setup", href: "#assisted-environment-setup" }
+          : { kind: "link", label: "Open Environments", href: "/environments" },
     },
     {
-      title: "Run a proof check before production use",
-      done: false,
-      detail: "Before this phase can be marked complete, capture evidence for happy-path sign-in, auth failure handling, missing-scope handling, and successful environment provisioning from this UI flow.",
-      action: null,
+      id: "job",
+      title: "Create one job template",
+      status: !active || !authMe || !authMe.tenant_id || readyEnvironments.length === 0 ? "blocked" : jobs.length > 0 ? "done" : "todo",
+      detail: jobs.length > 0
+        ? `${jobs.length} job template(s) available.`
+        : !active || !authMe || !authMe.tenant_id || readyEnvironments.length === 0
+          ? "Job creation is blocked until a ready environment exists."
+          : "Create your first job template from the Runs workspace.",
+      remediation: jobs.length > 0
+        ? undefined
+        : "Use a known-good artifact URI and entrypoint for your first run.",
+      action: { kind: "link", label: "Open Runs", href: "/runs" },
+    },
+    {
+      id: "run",
+      title: "Reach first successful run",
+      status: !active || !authMe || !authMe.tenant_id || readyEnvironments.length === 0 || jobs.length === 0
+        ? "blocked"
+        : succeededRuns.length > 0
+          ? "done"
+          : runs.length > 0
+            ? "waiting"
+            : "todo",
+      detail: succeededRuns.length > 0
+        ? `${succeededRuns.length} succeeded run(s).`
+        : !active || !authMe || !authMe.tenant_id || readyEnvironments.length === 0 || jobs.length === 0
+          ? "Run submission is blocked by incomplete prerequisites."
+          : runs.length > 0
+            ? "Run submitted; waiting for terminal success."
+            : "Submit your first run after preflight passes.",
+      remediation: succeededRuns.length > 0
+        ? undefined
+        : runs.length > 0
+          ? "Open Runs for logs and diagnostics if this state stalls or fails."
+          : "Run preflight, resolve failed checks, then submit.",
+      action: { kind: "link", label: "Open Runs", href: "/runs" },
+    },
+    {
+      id: "value",
+      title: "Verify proof of value",
+      status: !active || !authMe || !authMe.tenant_id || succeededRuns.length === 0
+        ? "blocked"
+        : usageRecords != null && usageRecords > 0
+          ? "done"
+          : "waiting",
+      detail: usageRecords != null && usageRecords > 0
+        ? `${usageRecords} usage record(s) visible for cost/usage evidence.`
+        : !active || !authMe || !authMe.tenant_id || succeededRuns.length === 0
+          ? "Proof of value unlocks after first successful run."
+          : "Run succeeded; waiting for usage/cost records to appear.",
+      remediation: usageRecords != null && usageRecords > 0
+        ? undefined
+        : "Open Costs and confirm estimated/reconciled records once ingestion completes.",
+      action: { kind: "link", label: "Open Costs", href: "/costs" },
     },
   ];
+
+  const completedCount = steps.filter((step) => step.status === "done").length;
+  const progressPct = Math.round((completedCount / steps.length) * 100);
+  const nextStep = steps.find((step) => step.status !== "done") ?? null;
+  const showEmbeddedEnvironmentSetup = active && Boolean(authMe?.tenant_id) && canCreateEnvironment && environments.length === 0;
 
   async function handleSignIn() {
     setLoginPending(true);
@@ -113,29 +291,75 @@ export default function AwsOnboardingPage() {
   return (
     <section className="stack onboarding-page">
       <div className="card onboarding-hero">
-        <div className="eyebrow">AWS ONBOARDING</div>
-        <h2>Authenticate, verify scope, then provision BYOC-Lite safely</h2>
+        <div className="eyebrow">START HERE</div>
+        <h2 data-testid="onboarding-title">Guided onboarding to first successful Spark run</h2>
         <p className="subtle" style={{ marginTop: 8 }}>
-          This page turns the existing auth panel + environment form into one explicit operator workflow. It is still
-          not marked complete in the tracker until browser-tested evidence is captured.
+          This flow is the canonical path from sign-in to proof-of-value. Follow each gate in order and resolve
+          blocked steps before moving forward.
         </p>
-        <div className="button-row" style={{ marginTop: 12 }}>
-          {oidcConfigured && !active ? (
-            <button type="button" className="button" disabled={loginPending} onClick={() => void handleSignIn()}>
-              {loginPending ? "Redirecting…" : "Sign in with OIDC"}
-            </button>
-          ) : null}
-          <Link href="/environments" className="button button-secondary">Open environment setup</Link>
-          <Link href="/access" className="button button-secondary">Review access mapping</Link>
+        <div className="subtle" style={{ marginTop: 8 }}>
+          Progress: {completedCount}/{steps.length} complete ({progressPct}%)
         </div>
-        {loginError ? <div className="subtle" style={{ color: "var(--color-error, #c0392b)", marginTop: 8 }}>{loginError}</div> : null}
+        {usageWarning ? (
+          <div className="subtle" style={{ marginTop: 8, color: "var(--color-warning, #8a5300)" }}>
+            {usageWarning}
+          </div>
+        ) : null}
+        {loginError ? (
+          <div className="subtle" style={{ marginTop: 8, color: "var(--color-error, #c0392b)" }}>
+            {loginError}
+          </div>
+        ) : null}
       </div>
+
+      <div className="card">
+        <h3>Current next action</h3>
+        {nextStep ? (
+          <div className="onboarding-step" style={{ marginTop: 8 }}>
+            <div className="step-index pending">!</div>
+            <div className="step-body">
+              <div className="step-header-row">
+                <strong>{nextStep.title}</strong>
+                <span className={`status-chip ${statusClass(nextStep.status)}`}>{statusLabel(nextStep.status)}</span>
+              </div>
+              <div className="subtle">{nextStep.detail}</div>
+              {nextStep.remediation ? <div className="subtle" style={{ marginTop: 6 }}>{nextStep.remediation}</div> : null}
+              {nextStep.action?.kind === "button" ? (
+                <div className="button-row" style={{ marginTop: 10 }}>
+                  <button type="button" className="button button-sm" disabled={loginPending} onClick={() => void handleSignIn()}>
+                    {nextStep.action.label}
+                  </button>
+                </div>
+              ) : null}
+              {nextStep.action?.kind === "link" ? (
+                <div className="button-row" style={{ marginTop: 10 }}>
+                  <Link href={nextStep.action.href} className="inline-link">{nextStep.action.label} →</Link>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="subtle" style={{ marginTop: 8 }}>
+            Onboarding is complete. Move to normal operations in Runs and Costs.
+          </div>
+        )}
+      </div>
+
+      {showEmbeddedEnvironmentSetup ? (
+        <EnvironmentCreateForm
+          onEnvironmentQueued={() => {
+            setRefreshNonce((prev) => prev + 1);
+          }}
+        />
+      ) : null}
 
       <div className="card-grid">
         <article className="card">
-          <h3>Session state</h3>
-          <div className={`status-chip ${statusTone(active)}`}>{active ? "Authenticated" : "Not authenticated"}</div>
-          <p className="subtle">{active ? "Browser session or in-memory token is active." : "No verified login session yet."}</p>
+          <h3>Session</h3>
+          <div data-testid="session-status" className={`status-chip ${statusClass(active ? "done" : "todo")}`}>
+            {active ? "Authenticated" : "Not authenticated"}
+          </div>
+          <p className="subtle">{active ? "Browser session is active." : "No verified session yet."}</p>
         </article>
         <article className="card">
           <h3>Identity</h3>
@@ -144,48 +368,40 @@ export default function AwsOnboardingPage() {
         </article>
         <article className="card">
           <h3>Environment visibility</h3>
-          <div className="stat-value">{loading ? "…" : environments.length}</div>
-          <p className="subtle">Non-deleted environments visible to this session.</p>
+          <div className="stat-value">{loading ? "..." : environments.length}</div>
+          <p className="subtle">{readyEnvironments.length} ready environment(s).</p>
         </article>
       </div>
 
       <div className="card">
-        <h3>Operator checklist</h3>
+        <h3>Step-by-step gate status</h3>
+        <div className="subtle">States are explicit: done, do now, waiting, or blocked.</div>
         <div className="onboarding-steps">
           {steps.map((step, index) => (
-            <div key={step.title} className="onboarding-step">
-              <div className={`step-index ${step.done ? "done" : "pending"}`}>{index + 1}</div>
+            <div key={step.id} className="onboarding-step">
+              <div className={`step-index ${step.status === "done" ? "done" : "pending"}`}>{index + 1}</div>
               <div className="step-body">
                 <div className="step-header-row">
                   <strong>{step.title}</strong>
-                  <span className={`status-chip ${statusTone(step.done)}`}>{step.done ? "Done" : "Needs proof"}</span>
+                  <span className={`status-chip ${statusClass(step.status)}`}>{statusLabel(step.status)}</span>
                 </div>
                 <div className="subtle">{step.detail}</div>
-                {step.action?.type === "button" ? (
-                  <div className="button-row" style={{ marginTop: 10 }}>
-                    <button type="button" className="button button-sm" disabled={loginPending} onClick={() => void handleSignIn()}>
-                      {step.action.label}
-                    </button>
-                  </div>
-                ) : null}
-                {step.action?.type === "link" ? (
-                  <div className="button-row" style={{ marginTop: 10 }}>
-                    <Link href={step.action.href} className="inline-link">{step.action.label} →</Link>
-                  </div>
-                ) : null}
+                {step.remediation ? <div className="subtle" style={{ marginTop: 6 }}>{step.remediation}</div> : null}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="card" id="manual-auth">
-        <h3>Current gap</h3>
-        <p className="subtle">
-          The repo now has a dedicated onboarding route, but Phase 4 still remains unchecked. What is still missing:
-          captured browser evidence, failure-path walkthroughs, responsive validation, cross-browser validation,
-          Lighthouse results, and dark-mode implementation.
-        </p>
+      <div className="card">
+        <h3>Quick links</h3>
+        <div className="button-row">
+          <Link href="/getting-started" className="button button-secondary">Getting Started</Link>
+          <Link href="/access" className="button button-secondary">Access</Link>
+          <Link href="/environments" className="button button-secondary">Environments</Link>
+          <Link href="/runs" className="button button-secondary">Runs</Link>
+          <Link href="/costs" className="button button-secondary">Costs</Link>
+        </div>
       </div>
     </section>
   );
