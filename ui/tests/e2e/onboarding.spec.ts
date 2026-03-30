@@ -117,6 +117,65 @@ test.describe("AWS onboarding flow", () => {
     await expect(page.getByText(/Environment setup is blocked until access mapping is complete./i)).toBeVisible();
   });
 
+  test("routes unbound non-admin users to request-access path", async ({ page }) => {
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ authenticated: true }),
+      });
+    });
+
+    await page.route("**/api/sparkpilot/v1/auth/me", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          actor: "user@example.com",
+          role: "user",
+          tenant_id: null,
+          team_id: null,
+          scoped_environment_ids: [],
+        }),
+      });
+    });
+
+    await page.route("**/api/sparkpilot/v1/environments", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    });
+
+    await page.route("**/api/sparkpilot/v1/jobs", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    });
+
+    await page.route("**/api/sparkpilot/v1/runs", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    });
+
+    await page.goto("/onboarding/aws");
+
+    const nextActionCard = page.locator(".card").filter({
+      has: page.getByRole("heading", { name: /Current next action/i }),
+    });
+    await expect(
+      nextActionCard.getByText(/Ask your SparkPilot admin to map your identity to a tenant in Access./i)
+    ).toBeVisible();
+    await expect(nextActionCard.getByRole("link", { name: /Request access/i })).toBeVisible();
+    await expect(nextActionCard.getByRole("link", { name: /Open Access/i })).toHaveCount(0);
+  });
+
   test("supports assisted environment setup without manual cluster ARN entry", async ({ page }) => {
     let environmentCreated = false;
 
