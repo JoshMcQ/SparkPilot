@@ -347,6 +347,39 @@ resource "aws_vpc_security_group_egress_rule" "ecs_tasks_all" {
   description       = "Allow all ECS task egress"
 }
 
+resource "aws_security_group" "aws_api_endpoints" {
+  name        = "${local.name_prefix}-aws-api-endpoints"
+  description = "Security group for private AWS API interface endpoints"
+  vpc_id      = var.vpc_id
+  tags        = local.tags
+}
+
+resource "aws_vpc_security_group_ingress_rule" "aws_api_endpoints_https_from_ecs" {
+  security_group_id            = aws_security_group.aws_api_endpoints.id
+  referenced_security_group_id = aws_security_group.ecs_tasks.id
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  description                  = "Allow HTTPS from ECS tasks to interface endpoints"
+}
+
+resource "aws_vpc_security_group_egress_rule" "aws_api_endpoints_all" {
+  security_group_id = aws_security_group.aws_api_endpoints.id
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+  description       = "Allow endpoint egress"
+}
+
+resource "aws_vpc_endpoint" "secretsmanager" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  tags                = local.tags
+}
+
 resource "aws_security_group" "postgres" {
   name        = "${local.name_prefix}-postgres"
   description = "SparkPilot postgres security group"
