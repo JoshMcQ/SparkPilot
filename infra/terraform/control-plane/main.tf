@@ -91,10 +91,10 @@ locals {
     for subnet_id, route_tables in data.aws_route_tables.private_subnet_route_tables : subnet_id
     if length(route_tables.ids) == 0
   ]
-  vpc_main_route_table_id = data.aws_route_tables.main.ids[0]
+  vpc_main_route_table_id = try(data.aws_route_tables.main.ids[0], null)
   vpc_endpoint_route_table_ids = distinct(concat(
     local.private_subnet_route_table_ids,
-    length(local.private_subnets_without_explicit_route_table) > 0 ? [local.vpc_main_route_table_id] : [],
+    length(local.private_subnets_without_explicit_route_table) > 0 && local.vpc_main_route_table_id != null ? [local.vpc_main_route_table_id] : [],
   ))
 
   api_task_name = substr(replace("${local.name_prefix}-api", "_", "-"), 0, 32)
