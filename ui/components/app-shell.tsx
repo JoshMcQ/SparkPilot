@@ -11,7 +11,7 @@ import { UserAuthPanel } from "@/components/user-auth-panel";
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const MARKETING_ROUTES = ["/", "/pricing", "/login", "/about", "/contact", "/security"];
+  const MARKETING_ROUTES = ["/", "/pricing", "/login", "/getting-started", "/about", "/contact", "/security"];
   const isLanding = MARKETING_ROUTES.includes(pathname);
 
   if (isLanding) {
@@ -24,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div>
           <h1>SparkPilot</h1>
           <div className="subtle">AWS-first BYOC Spark runtime control plane</div>
+          <div className="subtle">Authenticated product area</div>
         </div>
         <div className="header-actions">
           <TopNav />

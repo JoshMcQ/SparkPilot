@@ -839,18 +839,90 @@ tbody tr:last-child td {
   margin-top: var(--space-2);
 }
 
+.json-editor-shell {
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--line-soft));
+  background:
+    radial-gradient(120% 180% at 100% -20%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+    linear-gradient(180deg, rgba(245, 251, 250, 0.94), rgba(234, 243, 246, 0.94));
+}
+
+.json-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.json-editor-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-strong);
+}
+
+.json-editor-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  max-width: 640px;
+}
+
+.json-editor-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.json-editor-status.ok {
+  color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.json-editor-status.error {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 32%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.json-editor-field {
+  margin-top: 2px;
+}
+
+.json-editor-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .json-textarea {
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 10px;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
   color: var(--text);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(239, 247, 246, 0.94));
+  background:
+    linear-gradient(180deg, rgba(12, 29, 42, 0.05), rgba(12, 29, 42, 0.02)),
+    linear-gradient(180deg, rgba(254, 255, 255, 0.98), rgba(242, 249, 250, 0.95));
   box-shadow: var(--shadow-inset-top);
   font-family: var(--font-mono), "Consolas", monospace;
-  font-size: 0.83rem;
-  min-height: 280px;
+  font-size: 0.82rem;
+  line-height: 1.46;
+  min-height: 300px;
   width: 100%;
   resize: vertical;
+  tab-size: 2;
+}
+
+.json-textarea-compact {
+  min-height: 148px;
 }
 
 .form-grid input:hover,
@@ -2567,10 +2639,35 @@ details.card > summary:focus-visible {
   border-color: var(--line-soft);
 }
 
+:root[data-theme="dark"] .json-editor-shell {
+  background:
+    radial-gradient(140% 180% at 100% -15%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 85%, #0a1726), color-mix(in srgb, var(--surface-1) 88%, #0a1726));
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line-soft));
+}
+
 :root[data-theme="dark"] .json-textarea {
-  background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
-  border-color: var(--line);
-  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(4, 26, 43, 0.68), rgba(7, 20, 33, 0.72)),
+    linear-gradient(180deg, var(--surface-2), var(--surface-1));
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--line));
+  color: #e5f0f8;
+}
+
+:root[data-theme="dark"] .json-editor-note {
+  color: var(--text-soft);
+}
+
+:root[data-theme="dark"] .json-editor-status.ok {
+  color: #8dd7b8;
+  border-color: color-mix(in srgb, #8dd7b8 42%, transparent);
+  background: color-mix(in srgb, #8dd7b8 12%, transparent);
+}
+
+:root[data-theme="dark"] .json-editor-status.error {
+  color: #ffb0b0;
+  border-color: color-mix(in srgb, #ff9d9d 42%, transparent);
+  background: color-mix(in srgb, #ff9d9d 12%, transparent);
 }
 
 :root[data-theme="dark"] .input-readonly {

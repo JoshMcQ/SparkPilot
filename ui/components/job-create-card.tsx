@@ -409,7 +409,18 @@ export function JobCreateCard({
           ) : null}
         </div>
       ) : (
-        <div className="json-panel stack">
+        <div className="json-panel json-editor-shell stack">
+          <div className="json-editor-header">
+            <div>
+              <div className="json-editor-title">Job Template JSON</div>
+              <div className="json-editor-note">
+                Paste, edit, and round-trip template payloads for reproducible operations.
+              </div>
+            </div>
+            <div className={`json-editor-status ${jsonError ? "error" : "ok"}`}>
+              {jsonError ? "Validation error" : "Valid JSON"}
+            </div>
+          </div>
           <div className="button-row">
             <button type="button" className="button button-sm button-secondary" onClick={() => syncJsonFromForm(form)}>
               Export From Form
@@ -418,8 +429,8 @@ export function JobCreateCard({
               Apply JSON To Form
             </button>
           </div>
-          <label className="multiline-field">
-            Job Template JSON
+          <label className="multiline-field json-editor-field">
+            <span className="json-editor-label">Payload</span>
             <textarea
               className="json-textarea"
               value={jsonInput}

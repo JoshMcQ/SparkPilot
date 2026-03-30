@@ -32,8 +32,8 @@ export function LandingNav() {
         <Link href="/login" className="landing-btn landing-btn-ghost landing-nav-cta">
           Log in
         </Link>
-        <Link href="/contact" className="landing-btn landing-btn-primary landing-nav-cta">
-          Get Started
+        <Link href="/getting-started" className="landing-btn landing-btn-primary landing-nav-cta">
+          Start Here
         </Link>
       </div>
     </nav>

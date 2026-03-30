@@ -9,6 +9,7 @@
  */
 
 import { storeUserAccessToken } from "@/lib/api";
+import { isOidcClientConfigured } from "@/lib/auth-config";
 
 const ISSUER = (process.env.NEXT_PUBLIC_OIDC_ISSUER ?? "").trim();
 const CLIENT_ID = (process.env.NEXT_PUBLIC_OIDC_CLIENT_ID ?? "").trim();
@@ -17,6 +18,7 @@ const AUDIENCE = (process.env.NEXT_PUBLIC_OIDC_AUDIENCE ?? "").trim();
 
 const PKCE_VERIFIER_KEY = "sparkpilot.oidc.code_verifier";
 const PKCE_STATE_KEY = "sparkpilot.oidc.state";
+const POST_LOGIN_REDIRECT_KEY = "sparkpilot.oidc.post_login_redirect";
 
 // ---------------------------------------------------------------------------
 // PKCE helpers
@@ -77,14 +79,14 @@ async function _discover(): Promise<OIDCDiscovery> {
  * Returns true when the OIDC client-side flow is configured via env vars.
  */
 export function isOidcConfigured(): boolean {
-  return Boolean(ISSUER && CLIENT_ID && REDIRECT_URI);
+  return isOidcClientConfigured();
 }
 
 /**
  * Kick off the authorization code + PKCE flow by redirecting the user to the
  * IdP authorization endpoint.
  */
-export async function startLoginFlow(): Promise<void> {
+export async function startLoginFlow(returnTo?: string): Promise<void> {
   if (!isOidcConfigured()) {
     throw new Error("OIDC is not configured. Set NEXT_PUBLIC_OIDC_ISSUER, NEXT_PUBLIC_OIDC_CLIENT_ID, and NEXT_PUBLIC_OIDC_REDIRECT_URI.");
   }
@@ -97,6 +99,11 @@ export async function startLoginFlow(): Promise<void> {
 
   sessionStorage.setItem(PKCE_STATE_KEY, state);
   sessionStorage.setItem(PKCE_VERIFIER_KEY, codeVerifier);
+  if (returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, returnTo);
+  } else {
+    sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+  }
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -119,12 +126,14 @@ export async function startLoginFlow(): Promise<void> {
  * Verifies state, exchanges the code for tokens via PKCE, and stores the
  * access token.
  */
-export async function handleCallback(code: string, state: string): Promise<void> {
+export async function handleCallback(code: string, state: string): Promise<string> {
   const savedState = sessionStorage.getItem(PKCE_STATE_KEY);
   const codeVerifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+  const postLoginRedirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
 
   sessionStorage.removeItem(PKCE_STATE_KEY);
   sessionStorage.removeItem(PKCE_VERIFIER_KEY);
+  sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
 
   if (!savedState || savedState !== state) {
     throw new Error("OIDC state mismatch. The login request may have been tampered with or expired.");
@@ -173,6 +182,10 @@ export async function handleCallback(code: string, state: string): Promise<void>
   }
 
   storeUserAccessToken(accessToken);
+  if (postLoginRedirect && postLoginRedirect.startsWith("/") && !postLoginRedirect.startsWith("//")) {
+    return postLoginRedirect;
+  }
+  return "/onboarding/aws";
 }
 
 // ---------------------------------------------------------------------------

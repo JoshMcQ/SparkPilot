@@ -16,6 +16,45 @@ provider "aws" {
   region = var.region
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "control_plane_kms" {
+  statement {
+    sid = "AllowAccountRootAdmin"
+    actions = [
+      "kms:*",
+    ]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid = "AllowCloudWatchLogsUsage"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey",
+    ]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${var.region}.amazonaws.com"]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values = [
+        "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/${local.name_prefix}/*",
+      ]
+    }
+  }
+}
+
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
   tags = merge(var.default_tags, {
@@ -166,6 +205,7 @@ resource "aws_kms_key" "control_plane" {
   description             = "KMS key for SparkPilot ${var.environment} control plane"
   deletion_window_in_days = 7
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.control_plane_kms.json
   tags                    = local.tags
 }
 

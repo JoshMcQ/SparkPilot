@@ -144,7 +144,7 @@ export default function DashboardPage() {
           <strong>{isAuthError ? "Authentication Required" : isApiDown ? "API Unreachable" : "Dashboard Error"}</strong>
           <div>
             {isAuthError
-              ? "Your token is missing, expired, or invalid. Apply a fresh bearer token in the auth panel."
+              ? "Your session is missing, expired, or invalid. Sign in again to continue."
               : isApiDown
                 ? "SparkPilot backend is not responding. Verify the API server is running and check your network connectivity."
                 : error}
@@ -252,6 +252,11 @@ export default function DashboardPage() {
           <h3>Cost &amp; Usage</h3>
           <p className="subtle">CUR-aligned showback and resource usage by team.</p>
           <Link href="/costs" className="inline-link">Open costs &rarr;</Link>
+        </article>
+        <article className="card">
+          <h3>Workflow Integrations</h3>
+          <p className="subtle">Airflow and Dagster entry points for orchestrated team operations.</p>
+          <Link href="/integrations" className="inline-link">Open integrations &rarr;</Link>
         </article>
       </div>
     </section>

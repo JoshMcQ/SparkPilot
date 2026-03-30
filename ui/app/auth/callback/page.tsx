@@ -26,8 +26,8 @@ function AuthCallbackContent() {
     }
 
     handleCallback(code, state)
-      .then(() => {
-        router.replace("/onboarding/aws");
+      .then((nextPath) => {
+        router.replace(nextPath);
       })
       .catch((err: unknown) => {
         setAsyncError(err instanceof Error ? err.message : "Login failed. Please try again.");

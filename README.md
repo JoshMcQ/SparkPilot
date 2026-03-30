@@ -28,7 +28,7 @@ pip install -e ".[dev]"
 docker compose up --build
 ```
 
-3. Mint a local user token for RBAC testing (mock OIDC), then paste it into the UI header auth panel:
+3. Mint a local user token for RBAC testing (mock OIDC):
 
 ```powershell
 $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("sparkpilot-cli:sparkpilot-cli-secret"))
@@ -38,6 +38,20 @@ $token = Invoke-RestMethod -Method Post -Uri http://localhost:8080/oauth/token -
   subject = "user:demo-admin"
 }
 $token.access_token
+```
+
+UI note: the UI is SSO-first and route protection is enforced by default. Manual token mode is development-only (`NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE=true`) and should not be used for production deployments.
+
+Production-style UI test (PowerShell):
+
+```powershell
+Set-Location ui
+Copy-Item .env.production.example .env.production.local
+# edit .env.production.local with your real API + OIDC values
+npm ci
+npm run verify:prod-env
+npm run build
+npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
 4. Run tests:

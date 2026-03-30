@@ -6,9 +6,11 @@
                     "dev":  "next dev",
                     "build":  "next build",
                     "start":  "next start",
+                    "verify:prod-env":  "node scripts/verify-prod-env.mjs",
                     "lint":  "eslint . --ext .js,.jsx,.ts,.tsx",
                     "test":  "node --import tsx --test \"tests/**/*.test.ts\"",
                     "test:e2e:onboarding":  "node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts",
+                    "test:e2e:auth":  "node ./node_modules/playwright/cli.js test tests/e2e/auth-route-guards.spec.ts --config=playwright.auth.config.ts",
                     "test:e2e:theme":  "node ./node_modules/playwright/cli.js test tests/e2e/theme-toggle.spec.ts",
                     "test:e2e:responsive":  "node ./node_modules/playwright/cli.js test tests/e2e/responsive-onboarding.spec.ts",
                     "test:e2e:cross-browser":  "node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts tests/e2e/theme-toggle.spec.ts --project=chromium --project=firefox --project=webkit"

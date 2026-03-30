@@ -13,6 +13,7 @@ import {
   type AuthMe,
 } from "@/lib/api";
 import { isOidcConfigured, startLoginFlow, decodeJwtForDisplay } from "@/lib/oidc-client";
+import { isManualTokenModeEnabled } from "@/lib/auth-config";
 
 function _formatExpiry(exp: number | null): string {
   if (exp === null) return "";
@@ -35,6 +36,7 @@ export function UserAuthPanel() {
   const [keyRotationDetected, setKeyRotationDetected] = useState(false);
   const [authMe, setAuthMe] = useState<AuthMe | null>(null);
   const oidcConfigured = isOidcConfigured();
+  const manualTokenModeEnabled = !oidcConfigured && isManualTokenModeEnabled();
 
   useEffect(() => {
     // Initialise from in-memory token first, then check HttpOnly session cookie.
@@ -48,7 +50,7 @@ export function UserAuthPanel() {
     }
 
     // Non-OIDC dev mode: fall back to localStorage for manual-paste workflow
-    if (!oidcConfigured) {
+    if (manualTokenModeEnabled) {
       const stored = window.localStorage.getItem(USER_ACCESS_TOKEN_STORAGE_KEY)?.trim() ?? "";
       setValue(stored);
       setActive(Boolean(stored));
@@ -56,12 +58,19 @@ export function UserAuthPanel() {
       return;
     }
 
-    // OIDC mode + no in-memory token (e.g. page refresh): ask server for cookie state
-    isSessionActive().then((hasSession) => {
-      setActive(hasSession);
-      if (hasSession) fetchAuthMe().then(setAuthMe);
-    });
-  }, [oidcConfigured]);
+    if (oidcConfigured) {
+      // OIDC mode + no in-memory token (e.g. page refresh): ask server for cookie state
+      isSessionActive().then((hasSession) => {
+        setActive(hasSession);
+        if (hasSession) fetchAuthMe().then(setAuthMe);
+      });
+      return;
+    }
+
+    setValue("");
+    setActive(false);
+    setAuthMe(null);
+  }, [manualTokenModeEnabled, oidcConfigured]);
 
   // Sync state when token is updated elsewhere (e.g. OIDC callback in same lifecycle)
   useEffect(() => {
@@ -211,10 +220,10 @@ export function UserAuthPanel() {
               : "Sign in to authenticate your requests."}
           </div>
         </>
-      ) : (
+      ) : manualTokenModeEnabled ? (
         <>
           <label className="auth-label" htmlFor="user-token">
-            User access token
+            User access token (development mode)
           </label>
           {active && tokenInfo ? (
             <div className="subtle" style={{ marginBottom: 4 }}>
@@ -241,6 +250,14 @@ export function UserAuthPanel() {
             {active
               ? "Requests are sent with your bearer token."
               : "Paste a token to authenticate API requests."}
+          </div>
+        </>
+      ) : (
+        <>
+          <label className="auth-label">Authentication</label>
+          <div className="subtle auth-status">
+            Single sign-on is required, but OIDC is not configured for this deployment.
+            Contact your administrator to configure `NEXT_PUBLIC_OIDC_*` settings.
           </div>
         </>
       )}
