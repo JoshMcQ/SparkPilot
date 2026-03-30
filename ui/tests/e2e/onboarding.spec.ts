@@ -115,6 +115,11 @@ test.describe("AWS onboarding flow", () => {
     await expect(page.getByText("Unknown")).toBeVisible();
     await expect(page.getByText(/Signed in, but \/v1\/auth\/me did not return scoped identity details./i).first()).toBeVisible();
     await expect(page.getByText(/Environment setup is blocked until access mapping is complete./i)).toBeVisible();
+    const nextActionCard = page.locator(".card").filter({
+      has: page.getByRole("heading", { name: /Current next action/i }),
+    });
+    await expect(nextActionCard.getByRole("link", { name: /Open login/i })).toBeVisible();
+    await expect(nextActionCard.getByRole("link", { name: /Request access/i })).toHaveCount(0);
   });
 
   test("routes unbound non-admin users to request-access path", async ({ page }) => {

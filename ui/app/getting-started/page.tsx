@@ -1,5 +1,3 @@
-﻿"use client";
-
 import Link from "next/link";
 import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";

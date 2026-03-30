@@ -167,6 +167,8 @@ export default function AwsOnboardingPage() {
           : "Identity checks run after session authentication.",
       remediation: identityBound
         ? undefined
+        : !authMe
+          ? "Retry sign-in and identity lookup before requesting access changes."
         : active
           ? isAdmin
             ? "Map this identity to a tenant in Access before creating environments or submitting runs."
@@ -174,6 +176,8 @@ export default function AwsOnboardingPage() {
           : "Authenticate first, then recheck identity mapping.",
       action: !active
         ? { kind: "link", label: "Open login", href: "/login" }
+        : !authMe
+          ? { kind: "link", label: "Open login", href: "/login" }
         : identityBound
           ? { kind: "link", label: "Open Access", href: "/access" }
           : isAdmin

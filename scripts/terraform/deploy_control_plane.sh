@@ -189,7 +189,7 @@ jq -n \
   }' > "${tfvars_file}"
 
 if ! jq -e 'type == "object"' "${tfvars_file}" >/dev/null 2>&1; then
-  echo "::error::Generated Terraform var-file is not valid JSON: ${tfvars_file}" >&2
+  echo "::error::Generated Terraform var-file must be a valid JSON object: ${tfvars_file}" >&2
   exit 1
 fi
 
