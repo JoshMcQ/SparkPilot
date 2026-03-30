@@ -76,16 +76,16 @@ if [[ "${is_internal_alb}" == "true" ]]; then
         desired_count="$(echo "${service_payload}" | jq -r '.services[0].desiredCount // 0')"
         running_count="$(echo "${service_payload}" | jq -r '.services[0].runningCount // 0')"
         pending_count="$(echo "${service_payload}" | jq -r '.services[0].pendingCount // 0')"
-        failed_rollouts="$(echo "${service_payload}" | jq -r '[.services[0].deployments[]? | select(.rolloutState == "FAILED")] | length')"
+        primary_rollout_state="$(echo "${service_payload}" | jq -r '([.services[0].deployments[]? | select(.status == "PRIMARY")][0].rolloutState) // ""')"
 
-        if [[ "${service_status}" == "ACTIVE" && "${desired_count}" -gt 0 && "${running_count}" -ge "${desired_count}" && "${pending_count}" -eq 0 && "${failed_rollouts}" -eq 0 ]]; then
+        if [[ "${service_status}" == "ACTIVE" && "${desired_count}" -gt 0 && "${running_count}" -ge "${desired_count}" && "${pending_count}" -eq 0 && "${primary_rollout_state}" != "FAILED" ]]; then
           echo "ECS service health check passed on attempt ${attempt}/${max_attempts}."
           echo "Skipping unauthenticated HTTP probe for internal endpoint."
           echo "Smoke checks passed."
           exit 0
         fi
 
-        echo "ECS service not ready (attempt ${attempt}/${max_attempts}): status=${service_status}, desired=${desired_count}, running=${running_count}, pending=${pending_count}, failed_rollouts=${failed_rollouts}"
+        echo "ECS service not ready (attempt ${attempt}/${max_attempts}): status=${service_status}, desired=${desired_count}, running=${running_count}, pending=${pending_count}, primary_rollout_state=${primary_rollout_state}"
       else
         echo "ECS service lookup returned no services (attempt ${attempt}/${max_attempts})."
       fi
