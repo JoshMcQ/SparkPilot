@@ -84,6 +84,9 @@ locals {
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
   https_enabled  = trimspace(var.acm_certificate_arn) != ""
+  vpc_endpoint_route_table_ids = distinct([
+    for rt in values(data.aws_route_table.endpoint_subnet_route_tables) : rt.id
+  ])
 
   api_task_name = substr(replace("${local.name_prefix}-api", "_", "-"), 0, 32)
   api_tg_name   = substr(replace("${local.name_prefix}-api-tg", "_", "-"), 0, 32)
@@ -141,6 +144,11 @@ locals {
     reconciler         = ["python", "-m", "sparkpilot.workers", "reconciler"]
     cur_reconciliation = ["python", "-m", "sparkpilot.workers", "cur-reconciliation"]
   }
+}
+
+data "aws_route_table" "endpoint_subnet_route_tables" {
+  for_each  = toset(concat(var.private_subnet_ids, var.public_subnet_ids))
+  subnet_id = each.value
 }
 
 check "emr_execution_role_required_in_live_mode" {
@@ -363,13 +371,6 @@ resource "aws_vpc_security_group_ingress_rule" "aws_api_endpoints_https_from_ecs
   description                  = "Allow HTTPS from ECS tasks to interface endpoints"
 }
 
-resource "aws_vpc_security_group_egress_rule" "aws_api_endpoints_all" {
-  security_group_id = aws_security_group.aws_api_endpoints.id
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
-  description       = "Allow endpoint egress"
-}
-
 resource "aws_vpc_endpoint" "secretsmanager" {
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.secretsmanager"
@@ -378,6 +379,44 @@ resource "aws_vpc_endpoint" "secretsmanager" {
   subnet_ids          = var.private_subnet_ids
   security_group_ids  = [aws_security_group.aws_api_endpoints.id]
   tags                = local.tags
+}
+
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  tags                = local.tags
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  tags                = local.tags
+}
+
+resource "aws_vpc_endpoint" "cloudwatch_logs" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.logs"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  tags                = local.tags
+}
+
+resource "aws_vpc_endpoint" "s3_gateway" {
+  vpc_id            = var.vpc_id
+  service_name      = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = local.vpc_endpoint_route_table_ids
+  tags              = local.tags
 }
 
 resource "aws_security_group" "postgres" {
