@@ -49,7 +49,7 @@ export async function resolveProxyAuthorization(incomingAuthorization: string | 
   }
 
   throw new ProxyAuthError(
-    "No user access token. Sign in or use the auth panel to authenticate.",
+    "No active user session. Sign in to authenticate.",
     401,
   );
 }

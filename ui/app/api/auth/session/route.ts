@@ -12,6 +12,13 @@ import { NextRequest, NextResponse } from "next/server";
 const COOKIE_NAME = "sparkpilot.session";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
+function shouldUseSecureCookies(request: NextRequest): boolean {
+  if (!IS_PRODUCTION) return false;
+  const host = request.nextUrl.hostname.trim().toLowerCase();
+  const isLocalhost = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  return !isLocalhost;
+}
+
 /** POST: Store access token in HttpOnly cookie. */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let body: Record<string, unknown>;
@@ -28,10 +35,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Default 8-hour session cookie
   const maxAge = typeof body?.max_age === "number" ? body.max_age : 28800;
+  const secure = shouldUseSecureCookies(request);
   const response = NextResponse.json({ status: "session_created" });
   response.cookies.set(COOKIE_NAME, accessToken, {
     httpOnly: true,
-    secure: IS_PRODUCTION,
+    secure,
     sameSite: "strict",
     path: "/",
     maxAge,
@@ -40,11 +48,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 /** DELETE: Clear session cookie. */
-export async function DELETE(): Promise<NextResponse> {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
+  const secure = shouldUseSecureCookies(request);
   const response = NextResponse.json({ status: "session_cleared" });
   response.cookies.set(COOKIE_NAME, "", {
     httpOnly: true,
-    secure: IS_PRODUCTION,
+    secure,
     sameSite: "strict",
     path: "/",
     maxAge: 0,

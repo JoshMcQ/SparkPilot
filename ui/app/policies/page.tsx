@@ -282,8 +282,12 @@ function CreatePolicyForm({
       </div>
 
       <label style={{ display: "block", marginTop: 8 }}>
-        Config (JSON)
+        <div className="json-editor-title">Config (JSON)</div>
+        <div className="json-editor-note" style={{ marginTop: 4 }}>
+          Use explicit schema fields for this rule type. Invalid JSON blocks policy creation.
+        </div>
         <textarea
+          className="json-textarea json-textarea-compact"
           value={configRaw}
           onChange={(e) => {
             setConfigRaw(e.target.value);
@@ -291,9 +295,12 @@ function CreatePolicyForm({
           }}
           rows={3}
           placeholder={RULE_TYPE_CONFIG_HINT[selectedRuleType]}
-          style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem" }}
         />
-        {configError ? <div className="error-text">{configError}</div> : null}
+        {configError ? (
+          <div className="error-text">{configError}</div>
+        ) : (
+          <div className="subtle">JSON is parsed before submit and stored as the policy rule configuration.</div>
+        )}
       </label>
 
       <div className="button-row" style={{ marginTop: 12 }}>

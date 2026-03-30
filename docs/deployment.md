@@ -203,14 +203,49 @@ From `ui`:
 
 ```bash
 npm install
-SPARKPILOT_API=https://api.sparkpilot.example \
-OIDC_ISSUER=https://auth.example \
-OIDC_AUDIENCE=sparkpilot-api \
-OIDC_CLIENT_ID=<ui-server-client-id> \
-OIDC_CLIENT_SECRET=<ui-server-client-secret> \
+SPARKPILOT_API=https://api.sparkpilot.cloud \
+SPARKPILOT_UI_ENFORCE_AUTH=true \
+NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE=false \
+NEXT_PUBLIC_OIDC_ISSUER=https://auth.sparkpilot.cloud \
+NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api \
+NEXT_PUBLIC_OIDC_CLIENT_ID=<ui-public-client-id> \
+NEXT_PUBLIC_OIDC_REDIRECT_URI=https://app.sparkpilot.cloud/auth/callback \
 npm run build
 npm run start
 ```
+
+The UI uses Authorization Code + PKCE. Do not set a browser client secret.
+`SPARKPILOT_UI_ENFORCE_AUTH` defaults to `true` when omitted.
+`NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE` is for non-production development only.
+
+Production-style local run (PowerShell):
+
+```powershell
+Set-Location ui
+Copy-Item .env.production.example .env.production.local
+# edit values for your API + OIDC settings
+npm ci
+npm run verify:prod-env
+npm run build
+npm run start -- --hostname 0.0.0.0 --port 3000
+```
+
+Or use the helper script:
+
+```powershell
+pwsh ./scripts/run-prod-local.ps1 `
+  -ApiBase "https://api.sparkpilot.cloud" `
+  -OidcIssuer "https://auth.sparkpilot.cloud" `
+  -OidcClientId "sparkpilot-ui" `
+  -OidcRedirectUri "https://app.sparkpilot.cloud/auth/callback" `
+  -OidcAudience "sparkpilot-api" `
+  -Port 3000
+```
+
+Route intent:
+
+- Public pre-access routes: `/`, `/about`, `/contact`, `/pricing`, `/why-not-diy`, `/why-not-serverless`, `/login`, `/auth/callback`, `/getting-started`
+- Authenticated product routes: `/dashboard`, `/onboarding/*`, `/environments/*`, `/runs`, `/integrations`, `/costs`, `/policies`, `/access`, `/settings`
 
 ## Recommended Rollout
 

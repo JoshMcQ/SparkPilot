@@ -30,7 +30,7 @@ async function proxy(request: NextRequest, context: RouteContext): Promise<NextR
   } catch (error) {
     if (error instanceof ProxyAuthError && error.statusCode === 401) {
       return NextResponse.json(
-        { detail: "No user access token. Use the auth panel to set your bearer token." },
+        { detail: "No active user session. Sign in to continue." },
         { status: 401 }
       );
     }

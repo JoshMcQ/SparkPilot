@@ -148,7 +148,7 @@ export default function AwsOnboardingPage() {
         ? undefined
         : oidcConfigured
           ? "Use OIDC sign-in from this page to establish the session."
-          : "OIDC is not configured. Use the login/manual token path for this environment.",
+          : "OIDC is not configured for this environment. Contact your administrator.",
       action: active
         ? null
         : oidcConfigured
@@ -316,6 +316,10 @@ export default function AwsOnboardingPage() {
           This flow is the canonical path from sign-in to proof-of-value. Follow each gate in order and resolve
           blocked steps before moving forward.
         </p>
+        <p className="subtle" style={{ marginTop: 8 }}>
+          You are in the authenticated product onboarding flow. Need the public pre-access guide?{" "}
+          <Link href="/getting-started" className="inline-link">Open Getting Started</Link>.
+        </p>
         <div className="subtle" style={{ marginTop: 8 }}>
           Progress: {completedCount}/{steps.length} complete ({progressPct}%)
         </div>
@@ -419,6 +423,7 @@ export default function AwsOnboardingPage() {
           <Link href="/access" className="button button-secondary">Access</Link>
           <Link href="/environments" className="button button-secondary">Environments</Link>
           <Link href="/runs" className="button button-secondary">Runs</Link>
+          <Link href="/integrations" className="button button-secondary">Integrations</Link>
           <Link href="/costs" className="button button-secondary">Costs</Link>
         </div>
       </div>

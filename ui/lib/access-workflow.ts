@@ -9,7 +9,7 @@ export const ACCESS_WORKFLOW_STEPS: AccessWorkflowStep[] = [
     id: "token",
     title: "Authenticate",
     description:
-      "Sign in via your IdP first. Keep manual token usage as a dev/bootstrap fallback only.",
+      "Sign in via your IdP first. Manual token mode is development-only and should remain disabled in production.",
   },
   {
     id: "identity",

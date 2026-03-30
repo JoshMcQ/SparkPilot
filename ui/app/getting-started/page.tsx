@@ -5,7 +5,7 @@ import { LandingFooter } from "@/components/landing-footer";
 
 export const metadata: Metadata = {
   title: "Getting Started | SparkPilot",
-  description: "Clear path from signup to first successful Spark run on AWS.",
+  description: "Public pre-access guide for SparkPilot onboarding.",
 };
 
 const FLOW_STEPS = [
@@ -19,25 +19,25 @@ const FLOW_STEPS = [
     id: "2",
     title: "Sign in with SSO",
     detail: "Use your organization identity provider to start an authenticated session.",
-    cta: { label: "Continue to login", href: "/login" },
+    cta: { label: "Continue to login", href: "/login?next=%2Fonboarding%2Faws" },
   },
   {
     id: "3",
-    title: "Complete guided onboarding",
-    detail: "Follow the in-app start-here steps to create environment, job template, and first run.",
-    cta: { label: "Continue to onboarding", href: "/onboarding/aws" },
+    title: "Enter product onboarding",
+    detail: "After sign-in, continue in the authenticated Start Here flow to configure your workspace.",
+    cta: { label: "Go to product onboarding", href: "/login?next=%2Fonboarding%2Faws" },
   },
   {
     id: "4",
     title: "Run and verify",
-    detail: "Submit first run, check diagnostics/logs, and verify usage/cost visibility.",
-    cta: { label: "Open Runs", href: "/runs" },
+    detail: "Submit your first run, check diagnostics/logs, and verify usage/cost visibility.",
+    cta: { label: "Open Runs after login", href: "/login?next=%2Fruns" },
   },
 ];
 
 const TRACKS = [
   {
-    title: "I'm joining an existing SparkPilot workspace",
+    title: "I am joining an existing SparkPilot workspace",
     audience: "Most users",
     bullets: [
       "Request access or invitation from your SparkPilot admin.",
@@ -47,13 +47,13 @@ const TRACKS = [
     ],
   },
   {
-    title: "I'm the first admin setting up a new workspace",
+    title: "I am the first admin setting up a new workspace",
     audience: "Platform/Admin owner",
     bullets: [
       "Set up the workspace once, then your end users follow the normal sign-in flow.",
       "Configure OIDC and create first admin identity mapping.",
-      "Use assisted BYOC-Lite setup to discover cluster + suggested namespace.",
-      "Run first successful job, then onboard end users through Access and onboarding.",
+      "Use assisted BYOC-Lite setup to discover cluster and suggested namespace.",
+      "Run the first successful job, then onboard end users through Access and onboarding.",
     ],
   },
 ];
@@ -61,8 +61,8 @@ const TRACKS = [
 const START_OPTIONS = [
   {
     title: "I am an end user",
-    detail: "I just want to sign in and run jobs in an existing SparkPilot workspace.",
-    cta: { label: "Sign in", href: "/login" },
+    detail: "I want to sign in and run jobs in an existing SparkPilot workspace.",
+    cta: { label: "Sign in", href: "/login?next=%2Fonboarding%2Faws" },
   },
   {
     title: "I need access first",
@@ -71,10 +71,18 @@ const START_OPTIONS = [
   },
   {
     title: "I am the platform admin",
-    detail: "I own first-time workspace setup and want the admin path.",
-    cta: { label: "Open admin access", href: "/access" },
+    detail: "I own first-time workspace setup and need the admin path.",
+    cta: { label: "Open admin access", href: "/login?next=%2Faccess" },
   },
 ];
+
+function ArrowLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link href={href} className="inline-link">
+      {label} {"->"}
+    </Link>
+  );
+}
 
 export default function GettingStartedPage() {
   return (
@@ -83,55 +91,69 @@ export default function GettingStartedPage() {
 
       <section className="getting-started-page">
         <div className="getting-started-hero">
-          <div className="landing-section-badge">Getting Started</div>
-          <h1 className="getting-started-title">Clear path from signup to first successful run</h1>
+          <div className="landing-section-badge">Public Pre-Access Guide</div>
+          <h1 className="getting-started-title">Clear path from pre-access to authenticated onboarding</h1>
           <p className="getting-started-sub">
-            Start by choosing your role. End users sign in and follow guided onboarding. Platform admins handle one-time
+            This page is public and explains where to start. End users sign in and follow authenticated onboarding.
+            Platform admins handle one-time
             workspace setup and access mapping.
           </p>
           <div className="landing-hero-actions">
-            <Link href="/login" className="landing-btn landing-btn-primary">Start guided setup</Link>
+            <Link href="/login?next=%2Fonboarding%2Faws" className="landing-btn landing-btn-primary">Sign in and continue</Link>
             <Link href="/contact" className="landing-btn landing-btn-secondary">Request access</Link>
           </div>
           <div className="getting-started-callout">
-            No public self-signup yet. If you are not the platform admin, start with access request and sign-in.
-            AWS bootstrap steps are admin-only.
+            Public flow ends here. Product operations (Onboarding, Environments, Runs, Costs, Access) require sign-in.
           </div>
         </div>
 
-        <div className="getting-started-grid">
-          {START_OPTIONS.map((option) => (
-            <article key={option.title} className="getting-started-card">
-              <h3>{option.title}</h3>
-              <p>{option.detail}</p>
-              <Link href={option.cta.href} className="inline-link">{option.cta.label} →</Link>
-            </article>
-          ))}
-        </div>
+        <div className="getting-started-sections">
+          <div className="getting-started-section-title-row">
+            <h2>Pick your starting point</h2>
+            <p>Use the path that matches your role so onboarding stays clean and predictable.</p>
+          </div>
+          <div className="getting-started-grid getting-started-grid-3">
+            {START_OPTIONS.map((option) => (
+              <article key={option.title} className="getting-started-card">
+                <h3>{option.title}</h3>
+                <p>{option.detail}</p>
+                <ArrowLink href={option.cta.href} label={option.cta.label} />
+              </article>
+            ))}
+          </div>
 
-        <div className="getting-started-grid">
-          {TRACKS.map((track) => (
-            <article key={track.title} className="getting-started-card">
-              <div className="getting-started-step">{track.audience}</div>
-              <h3>{track.title}</h3>
-              <ul className="contact-expect-list">
-                {track.bullets.map((bullet) => (
-                  <li key={bullet}>{bullet}</li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </div>
+          <div className="getting-started-section-title-row">
+            <h2>Role-based tracks</h2>
+            <p>End users and admins have different responsibilities during first-time setup.</p>
+          </div>
+          <div className="getting-started-grid">
+            {TRACKS.map((track) => (
+              <article key={track.title} className="getting-started-card">
+                <div className="getting-started-step">{track.audience}</div>
+                <h3>{track.title}</h3>
+                <ul className="contact-expect-list">
+                  {track.bullets.map((bullet) => (
+                    <li key={bullet}>{bullet}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
 
-        <div className="getting-started-grid">
-          {FLOW_STEPS.map((step) => (
-            <article key={step.id} className="getting-started-card">
-              <div className="getting-started-step">Step {step.id}</div>
-              <h3>{step.title}</h3>
-              <p>{step.detail}</p>
-              <Link href={step.cta.href} className="inline-link">{step.cta.label} →</Link>
-            </article>
-          ))}
+          <div className="getting-started-section-title-row">
+            <h2>Canonical onboarding sequence</h2>
+            <p>Follow these gates in order to reach a successful first run with evidence.</p>
+          </div>
+          <div className="getting-started-grid">
+            {FLOW_STEPS.map((step) => (
+              <article key={step.id} className="getting-started-card">
+                <div className="getting-started-step">Step {step.id}</div>
+                <h3>{step.title}</h3>
+                <p>{step.detail}</p>
+                <ArrowLink href={step.cta.href} label={step.cta.label} />
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 

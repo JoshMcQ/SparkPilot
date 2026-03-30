@@ -517,7 +517,18 @@ export function RunSubmitCard({
           </div>
         </>
       ) : (
-        <div className="json-panel stack">
+        <div className="json-panel json-editor-shell stack">
+          <div className="json-editor-header">
+            <div>
+              <div className="json-editor-title">Run Payload JSON</div>
+              <div className="json-editor-note">
+                Use JSON mode for copy/paste reproducibility during incident response and workflow automation.
+              </div>
+            </div>
+            <div className={`json-editor-status ${jsonError ? "error" : "ok"}`}>
+              {jsonError ? "Validation error" : "Valid JSON"}
+            </div>
+          </div>
           <div className="button-row">
             <button type="button" className="button button-sm button-secondary" onClick={() => syncJsonFromForm(form)}>
               Export From Form
@@ -526,8 +537,8 @@ export function RunSubmitCard({
               Apply JSON To Form
             </button>
           </div>
-          <label className="multiline-field">
-            Run Payload JSON
+          <label className="multiline-field json-editor-field">
+            <span className="json-editor-label">Payload</span>
             <textarea
               className="json-textarea"
               value={jsonInput}

@@ -1,14 +1,37 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const staticAllowedDevOrigins = [
+  "8c0f-76-109-132-91.ngrok-free.app",
+  "b62b-76-109-132-91.ngrok-free.app",
+];
+const extraAllowedDevOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedDevOrigins = Array.from(new Set([
+  ...staticAllowedDevOrigins,
+  ...extraAllowedDevOrigins,
+]));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins,
+  turbopack: {
+    root: __dirname,
+  },
   async headers() {
     const isDev = process.env.NODE_ENV === "development";
 
-    // #58: Remove 'unsafe-inline' for scripts in production.
-    // Use nonce-based script policy for production builds.
+    // Next.js emits small inline runtime/bootstrap scripts in production.
+    // Keep unsafe-inline until a nonce-based CSP is fully wired end-to-end.
     const scriptSrc = isDev
       ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-      : "script-src 'self'";
+      : "script-src 'self' 'unsafe-inline'";
 
     // #59: Allowlist external OIDC issuer origins in CSP connect-src.
     // Driven by NEXT_PUBLIC_OIDC_ISSUER env var; deny-by-default for unknown origins.

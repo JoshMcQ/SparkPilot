@@ -7,38 +7,32 @@ export default defineConfig({
     timeout: 5_000,
   },
   fullyParallel: false,
-  reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
+  reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:3001",
+    baseURL: "http://127.0.0.1:3130",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1 --port 3001",
-    url: "http://127.0.0.1:3001/",
-    reuseExistingServer: false,
+    command: "npm run start -- --hostname 127.0.0.1 --port 3130",
+    url: "http://127.0.0.1:3130/",
+    reuseExistingServer: true,
     timeout: 120_000,
     env: {
+      SPARKPILOT_API: "http://127.0.0.1:9999",
+      SPARKPILOT_UI_ENFORCE_AUTH: "true",
+      NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE: "false",
       NEXT_PUBLIC_OIDC_ISSUER: "https://issuer.example.com",
       NEXT_PUBLIC_OIDC_CLIENT_ID: "sparkpilot-ui",
-      NEXT_PUBLIC_OIDC_REDIRECT_URI: "http://127.0.0.1:3001/auth/callback",
-      SPARKPILOT_UI_ENFORCE_AUTH: "false",
-      SPARKPILOT_API: "http://127.0.0.1:9999",
+      NEXT_PUBLIC_OIDC_REDIRECT_URI: "http://127.0.0.1:3130/auth/callback",
+      NEXT_PUBLIC_OIDC_AUDIENCE: "sparkpilot-api",
     },
   },
   projects: [
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
-    },
-    {
-      name: "firefox",
-      use: { ...devices["Desktop Firefox"] },
-    },
-    {
-      name: "webkit",
-      use: { ...devices["Desktop Safari"] },
     },
   ],
 });

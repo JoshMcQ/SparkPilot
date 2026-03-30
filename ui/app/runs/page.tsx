@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type DiagnosticItem,
@@ -442,6 +443,9 @@ export default function RunsPage() {
       <div className="card">
         <h3>Run Operations</h3>
         <div className="subtle">Create jobs, submit runs through the preflight gate, and inspect CloudWatch log streams.</div>
+        <div className="button-row" style={{ marginTop: 10 }}>
+          <Link href="/integrations" className="button button-secondary">Workflow integrations</Link>
+        </div>
       </div>
 
       <div className="card">

@@ -20,12 +20,12 @@ for (const viewport of VIEWPORTS) {
 
     await page.goto("/onboarding/aws");
 
-    await expect(page.getByRole("heading", { name: /authenticate, verify scope, then provision byoc-lite safely/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /sign in with oidc/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /open environment setup/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /operator checklist/i })).toBeVisible();
-
+    await expect(page.getByTestId("onboarding-title")).toHaveText(/guided onboarding to first successful spark run/i);
     const hero = page.locator(".onboarding-hero");
+    await expect(page.getByRole("button", { name: /sign in with oidc/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /current next action/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /step-by-step gate status/i })).toBeVisible();
+
     await expect(hero).toBeVisible();
     const heroBox = await hero.boundingBox();
     if (!heroBox) throw new Error(`Missing hero bounding box at ${viewport.name}`);

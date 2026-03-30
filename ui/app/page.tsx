@@ -18,6 +18,7 @@ import {
   IconCheck,
   IconX,
   IconArrowRight,
+  IconAlertTriangle,
 } from "./icons";
 
 /* ── Scroll-reveal hook ─────────────────────────────── */
@@ -78,9 +79,15 @@ const FEATURES = [
   },
   {
     icon: <IconActivity />,
-    title: "Run Observability",
+    title: "Runtime Management",
     description:
-      "Deterministic CloudWatch log pointers, EMR virtual cluster IDs, and real-time state tracking from queued to terminal. No hunting for the right log group after a failure.",
+      "Three background workers — Scheduler, Reconciler, and Provisioner — own the full run lifecycle. SparkPilot dispatches queued jobs to AWS, polls EMR for state transitions, and surfaces deterministic log pointers. You track runs in a dashboard, not a CloudWatch stream.",
+  },
+  {
+    icon: <IconAlertTriangle />,
+    title: "Structured Diagnostics",
+    description:
+      "When a run fails, SparkPilot classifies the cause — OOM kill, Spot interruption, S3 access denied, timeout, unknown user error. Engineers get root cause with remediation context, not raw EMR error codes.",
   },
   {
     icon: <IconCompass />,
@@ -133,6 +140,14 @@ const BEFORE_AFTER = [
     before: "Write one-off Terraform for every new EKS-based Spark deployment",
     after: "SparkPilot provisions network, EKS, and EMR from a versioned, reproducible control plane",
   },
+  {
+    before: "Poll EMR DescribeJobRun in a cron loop to know when your job finishes",
+    after: "SparkPilot's Reconciler polls EMR continuously and writes structured state transitions — queued → running → succeeded",
+  },
+  {
+    before: "Parse raw EMR error events to understand why a job failed",
+    after: "SparkPilot classifies failures — OOM, Spot interruption, S3 access denied, timeout — with remediation context",
+  },
 ];
 
 const ENGINES = [
@@ -175,13 +190,39 @@ const INTEGRATIONS = [
   },
 ];
 
+const RUN_STATES = [
+  { label: "queued", terminal: false },
+  { label: "dispatching", terminal: false },
+  { label: "accepted", terminal: false },
+  { label: "running", terminal: false },
+];
+const RUN_TERMINAL_STATES = ["succeeded", "failed", "cancelled", "timed_out"];
+
+const WORKERS = [
+  {
+    name: "Scheduler",
+    icon: <IconCpu />,
+    desc: "Polls for queued runs and dispatches them to AWS EMR, EMR Serverless, EMR on EC2, or Databricks. Manages concurrency limits and environment-level queueing.",
+  },
+  {
+    name: "Reconciler",
+    icon: <IconActivity />,
+    desc: "Continuously polls EMR for job state changes and writes structured transitions — accepted → running → succeeded/failed. Detects stalled runs and triggers timeout handling.",
+  },
+  {
+    name: "Provisioner",
+    icon: <IconLayers />,
+    desc: "Manages environment lifecycle — BYOC-Lite and Full BYOC provisioning, checkpoint recovery across Terraform stages, and environment teardown.",
+  },
+];
+
 const HOW_IT_WORKS = [
   {
     step: "1",
     title: "Connect your AWS account",
     description:
       "Create a cross-account IAM role and OIDC association. SparkPilot validates the trust relationship, required permissions, and namespace prerequisites automatically — with exact remediation for every failure. Supports Cognito, Auth0, Okta, and any standards-compliant OIDC provider.",
-    docLink: { href: "/docs/setup/oidc-provider-setup", label: "OIDC provider setup guide" },
+    docLink: { href: "/getting-started", label: "Start here onboarding guide" },
   },
   {
     step: "2",
@@ -219,6 +260,8 @@ const COMPARE_ROWS = [
   { topic: "Lake Formation FGAC permission validation", diy: false, serverless: false, sp: true },
   { topic: "Policy engine for submission guardrails", diy: false, serverless: false, sp: true },
   { topic: "Kubernetes-native control plane", diy: true, serverless: false, sp: true },
+  { topic: "Background Reconciler with structured state transitions", diy: false, serverless: false, sp: true },
+  { topic: "Automated failure classification (OOM, Spot, access denied)", diy: false, serverless: false, sp: true },
   { topic: "No infra management required", diy: false, serverless: true, sp: false },
   { topic: "Sub-minute job start time", diy: false, serverless: true, sp: false },
 ];
@@ -239,9 +282,10 @@ export default function LandingPage() {
           <span className="landing-hero-accent">Ship with confidence.</span>
         </h2>
         <p className="landing-hero-sub">
-          SparkPilot is a production control plane for Spark on AWS — preflight safety
-          gates, CUR-aligned cost attribution, multi-tenant isolation, and orchestrator
-          integrations. Your data never leaves your AWS account.
+          Data engineers submit a job — SparkPilot handles everything else. Preflight
+          validation, AWS dispatch, real-time run tracking, structured failure diagnostics,
+          and CUR-aligned cost attribution. One control plane for the full Spark lifecycle,
+          inside your AWS account.
         </p>
         <div className="landing-hero-actions">
           <Link href="/contact" className="landing-btn landing-btn-primary">
@@ -308,8 +352,49 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Run Lifecycle ────────────────────────────── */}
+      <section className="landing-section landing-section-alt" id="lifecycle">
+        <div className="landing-section-header">
+          <div className="landing-section-badge">Run Lifecycle</div>
+          <h2 className="landing-section-title">SparkPilot calls AWS — you don&apos;t have to</h2>
+          <p className="landing-section-sub">
+            Submit a job through the SparkPilot API, Airflow, or Dagster. Three background
+            workers handle dispatch, state reconciliation, and environment provisioning.
+            Your data engineers interact with SparkPilot — not directly with AWS.
+          </p>
+        </div>
+
+        {/* State machine */}
+        <div className="reveal" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "6px", padding: "18px 24px", background: "var(--surface-1)", border: "1px solid var(--line-soft)", borderRadius: "var(--radius-lg)", marginBottom: "32px", maxWidth: "760px", margin: "0 auto 32px" } as React.CSSProperties}>
+          {RUN_STATES.map((s) => (
+            <span key={s.label} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "0.76rem", fontWeight: 600, letterSpacing: "0.03em", padding: "3px 11px", borderRadius: "999px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", color: "var(--text-soft)" }}>
+                {s.label}
+              </span>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>→</span>
+            </span>
+          ))}
+          <span style={{ fontSize: "0.76rem", fontWeight: 600, letterSpacing: "0.03em", padding: "3px 11px", borderRadius: "999px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", color: "var(--text-muted)" }}>
+            {RUN_TERMINAL_STATES.join(" · ")}
+          </span>
+        </div>
+
+        {/* Workers */}
+        <div className="landing-engines-grid">
+          {WORKERS.map((w) => (
+            <div key={w.name} className="landing-engine-card reveal">
+              <div className="landing-engine-header">
+                <div className="landing-feature-icon">{w.icon}</div>
+                <strong>{w.name}</strong>
+              </div>
+              <p>{w.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── Engines ──────────────────────────────────── */}
-      <section className="landing-section landing-section-alt" id="engines">
+      <section className="landing-section" id="engines">
         <div className="landing-section-header">
           <div className="landing-section-badge">Supported Engines</div>
           <h2 className="landing-section-title">One control plane, four Spark runtimes</h2>
