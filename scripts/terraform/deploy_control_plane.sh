@@ -294,4 +294,6 @@ fi
 echo "Deployed API base URL: ${api_base_url}"
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "api_base_url=${api_base_url}" >> "${GITHUB_OUTPUT}"
+  echo "ecs_cluster_name=${ecs_cluster_name}" >> "${GITHUB_OUTPUT}"
+  echo "ecs_api_service_name=${ecs_api_service_name}" >> "${GITHUB_OUTPUT}"
 fi
