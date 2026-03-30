@@ -219,6 +219,11 @@ bootstrap_secret_arn="$(terraform -chdir="${terraform_root}" output -raw bootstr
 ecs_cluster_name="$(terraform -chdir="${terraform_root}" output -raw ecs_cluster_name 2>/dev/null || true)"
 ecs_worker_service_names_json="$(terraform -chdir="${terraform_root}" output -json ecs_worker_service_names 2>/dev/null || echo '{}')"
 ecs_api_service_name="$(terraform -chdir="${terraform_root}" output -raw ecs_api_service_name 2>/dev/null || true)"
+alb_internal="$(terraform -chdir="${terraform_root}" output -raw alb_internal 2>/dev/null || echo "false")"
+
+if [[ -z "${alb_internal}" ]]; then
+  alb_internal="false"
+fi
 
 if [[ -z "${database_url_secret_arn}" ]]; then
   echo "::error::Terraform output 'database_url_secret_arn' is empty." >&2
@@ -296,4 +301,5 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "api_base_url=${api_base_url}" >> "${GITHUB_OUTPUT}"
   echo "ecs_cluster_name=${ecs_cluster_name}" >> "${GITHUB_OUTPUT}"
   echo "ecs_api_service_name=${ecs_api_service_name}" >> "${GITHUB_OUTPUT}"
+  echo "alb_internal=${alb_internal}" >> "${GITHUB_OUTPUT}"
 fi

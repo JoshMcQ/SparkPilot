@@ -28,12 +28,24 @@ max_attempts="${SMOKE_MAX_ATTEMPTS:-30}"
 sleep_seconds="${SMOKE_SLEEP_SECONDS:-5}"
 api_host="${api_base_url#*://}"
 api_host="${api_host%%/*}"
+alb_internal_raw="${ALB_INTERNAL:-}"
+alb_internal_normalized="$(echo "${alb_internal_raw}" | tr '[:upper:]' '[:lower:]')"
+is_internal_alb="false"
+
+if [[ "${alb_internal_normalized}" == "true" ]]; then
+  is_internal_alb="true"
+elif [[ "${alb_internal_normalized}" == "false" ]]; then
+  is_internal_alb="false"
+elif [[ "${api_host}" == internal-* ]]; then
+  # Backward compatibility if ALB_INTERNAL was not exported yet.
+  is_internal_alb="true"
+fi
 
 echo "Running control-plane smoke checks against ${api_base_url}"
 
 # GitHub-hosted runners cannot reach private/internal ALBs directly.
 # For internal endpoints, validate ECS service health via the ECS API instead.
-if [[ "${api_host}" == internal-* ]]; then
+if [[ "${is_internal_alb}" == "true" ]]; then
   require_env "ECS_CLUSTER_NAME"
   require_env "ECS_API_SERVICE_NAME"
   require_env "AWS_REGION"
@@ -43,7 +55,7 @@ if [[ "${api_host}" == internal-* ]]; then
     exit 1
   fi
 
-  echo "::notice::Detected internal endpoint (${api_host}); using ECS service health checks instead of direct HTTP."
+  echo "::notice::Detected internal ALB endpoint (${api_host}); using ECS service health checks instead of direct HTTP."
 
   attempt=1
   last_service_payload=""
@@ -94,6 +106,8 @@ if [[ "${api_host}" == internal-* ]]; then
     attempt=$((attempt + 1))
   done
 fi
+
+echo "::notice::Endpoint (${api_host}) is external; proceeding with HTTP health checks."
 
 attempt=1
 last_payload=""

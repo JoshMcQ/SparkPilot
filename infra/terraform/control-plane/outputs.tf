@@ -43,6 +43,11 @@ output "api_base_url" {
   description = "SparkPilot API base URL. Uses https:// when acm_certificate_arn is set, http:// otherwise."
 }
 
+output "alb_internal" {
+  value       = local.alb_internal
+  description = "Whether the API ALB is internal-only."
+}
+
 output "https_enabled" {
   value       = local.https_enabled
   description = "Whether HTTPS is enabled on the API ALB."
