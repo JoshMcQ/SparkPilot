@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import {
   type UserIdentity,
   type UserIdentityCreateRequest,
@@ -761,6 +762,10 @@ export default function AccessPage() {
         <div className="subtle">
           Manage user identities, teams, team-environment scopes, and budget guardrails.
           All operations require admin-level bearer token authentication.
+        </div>
+        <div className="subtle" style={{ marginTop: 8 }}>
+          Not an admin? Go to <Link href="/getting-started" className="inline-link">Start Here</Link> or{" "}
+          <Link href="/contact" className="inline-link">Request access</Link>. This page is for workspace administrators.
         </div>
       </div>
       <div className="card">

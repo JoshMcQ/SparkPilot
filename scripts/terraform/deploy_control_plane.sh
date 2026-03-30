@@ -109,9 +109,10 @@ if [[ -n "${cur_athena_database}" || -n "${cur_athena_table}" || -n "${cur_athen
   fi
 fi
 
-backend_file="$(mktemp)"
-tfvars_file="$(mktemp)"
-plan_file="$(mktemp)"
+# Terraform determines var-file format from extension; ensure JSON extension.
+backend_file="$(mktemp "${TMPDIR:-/tmp}/sparkpilot-backend-XXXXXX.hcl")"
+tfvars_file="$(mktemp "${TMPDIR:-/tmp}/sparkpilot-vars-XXXXXX.tfvars.json")"
+plan_file="$(mktemp "${TMPDIR:-/tmp}/sparkpilot-plan-XXXXXX.tfplan")"
 cleanup() {
   rm -f "${backend_file}" "${tfvars_file}" "${plan_file}"
 }
@@ -186,6 +187,11 @@ jq -n \
     acm_certificate_arn: $acm_certificate_arn,
     enable_ecs_exec: $enable_ecs_exec
   }' > "${tfvars_file}"
+
+if ! jq -e 'type == "object"' "${tfvars_file}" >/dev/null 2>&1; then
+  echo "::error::Generated Terraform var-file must be a valid JSON object: ${tfvars_file}" >&2
+  exit 1
+fi
 
 echo "Deploying control-plane Terraform for environment '${SPARKPILOT_ENVIRONMENT}'"
 echo "Terraform root: ${terraform_root}"

@@ -133,7 +133,8 @@ export default function AwsOnboardingPage() {
     () => runs.filter((row) => row.state === "succeeded"),
     [runs]
   );
-  const canCreateEnvironment = authMe?.role === "admin";
+  const isAdmin = authMe?.role === "admin";
+  const identityBound = Boolean(authMe?.tenant_id);
 
   const steps: OnboardingStep[] = [
     {
@@ -157,18 +158,30 @@ export default function AwsOnboardingPage() {
     {
       id: "identity",
       title: "Verify identity mapping",
-      status: !active ? "blocked" : authMe?.tenant_id ? "done" : "blocked",
+      status: !active ? "blocked" : identityBound ? "done" : isAdmin ? "todo" : "blocked",
       detail: authMe
         ? `Role: ${authMe.role}. Tenant: ${authMe.tenant_id ?? "not bound"}. Team: ${authMe.team_id ?? "not bound"}.`
         : active
           ? "Signed in, but /v1/auth/me did not return scoped identity details."
           : "Identity checks run after session authentication.",
-      remediation: authMe?.tenant_id
+      remediation: identityBound
         ? undefined
+        : !authMe
+          ? "Retry sign-in and identity lookup before requesting access changes."
         : active
-          ? "Map your identity in Access before creating environments or submitting runs."
+          ? isAdmin
+            ? "Map this identity to a tenant in Access before creating environments or submitting runs."
+            : "Ask your SparkPilot admin to map your identity to a tenant in Access."
           : "Authenticate first, then recheck identity mapping.",
-      action: { kind: "link", label: "Open Access", href: "/access" },
+      action: !active
+        ? { kind: "link", label: "Open login", href: "/login" }
+        : !authMe
+          ? { kind: "link", label: "Open login", href: "/login" }
+        : identityBound
+          ? { kind: "link", label: "Open Access", href: "/access" }
+          : isAdmin
+            ? { kind: "link", label: "Open Access", href: "/access" }
+            : { kind: "link", label: "Request access", href: "/contact" },
     },
     {
       id: "environment",
@@ -179,7 +192,7 @@ export default function AwsOnboardingPage() {
           ? "blocked"
         : readyEnvironments.length > 0
           ? "done"
-          : canCreateEnvironment
+          : isAdmin
             ? environments.length > 0
               ? "waiting"
               : "todo"
@@ -188,29 +201,35 @@ export default function AwsOnboardingPage() {
         ? `${environments.length} total visible environment(s).`
         : !active || !authMe
           ? "Environment setup is blocked until access mapping is complete."
-          : !authMe.tenant_id
-            ? "Environment setup is blocked because your identity is not mapped to a tenant."
-          : canCreateEnvironment
-            ? environments.length > 0
-              ? "Environment exists but is not ready yet."
-              : "Create your first BYOC-Lite environment."
+        : !identityBound
+          ? "Environment setup is blocked because your identity is not mapped to a tenant."
+        : isAdmin
+          ? environments.length > 0
+            ? "Environment exists but is not ready yet."
+            : "Create your first BYOC-Lite environment."
             : "Environment creation requires admin role.",
       remediation: readyEnvironments.length > 0
         ? undefined
         : !active || !authMe
           ? "Complete sign-in and identity mapping first."
-          : !authMe.tenant_id
-            ? "Map this identity to a tenant in Access, then continue with assisted setup."
-          : canCreateEnvironment
+        : !identityBound
+            ? isAdmin
+              ? "Map this identity to a tenant in Access, then continue with assisted setup."
+              : "Ask your SparkPilot admin to map your identity in Access before environment setup."
+          : isAdmin
             ? environments.length > 0
               ? "Wait for provisioning to complete or open Environments for retry/remediation."
               : "Run assisted setup: discover cluster, use suggested namespace, then create environment."
             : "Ask an admin to create the first environment, then continue here.",
-      action: !active || !authMe || !authMe.tenant_id
-        ? { kind: "link", label: "Open Access", href: "/access" }
+      action: !active || !authMe
+        ? { kind: "link", label: "Open login", href: "/login" }
+        : !identityBound
+          ? isAdmin
+            ? { kind: "link", label: "Open Access", href: "/access" }
+            : { kind: "link", label: "Request access", href: "/contact" }
         : environments.length > 0
           ? { kind: "link", label: "Open Environments", href: "/environments" }
-        : canCreateEnvironment
+        : isAdmin
           ? { kind: "link", label: "Open assisted setup", href: "#assisted-environment-setup" }
           : { kind: "link", label: "Open Environments", href: "/environments" },
     },
@@ -275,7 +294,7 @@ export default function AwsOnboardingPage() {
   const completedCount = steps.filter((step) => step.status === "done").length;
   const progressPct = Math.round((completedCount / steps.length) * 100);
   const nextStep = steps.find((step) => step.status !== "done") ?? null;
-  const showEmbeddedEnvironmentSetup = active && Boolean(authMe?.tenant_id) && canCreateEnvironment && environments.length === 0;
+  const showEmbeddedEnvironmentSetup = active && Boolean(authMe?.tenant_id) && isAdmin && environments.length === 0;
 
   async function handleSignIn() {
     setLoginPending(true);
