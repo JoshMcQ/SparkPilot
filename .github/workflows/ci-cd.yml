@@ -172,25 +172,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Deploy preflight — validate required secrets
+        id: preflight
+        shell: bash
+        env:
+          DEPLOY_ENV: dev
+          ROLE_ARN: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ secrets.DEV_TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.DEV_TF_LOCK_TABLE }}
+          VPC_ID: ${{ secrets.DEV_VPC_ID }}
+          PRIVATE_SUBNET_IDS_JSON: ${{ secrets.DEV_PRIVATE_SUBNET_IDS_JSON }}
+          DB_PASSWORD: ${{ secrets.DEV_DB_PASSWORD }}
+          OIDC_ISSUER: ${{ secrets.DEV_OIDC_ISSUER }}
+          OIDC_AUDIENCE: ${{ secrets.DEV_OIDC_AUDIENCE }}
+          OIDC_JWKS_URI: ${{ secrets.DEV_OIDC_JWKS_URI }}
+          BOOTSTRAP_SECRET: ${{ secrets.DEV_BOOTSTRAP_SECRET }}
+        run: bash scripts/ci/deploy_preflight.sh
+
       - name: Configure AWS credentials
+        if: steps.preflight.outputs.skip != 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Docker Buildx
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Setup Terraform
+        if: steps.preflight.outputs.skip != 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.5
 
       - name: Login to ECR
+        if: steps.preflight.outputs.skip != 'true'
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Ensure ECR repositories
+        if: steps.preflight.outputs.skip != 'true'
         id: repos
         shell: bash
         run: |
@@ -208,6 +230,7 @@ jobs:
           echo "worker_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-worker-dev" >> "$GITHUB_OUTPUT"
 
       - name: Build and push API image
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -218,6 +241,7 @@ jobs:
             ${{ steps.repos.outputs.api_repo }}:latest
 
       - name: Build and push worker image
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -228,6 +252,7 @@ jobs:
             ${{ steps.repos.outputs.worker_repo }}:latest
 
       - name: Terraform deploy (dev)
+        if: steps.preflight.outputs.skip != 'true'
         id: terraform_deploy
         shell: bash
         env:
@@ -267,6 +292,7 @@ jobs:
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (dev)
+        if: steps.preflight.outputs.skip != 'true'
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}
@@ -287,25 +313,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Deploy preflight — validate required secrets
+        id: preflight
+        shell: bash
+        env:
+          DEPLOY_ENV: staging
+          ROLE_ARN: ${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ secrets.STAGING_TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.STAGING_TF_LOCK_TABLE }}
+          VPC_ID: ${{ secrets.STAGING_VPC_ID }}
+          PRIVATE_SUBNET_IDS_JSON: ${{ secrets.STAGING_PRIVATE_SUBNET_IDS_JSON }}
+          DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          OIDC_ISSUER: ${{ secrets.STAGING_OIDC_ISSUER }}
+          OIDC_AUDIENCE: ${{ secrets.STAGING_OIDC_AUDIENCE }}
+          OIDC_JWKS_URI: ${{ secrets.STAGING_OIDC_JWKS_URI }}
+          BOOTSTRAP_SECRET: ${{ secrets.STAGING_BOOTSTRAP_SECRET }}
+        run: bash scripts/ci/deploy_preflight.sh
+
       - name: Configure AWS credentials
+        if: steps.preflight.outputs.skip != 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Docker Buildx
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Setup Terraform
+        if: steps.preflight.outputs.skip != 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.5
 
       - name: Login to ECR
+        if: steps.preflight.outputs.skip != 'true'
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Ensure ECR repositories
+        if: steps.preflight.outputs.skip != 'true'
         id: repos
         shell: bash
         run: |
@@ -323,6 +371,7 @@ jobs:
           echo "worker_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-worker-staging" >> "$GITHUB_OUTPUT"
 
       - name: Build and push API image
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -333,6 +382,7 @@ jobs:
             ${{ steps.repos.outputs.api_repo }}:latest
 
       - name: Build and push worker image
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -343,6 +393,7 @@ jobs:
             ${{ steps.repos.outputs.worker_repo }}:latest
 
       - name: Terraform deploy (staging)
+        if: steps.preflight.outputs.skip != 'true'
         id: terraform_deploy
         shell: bash
         env:
@@ -383,6 +434,7 @@ jobs:
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (staging)
+        if: steps.preflight.outputs.skip != 'true'
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}
@@ -403,25 +455,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Deploy preflight — validate required secrets
+        id: preflight
+        shell: bash
+        env:
+          DEPLOY_ENV: prod
+          ROLE_ARN: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ secrets.PROD_TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.PROD_TF_LOCK_TABLE }}
+          VPC_ID: ${{ secrets.PROD_VPC_ID }}
+          PRIVATE_SUBNET_IDS_JSON: ${{ secrets.PROD_PRIVATE_SUBNET_IDS_JSON }}
+          DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          OIDC_ISSUER: ${{ secrets.PROD_OIDC_ISSUER }}
+          OIDC_AUDIENCE: ${{ secrets.PROD_OIDC_AUDIENCE }}
+          OIDC_JWKS_URI: ${{ secrets.PROD_OIDC_JWKS_URI }}
+          BOOTSTRAP_SECRET: ${{ secrets.PROD_BOOTSTRAP_SECRET }}
+        run: bash scripts/ci/deploy_preflight.sh
+
       - name: Configure AWS credentials
+        if: steps.preflight.outputs.skip != 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Docker Buildx
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Setup Terraform
+        if: steps.preflight.outputs.skip != 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.5
 
       - name: Login to ECR
+        if: steps.preflight.outputs.skip != 'true'
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Ensure ECR repositories
+        if: steps.preflight.outputs.skip != 'true'
         id: repos
         shell: bash
         run: |
@@ -439,6 +513,7 @@ jobs:
           echo "worker_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-worker-prod" >> "$GITHUB_OUTPUT"
 
       - name: Build and push API image
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -449,6 +524,7 @@ jobs:
             ${{ steps.repos.outputs.api_repo }}:latest
 
       - name: Build and push worker image
+        if: steps.preflight.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -459,6 +535,7 @@ jobs:
             ${{ steps.repos.outputs.worker_repo }}:latest
 
       - name: Terraform deploy (prod)
+        if: steps.preflight.outputs.skip != 'true'
         id: terraform_deploy
         shell: bash
         env:
@@ -498,6 +575,7 @@ jobs:
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (prod)
+        if: steps.preflight.outputs.skip != 'true'
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}

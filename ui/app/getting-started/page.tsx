@@ -30,7 +30,7 @@ const FLOW_STEPS = [
   {
     id: "4",
     title: "Run and verify",
-    detail: "Submit your first run, check diagnostics/logs, and verify usage/cost visibility.",
+    detail: "Submit your first run from the UI or CLI, check diagnostics/logs, and verify usage/cost visibility.",
     cta: { label: "Open Runs after login", href: "/login?next=%2Fruns" },
   },
 ];
@@ -70,10 +70,22 @@ const START_OPTIONS = [
     cta: { label: "Request access", href: "/contact" },
   },
   {
+    title: "I prefer command line workflows",
+    detail: "I want to authenticate once, then submit and inspect runs from terminal automation.",
+    cta: { label: "Sign in then use CLI", href: "/login?next=%2Fruns" },
+  },
+  {
     title: "I am the platform admin",
     detail: "I own first-time workspace setup and need the admin path.",
     cta: { label: "Open admin access", href: "/login?next=%2Faccess" },
   },
+];
+
+const CLI_COMMANDS = [
+  "sparkpilot env-list",
+  "sparkpilot run-submit",
+  "sparkpilot run-list",
+  "sparkpilot run-logs",
 ];
 
 function ArrowLink({ href, label }: { href: string; label: string }) {
@@ -153,6 +165,25 @@ export default function GettingStartedPage() {
                 <ArrowLink href={step.cta.href} label={step.cta.label} />
               </article>
             ))}
+          </div>
+
+          <div className="getting-started-section-title-row">
+            <h2>Command line quickstart (after sign-in)</h2>
+            <p>SparkPilot supports terminal-first operations for platform teams and CI workflows.</p>
+          </div>
+          <div className="getting-started-grid">
+            <article className="getting-started-card">
+              <div className="getting-started-step">CLI</div>
+              <h3>Submit and operate runs from terminal</h3>
+              <ul className="contact-expect-list">
+                {CLI_COMMANDS.map((cmd) => (
+                  <li key={cmd}>
+                    <code>{cmd}</code>
+                  </li>
+                ))}
+              </ul>
+              <p>Use the same authenticated workspace context as the dashboard and API.</p>
+            </article>
           </div>
         </div>
       </section>
