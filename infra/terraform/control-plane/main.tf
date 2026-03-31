@@ -379,6 +379,7 @@ resource "aws_vpc_security_group_egress_rule" "ecs_tasks_all" {
 }
 
 resource "aws_security_group" "aws_api_endpoints" {
+  count       = var.manage_vpc_endpoints ? 1 : 0
   name        = "${local.name_prefix}-aws-api-endpoints"
   description = "Security group for private AWS API interface endpoints"
   vpc_id      = var.vpc_id
@@ -386,7 +387,8 @@ resource "aws_security_group" "aws_api_endpoints" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "aws_api_endpoints_https_from_ecs" {
-  security_group_id            = aws_security_group.aws_api_endpoints.id
+  count                        = var.manage_vpc_endpoints ? 1 : 0
+  security_group_id            = aws_security_group.aws_api_endpoints[0].id
   referenced_security_group_id = aws_security_group.ecs_tasks.id
   ip_protocol                  = "tcp"
   from_port                    = 443
@@ -395,66 +397,73 @@ resource "aws_vpc_security_group_ingress_rule" "aws_api_endpoints_https_from_ecs
 }
 
 resource "aws_vpc_endpoint" "secretsmanager" {
+  count               = var.manage_vpc_endpoints ? 1 : 0
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.secretsmanager"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = var.private_subnet_ids
-  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  security_group_ids  = [aws_security_group.aws_api_endpoints[0].id]
   tags                = local.tags
 }
 
 resource "aws_vpc_endpoint" "ecr_api" {
+  count               = var.manage_vpc_endpoints ? 1 : 0
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.ecr.api"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = var.private_subnet_ids
-  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  security_group_ids  = [aws_security_group.aws_api_endpoints[0].id]
   tags                = local.tags
 }
 
 resource "aws_vpc_endpoint" "ecr_dkr" {
+  count               = var.manage_vpc_endpoints ? 1 : 0
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.ecr.dkr"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = var.private_subnet_ids
-  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  security_group_ids  = [aws_security_group.aws_api_endpoints[0].id]
   tags                = local.tags
 }
 
 resource "aws_vpc_endpoint" "cloudwatch_logs" {
+  count               = var.manage_vpc_endpoints ? 1 : 0
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.logs"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = var.private_subnet_ids
-  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  security_group_ids  = [aws_security_group.aws_api_endpoints[0].id]
   tags                = local.tags
 }
 
 resource "aws_vpc_endpoint" "sqs" {
+  count               = var.manage_vpc_endpoints ? 1 : 0
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.sqs"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = var.private_subnet_ids
-  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  security_group_ids  = [aws_security_group.aws_api_endpoints[0].id]
   tags                = local.tags
 }
 
 resource "aws_vpc_endpoint" "sts" {
+  count               = var.manage_vpc_endpoints ? 1 : 0
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.sts"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = var.private_subnet_ids
-  security_group_ids  = [aws_security_group.aws_api_endpoints.id]
+  security_group_ids  = [aws_security_group.aws_api_endpoints[0].id]
   tags                = local.tags
 }
 
 resource "aws_vpc_endpoint" "s3_gateway" {
+  count             = var.manage_vpc_endpoints ? 1 : 0
   vpc_id            = var.vpc_id
   service_name      = "com.amazonaws.${var.region}.s3"
   vpc_endpoint_type = "Gateway"

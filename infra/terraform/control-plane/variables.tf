@@ -64,6 +64,12 @@ variable "public_subnet_ids" {
   }
 }
 
+variable "manage_vpc_endpoints" {
+  type        = bool
+  description = "Whether this environment should create and own shared VPC endpoints (Secrets Manager, ECR, Logs, SQS, STS, S3)."
+  default     = true
+}
+
 variable "default_tags" {
   type        = map(string)
   description = "Common tags applied to all resources."
