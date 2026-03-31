@@ -91,6 +91,9 @@ enable_full_byoc_mode="$(normalize_bool "${ENABLE_FULL_BYOC_MODE:-false}")"
 allow_unsafe_rds_configuration="$(normalize_bool "${ALLOW_UNSAFE_RDS_CONFIGURATION:-false}")"
 enable_ecs_exec="$(normalize_bool "${ENABLE_ECS_EXEC:-false}")"
 acm_certificate_arn="$(echo "${ACM_CERTIFICATE_ARN:-}" | xargs)"
+cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
+# Convert comma-separated string to JSON array for Terraform
+cors_origins_json="$(echo "${cors_origins_raw}" | tr ',' '\n' | awk 'NF' | jq -R . | jq -s .)"
 rds_deletion_protection="$(normalize_nullable_bool "${RDS_DELETION_PROTECTION:-}")"
 rds_skip_final_snapshot="$(normalize_nullable_bool "${RDS_SKIP_FINAL_SNAPSHOT:-}")"
 cur_athena_database="$(echo "${CUR_ATHENA_DATABASE:-}" | xargs)"
@@ -156,6 +159,7 @@ jq -n \
   --arg cur_cost_column "${cur_cost_column}" \
   --arg cost_center_policy_json "${cost_center_policy_json}" \
   --arg acm_certificate_arn "${acm_certificate_arn}" \
+  --argjson cors_origins "${cors_origins_json}" \
   --argjson enable_ecs_exec "${enable_ecs_exec}" \
   '{
     environment: $environment,
@@ -185,6 +189,7 @@ jq -n \
     cur_cost_column: $cur_cost_column,
     cost_center_policy_json: $cost_center_policy_json,
     acm_certificate_arn: $acm_certificate_arn,
+    cors_origins: $cors_origins,
     enable_ecs_exec: $enable_ecs_exec
   }' > "${tfvars_file}"
 
