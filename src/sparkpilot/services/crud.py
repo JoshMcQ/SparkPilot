@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from sparkpilot.config import get_settings
+
+
+def _provisioning_log_uri(env_id: str) -> str:
+    return f"s3://{get_settings().ops_s3_bucket}/provisioning/{env_id}/{uuid.uuid4()}.log"
 from sparkpilot.exceptions import ConflictError, EntityNotFoundError, ValidationError
 
 from sparkpilot.audit import write_audit_event
@@ -370,7 +374,7 @@ def create_environment(
         state="queued",
         step="queued",
         message="Queued for provisioning.",
-        logs_uri=f"s3://{get_settings().ops_s3_bucket}/provisioning/{env.id}/{uuid.uuid4()}.log",
+        logs_uri=_provisioning_log_uri(env.id),
     )
     db.add(op)
     write_audit_event(
@@ -462,7 +466,7 @@ def retry_environment_provisioning(
         state="queued",
         step="queued",
         message="Queued for provisioning retry.",
-        logs_uri=f"s3://{get_settings().ops_s3_bucket}/provisioning/{env.id}/{uuid.uuid4()}.log",
+        logs_uri=_provisioning_log_uri(env.id),
     )
     db.add(op)
     write_audit_event(

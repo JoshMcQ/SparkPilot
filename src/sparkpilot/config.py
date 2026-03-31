@@ -11,6 +11,8 @@ from sparkpilot.cost_center import parse_cost_center_policy
 EMR_EXECUTION_ROLE_PLACEHOLDER_ARN = "arn:aws:iam::111111111111:role/SparkPilotEmrExecutionRole"
 IAM_ROLE_ARN_PATTERN = re.compile(r"^arn:aws:iam::\d{12}:role/.+")
 MIN_BOOTSTRAP_SECRET_LENGTH = 16
+_DEFAULT_DATABASE_URL = "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
+_LOCALHOST_ORIGINS = {"localhost", "127.0.0.1", "::1"}
 
 
 class Settings(BaseSettings):
@@ -18,7 +20,7 @@ class Settings(BaseSettings):
 
     app_name: str = "SparkPilot API"
     environment: str = "dev"
-    database_url: str = "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
+    database_url: str = _DEFAULT_DATABASE_URL
     dry_run_mode: bool = False
     enable_full_byoc_mode: bool = False
     auth_mode: Literal["oidc"] = Field(
@@ -83,10 +85,6 @@ class Settings(BaseSettings):
 
 def is_valid_iam_role_arn(value: str) -> bool:
     return bool(IAM_ROLE_ARN_PATTERN.match(value.strip()))
-
-
-_DEFAULT_DATABASE_URL = "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
-_LOCALHOST_ORIGINS = {"localhost", "127.0.0.1", "::1"}
 
 
 def _validate_environment_mode(settings: Settings) -> bool:

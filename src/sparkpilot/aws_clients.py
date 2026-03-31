@@ -365,7 +365,8 @@ def session_for_environment(environment: Any) -> boto3.Session:
     2. settings.assume_role_external_id — global fallback (if env value is None)
     3. No ExternalId — if both are empty/absent
     """
-    env_external_id: str | None = getattr(environment, "assume_role_external_id", None)
+    _raw: str | None = getattr(environment, "assume_role_external_id", None)
+    env_external_id = _raw.strip() or None if _raw else None
     return assume_role_session(
         environment.customer_role_arn,
         environment.region,

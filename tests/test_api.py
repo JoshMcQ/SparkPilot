@@ -301,7 +301,7 @@ def test_byoc_lite_discovery_operator_allowed_for_matching_account(monkeypatch) 
 
     # _setup_rbac_fixtures creates an env with account 123456789012.
     # Operator requests discovery for a role in the same account — should be allowed.
-    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:
+    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:  # noqa: ARG001
         return {
             "account_id": "123456789012",
             "clusters": [
@@ -361,7 +361,7 @@ def test_byoc_lite_discovery_operator_allowed_for_first_env_setup(monkeypatch) -
         json={"actor": "operator-newco", "role": "operator", "tenant_id": tenant["id"], "team_id": team["id"], "active": True},
     )
 
-    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:
+    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:  # noqa: ARG001
         return {"account_id": "555555555555", "clusters": []}
 
     monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery)

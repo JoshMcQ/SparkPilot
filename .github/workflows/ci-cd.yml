@@ -498,7 +498,7 @@ jobs:
           COST_CENTER_POLICY_JSON: ${{ vars.PROD_COST_CENTER_POLICY_JSON || '' }}
           ACM_CERTIFICATE_ARN: ${{ secrets.PROD_ACM_CERTIFICATE_ARN || '' }}
           CLOUDFLARE_PROXIED: ${{ vars.PROD_CLOUDFLARE_PROXIED || 'false' }}
-          CORS_ORIGINS: ${{ vars.PROD_CORS_ORIGINS }}
+          CORS_ORIGINS: ${{ vars.PROD_CORS_ORIGINS || '' }}
           ENABLE_ECS_EXEC: ${{ vars.PROD_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 

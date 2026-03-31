@@ -14,6 +14,7 @@ from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session
 
+from sparkpilot.aws_clients import parse_role_account_id_from_arn
 from sparkpilot.config import get_settings, validate_runtime_settings
 from sparkpilot.db import get_db, init_db
 from sparkpilot.exceptions import SparkPilotError
@@ -705,8 +706,6 @@ def _authorize_discovery(
 
     if access.role not in {"operator"}:
         raise _forbidden("Admin or operator role is required for BYOC-Lite discovery.")
-
-    from sparkpilot.aws_clients import parse_role_account_id_from_arn
 
     requested_account_id = parse_role_account_id_from_arn(customer_role_arn)
     if not requested_account_id:
