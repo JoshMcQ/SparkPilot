@@ -57,10 +57,12 @@ PR #114 was opened to fix the production failure caused by PR #113. The root cau
 
 | Field | Value |
 |---|---|
-| Review state | COMMENTED (inferred from `reviewers: coderabbitai`) |
-| Actionable comments | Present (PR had bot activity) |
+| Review state | No formal review record (GitHub API returns no reviews for PR #114) |
+| Reviewed commit | `8d55e5d063b4629bb6b04381c27bb3c9f302ad6b` (merge commit; branch head not separately recorded) |
+| Actionable comments | None recorded — PR #114 was a single-line fallback fix with no bot comment thread |
+| Verification method | `gh api repos/JoshMcQ/SparkPilot/pulls/114/reviews` → empty array; `gh api repos/JoshMcQ/SparkPilot/issues/114/comments` → empty array |
 
-PR #114 passed CI on its branch and was merged after the deploy-dev failure was confirmed fixed.
+PR #114 passed CI on its branch and was merged after the deploy-dev failure was confirmed fixed. Because the PR contained a single targeted fix and no CodeRabbit actionable findings were recorded, no merge-gate violation occurred on #114 itself — the process failure was on #113.
 
 ### Post-merge consequence
 
@@ -75,7 +77,7 @@ Run `23774480703` was triggered after merging #114 → failed at `deploy-prod` b
 | Merge before CodeRabbit complete | PR #113 merged 4.5 min after COMMENTED review — bot had not approved |
 | Unresolved actionable findings | 2 comments (route table scope, SQS/STS endpoints) not addressed |
 | Resulting hotfix | PR #114 (route table fallback) required to restore deploy-dev |
-| Unaddressed carry-forward | SQS/STS endpoints (#113 finding #2) still not implemented — tracked separately |
+| Unaddressed carry-forward | SQS/STS endpoints (#113 finding #2) — **now implemented** in `infra/terraform/control-plane/main.tf` lines 485–505 (`aws_vpc_endpoint.sqs`, `aws_vpc_endpoint.sts`). Finding resolved. |
 
 ---
 

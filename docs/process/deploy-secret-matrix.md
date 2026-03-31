@@ -68,7 +68,8 @@ When `AWS_{ENV}_DEPLOY_ROLE_ARN` is set but other required secrets are missing:
 3. Exits with code 1 — the job fails at the preflight step with an actionable error.
 
 Example preflight failure output:
-```
+
+```text
 ::error::prod deploy preflight FAILED — role ARN is set but 3 required secret(s) are missing:
   missing: PROD_TF_STATE_BUCKET
   missing: PROD_VPC_ID

@@ -18,7 +18,7 @@ Before requesting merge, confirm all of the following:
 - [ ] If CodeRabbit was rate-limited, I waited for cooldown, re-triggered with `@coderabbitai review`, and confirmed the latest commit was reviewed before merging.
 
 > **Rule:** Do not merge while CodeRabbit is pending or rate-limited on the latest commit.  
-> See: [CodeRabbit merge gate runbook](../docs/process/coderabbit-merge-gate.md)
+> See: [CodeRabbit merge gate runbook](/docs/process/coderabbit-merge-gate.md)
 
 ## Verification
 
