@@ -15,8 +15,8 @@ provider "aws" {
   dynamic "assume_role" {
     for_each = var.customer_role_arn != "" ? [var.customer_role_arn] : []
     content {
-      role_arn     = assume_role.value
-      external_id  = var.assume_role_external_id != "" ? var.assume_role_external_id : null
+      role_arn    = assume_role.value
+      external_id = var.assume_role_external_id != "" ? var.assume_role_external_id : null
     }
   }
 
