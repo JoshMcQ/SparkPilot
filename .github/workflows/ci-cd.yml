@@ -187,6 +187,7 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.DEV_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.DEV_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.DEV_BOOTSTRAP_SECRET }}
+          EMR_EXECUTION_ROLE_ARN: ${{ secrets.DEV_EMR_EXECUTION_ROLE_ARN }}
         run: bash scripts/ci/deploy_preflight.sh
 
       - name: Configure AWS credentials
@@ -328,6 +329,7 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.STAGING_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.STAGING_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.STAGING_BOOTSTRAP_SECRET }}
+          EMR_EXECUTION_ROLE_ARN: ${{ secrets.STAGING_EMR_EXECUTION_ROLE_ARN }}
         run: bash scripts/ci/deploy_preflight.sh
 
       - name: Configure AWS credentials
@@ -470,6 +472,7 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.PROD_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.PROD_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.PROD_BOOTSTRAP_SECRET }}
+          EMR_EXECUTION_ROLE_ARN: ${{ secrets.PROD_EMR_EXECUTION_ROLE_ARN }}
         run: bash scripts/ci/deploy_preflight.sh
 
       - name: Configure AWS credentials

@@ -13,6 +13,7 @@
 #   OIDC_AUDIENCE       — OIDC audience
 #   OIDC_JWKS_URI       — OIDC JWKS URI
 #   BOOTSTRAP_SECRET    — API bootstrap secret
+#   EMR_EXECUTION_ROLE_ARN — EMR execution role ARN
 #
 # Outputs (via GITHUB_OUTPUT):
 #   skip=true   — role ARN not set; environment not configured; job should skip remaining steps
@@ -40,12 +41,18 @@ declare -a MISSING=()
 [ -z "${TF_STATE_BUCKET:-}" ]         && MISSING+=("${ENV_UPPER}_TF_STATE_BUCKET")
 [ -z "${TF_LOCK_TABLE:-}" ]           && MISSING+=("${ENV_UPPER}_TF_LOCK_TABLE")
 [ -z "${VPC_ID:-}" ]                  && MISSING+=("${ENV_UPPER}_VPC_ID")
-[ -z "${PRIVATE_SUBNET_IDS_JSON:-}" ] && MISSING+=("${ENV_UPPER}_PRIVATE_SUBNET_IDS_JSON")
+if [ -z "${PRIVATE_SUBNET_IDS_JSON:-}" ]; then
+  MISSING+=("${ENV_UPPER}_PRIVATE_SUBNET_IDS_JSON")
+elif ! echo "${PRIVATE_SUBNET_IDS_JSON}" | jq -e 'type == "array" and length >= 2 and all(.[]; type == "string" and test("^subnet-[a-z0-9]+$"))' >/dev/null 2>&1; then
+  echo "::error::${ENV_UPPER}_PRIVATE_SUBNET_IDS_JSON must be a JSON array with at least two subnet IDs (e.g. [\"subnet-abc\",\"subnet-def\"])."
+  exit 1
+fi
 [ -z "${DB_PASSWORD:-}" ]             && MISSING+=("${ENV_UPPER}_DB_PASSWORD")
 [ -z "${OIDC_ISSUER:-}" ]             && MISSING+=("${ENV_UPPER}_OIDC_ISSUER")
 [ -z "${OIDC_AUDIENCE:-}" ]           && MISSING+=("${ENV_UPPER}_OIDC_AUDIENCE")
 [ -z "${OIDC_JWKS_URI:-}" ]           && MISSING+=("${ENV_UPPER}_OIDC_JWKS_URI")
 [ -z "${BOOTSTRAP_SECRET:-}" ]        && MISSING+=("${ENV_UPPER}_BOOTSTRAP_SECRET")
+[ -z "${EMR_EXECUTION_ROLE_ARN:-}" ]  && MISSING+=("${ENV_UPPER}_EMR_EXECUTION_ROLE_ARN")
 
 if [ "${#MISSING[@]}" -gt 0 ]; then
   echo "::error::${DEPLOY_ENV} deploy preflight FAILED — role ARN is set but ${#MISSING[@]} required secret(s) are missing:"
