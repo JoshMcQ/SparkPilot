@@ -370,7 +370,7 @@ def create_environment(
         state="queued",
         step="queued",
         message="Queued for provisioning.",
-        logs_uri=f"s3://sparkpilot-ops/provisioning/{env.id}/{uuid.uuid4()}.log",
+        logs_uri=f"s3://{get_settings().ops_s3_bucket}/provisioning/{env.id}/{uuid.uuid4()}.log",
     )
     db.add(op)
     write_audit_event(
@@ -462,7 +462,7 @@ def retry_environment_provisioning(
         state="queued",
         step="queued",
         message="Queued for provisioning retry.",
-        logs_uri=f"s3://sparkpilot-ops/provisioning/{env.id}/{uuid.uuid4()}.log",
+        logs_uri=f"s3://{get_settings().ops_s3_bucket}/provisioning/{env.id}/{uuid.uuid4()}.log",
     )
     db.add(op)
     write_audit_event(

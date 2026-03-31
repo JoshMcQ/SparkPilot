@@ -325,7 +325,7 @@ def _account_id_from_role_arn(role_arn: str) -> str:
     parts = role_arn.split(":")
     if len(parts) >= 5 and len(parts[4]) == 12 and parts[4].isdigit():
         return parts[4]
-    return "123456789012"
+    raise ValueError(f"Cannot extract AWS account ID from role ARN: {role_arn!r}")
 
 
 def _assign_full_byoc_outputs(environment: Environment, outputs: dict[str, Any]) -> None:
@@ -437,8 +437,12 @@ def _run_byoc_lite_oidc_and_trust_setup(
                     "addon_version": pod_id_result.get("addon_version", ""),
                 },
             )
-    except (ValueError, Exception):
-        pass  # fall back to IRSA
+    except Exception:
+        logger.warning(
+            "Pod Identity agent check failed for environment %s; falling back to IRSA.",
+            environment.id,
+            exc_info=True,
+        )
 
     if identity_mode == "irsa":
         _audit_byoc_lite_event(
