@@ -380,6 +380,7 @@ jobs:
           CUR_COST_COLUMN: ${{ vars.STAGING_CUR_COST_COLUMN || 'line_item_unblended_cost' }}
           COST_CENTER_POLICY_JSON: ${{ vars.STAGING_COST_CENTER_POLICY_JSON || '' }}
           ACM_CERTIFICATE_ARN: ${{ secrets.STAGING_ACM_CERTIFICATE_ARN || '' }}
+          CLOUDFLARE_PROXIED: ${{ vars.STAGING_CLOUDFLARE_PROXIED || 'false' }}
           CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS || 'http://localhost:3000' }}
           ENABLE_ECS_EXEC: ${{ vars.STAGING_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
@@ -496,6 +497,7 @@ jobs:
           CUR_COST_COLUMN: ${{ vars.PROD_CUR_COST_COLUMN || 'line_item_unblended_cost' }}
           COST_CENTER_POLICY_JSON: ${{ vars.PROD_COST_CENTER_POLICY_JSON || '' }}
           ACM_CERTIFICATE_ARN: ${{ secrets.PROD_ACM_CERTIFICATE_ARN || '' }}
+          CLOUDFLARE_PROXIED: ${{ vars.PROD_CLOUDFLARE_PROXIED || 'false' }}
           CORS_ORIGINS: ${{ vars.PROD_CORS_ORIGINS }}
           ENABLE_ECS_EXEC: ${{ vars.PROD_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh

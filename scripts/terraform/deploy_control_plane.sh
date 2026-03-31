@@ -91,6 +91,7 @@ enable_full_byoc_mode="$(normalize_bool "${ENABLE_FULL_BYOC_MODE:-false}")"
 allow_unsafe_rds_configuration="$(normalize_bool "${ALLOW_UNSAFE_RDS_CONFIGURATION:-false}")"
 enable_ecs_exec="$(normalize_bool "${ENABLE_ECS_EXEC:-false}")"
 acm_certificate_arn="$(echo "${ACM_CERTIFICATE_ARN:-}" | xargs)"
+cloudflare_proxied="$(normalize_bool "${CLOUDFLARE_PROXIED:-false}")"
 cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
 # Convert comma-separated string to JSON array for Terraform
 cors_origins_json="$(echo "${cors_origins_raw}" | tr ',' '\n' | awk 'NF' | jq -R . | jq -s .)"
@@ -159,6 +160,7 @@ jq -n \
   --arg cur_cost_column "${cur_cost_column}" \
   --arg cost_center_policy_json "${cost_center_policy_json}" \
   --arg acm_certificate_arn "${acm_certificate_arn}" \
+  --argjson cloudflare_proxied "${cloudflare_proxied}" \
   --argjson cors_origins "${cors_origins_json}" \
   --argjson enable_ecs_exec "${enable_ecs_exec}" \
   '{
@@ -189,6 +191,7 @@ jq -n \
     cur_cost_column: $cur_cost_column,
     cost_center_policy_json: $cost_center_policy_json,
     acm_certificate_arn: $acm_certificate_arn,
+    cloudflare_proxied: $cloudflare_proxied,
     cors_origins: $cors_origins,
     enable_ecs_exec: $enable_ecs_exec
   }' > "${tfvars_file}"

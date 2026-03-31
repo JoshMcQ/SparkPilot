@@ -432,6 +432,12 @@ variable "cost_center_policy_json" {
   }
 }
 
+variable "cloudflare_proxied" {
+  type        = bool
+  description = "Set true when Cloudflare is proxying traffic to this ALB (orange-cloud). Cloudflare terminates TLS at the edge, so ACM is not required and the HTTPS-required check is skipped."
+  default     = false
+}
+
 variable "acm_certificate_arn" {
   type        = string
   description = "ACM certificate ARN for HTTPS on the API ALB. When set, HTTP redirects to HTTPS and the API is served on port 443. Leave empty for HTTP-only (dev/internal use)."
