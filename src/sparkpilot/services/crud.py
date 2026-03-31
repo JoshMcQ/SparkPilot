@@ -349,6 +349,7 @@ def create_environment(
         provisioning_mode=req.provisioning_mode,
         instance_architecture=req.instance_architecture,
         customer_role_arn=req.customer_role_arn,
+        assume_role_external_id=req.assume_role_external_id or None,
         eks_cluster_arn=req.eks_cluster_arn,
         eks_namespace=req.eks_namespace,
         warm_pool_enabled=req.warm_pool_enabled,

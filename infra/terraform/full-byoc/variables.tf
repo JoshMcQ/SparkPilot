@@ -44,6 +44,12 @@ variable "customer_role_arn" {
   description = "IAM role ARN in the customer account that SparkPilot assumes for provisioning."
 }
 
+variable "assume_role_external_id" {
+  type        = string
+  default     = ""
+  description = "Optional ExternalId for the assume_role call. Leave empty to omit ExternalId from the STS call."
+}
+
 variable "vpc_cidr" {
   type        = string
   default     = "10.100.0.0/16"

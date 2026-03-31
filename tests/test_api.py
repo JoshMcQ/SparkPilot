@@ -282,15 +282,151 @@ def test_byoc_lite_discovery_translates_client_error(monkeypatch) -> None:
     assert "ServiceUnavailableException" in response.json()["detail"]
 
 
-def test_byoc_lite_discovery_requires_admin_role(monkeypatch) -> None:
+def test_byoc_lite_discovery_operator_blocked_for_user_role(monkeypatch) -> None:
+    """User role (not operator or admin) cannot call discovery."""
     client = TestClient(app)
     fixtures = _setup_rbac_fixtures(client, monkeypatch)
 
     response = client.get(
         "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers={"Authorization": f"Bearer {fixtures['user_token']}"},
+    )
+    assert response.status_code == 403
+
+
+def test_byoc_lite_discovery_operator_allowed_for_matching_account(monkeypatch) -> None:
+    """Operator can discover when the requested ARN account matches a tenant environment account."""
+    client = TestClient(app)
+    fixtures = _setup_rbac_fixtures(client, monkeypatch)
+
+    # _setup_rbac_fixtures creates an env with account 123456789012.
+    # Operator requests discovery for a role in the same account — should be allowed.
+    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        return {
+            "account_id": "123456789012",
+            "clusters": [
+                {
+                    "name": "tenant-cluster",
+                    "arn": "arn:aws:eks:us-east-1:123456789012:cluster/tenant-cluster",
+                    "status": "ACTIVE",
+                    "version": "1.31",
+                    "oidc_issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/X",
+                    "has_oidc": True,
+                }
+            ],
+        }
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::123456789012:role/SparkPilotByocLiteRole&region=us-east-1",
+        headers={"Authorization": f"Bearer {fixtures['operator_token']}"},
+    )
+    assert response.status_code == 200, response.json()
+
+
+def test_byoc_lite_discovery_operator_blocked_for_cross_account(monkeypatch) -> None:
+    """Operator is blocked from discovering resources in an account not tied to their tenant."""
+    client = TestClient(app)
+    fixtures = _setup_rbac_fixtures(client, monkeypatch)
+
+    # Tenant has account 123456789012. Operator requests a role from account 999999999999 — blocked.
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::999999999999:role/CrossAccountRole&region=us-east-1",
         headers={"Authorization": f"Bearer {fixtures['operator_token']}"},
     )
     assert response.status_code == 403
+    assert "999999999999" in response.json()["detail"]
+
+
+def test_byoc_lite_discovery_operator_allowed_for_first_env_setup(monkeypatch) -> None:
+    """Operator can discover any ARN when tenant has no existing environments (first-time setup)."""
+    from tests.conftest import issue_test_token
+
+    client = TestClient(app)
+
+    # Create a fresh tenant with no environments.
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": "Fresh Tenant"},
+        headers={"Idempotency-Key": "fresh-tenant-disc"},
+    ).json()
+    team = client.post(
+        "/v1/teams",
+        json={"name": "Fresh Team", "tenant_id": tenant["id"]},
+        headers={"Idempotency-Key": "fresh-team-disc"},
+    ).json()
+    client.post(
+        "/v1/user-identities",
+        json={"actor": "operator-newco", "role": "operator", "tenant_id": tenant["id"], "team_id": team["id"], "active": True},
+    )
+
+    def _fake_discovery(*, customer_role_arn: str, region: str) -> dict[str, object]:
+        return {"account_id": "555555555555", "clusters": []}
+
+    monkeypatch.setattr("sparkpilot.aws_clients.discover_eks_clusters_for_role", _fake_discovery)
+
+    response = client.get(
+        "/v1/aws/byoc-lite/discovery?customer_role_arn=arn:aws:iam::555555555555:role/NewRole&region=us-east-1",
+        headers={"Authorization": f"Bearer {issue_test_token('operator-newco')}"},
+    )
+    # No environments in tenant → first-time setup grace → allowed.
+    assert response.status_code == 200, response.json()
+
+
+def test_environment_create_stores_assume_role_external_id() -> None:
+    """Per-environment assume_role_external_id is stored and returned in the response."""
+    client = TestClient(app)
+
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": "ExternalId Tenant"},
+        headers={"Idempotency-Key": "ext-id-tenant"},
+    ).json()
+
+    resp = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotRole",
+            "assume_role_external_id": "my-per-env-external-id",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
+        },
+        headers={"Idempotency-Key": "ext-id-env"},
+    )
+    assert resp.status_code == 201, resp.json()
+    env_id = resp.json()["environment_id"]
+
+    env_resp = client.get(f"/v1/environments/{env_id}").json()
+    assert env_resp["assume_role_external_id"] == "my-per-env-external-id"
+
+
+def test_environment_create_omits_assume_role_external_id_when_not_set() -> None:
+    """Environment without assume_role_external_id returns None for the field."""
+    client = TestClient(app)
+
+    tenant = client.post(
+        "/v1/tenants",
+        json={"name": "No ExternalId Tenant"},
+        headers={"Idempotency-Key": "no-ext-id-tenant"},
+    ).json()
+
+    resp = client.post(
+        "/v1/environments",
+        json={
+            "tenant_id": tenant["id"],
+            "region": "us-east-1",
+            "customer_role_arn": "arn:aws:iam::123456789012:role/SparkPilotRole",
+            "quotas": {"max_concurrent_runs": 5, "max_vcpu": 128, "max_run_seconds": 7200},
+        },
+        headers={"Idempotency-Key": "no-ext-id-env"},
+    )
+    assert resp.status_code == 201, resp.json()
+    env_id = resp.json()["environment_id"]
+
+    env_resp = client.get(f"/v1/environments/{env_id}").json()
+    assert env_resp["assume_role_external_id"] is None
 
 
 def test_environment_provisioning_run_and_usage() -> None:

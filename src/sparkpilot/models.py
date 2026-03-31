@@ -98,6 +98,7 @@ class Environment(Base):
     status: Mapped[str] = mapped_column(String(32), default="provisioning", nullable=False)
     instance_architecture: Mapped[str] = mapped_column(String(16), default="mixed", nullable=False)
     customer_role_arn: Mapped[str] = mapped_column(String(1024), nullable=False)
+    assume_role_external_id: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     eks_cluster_arn: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     eks_namespace: Mapped[str | None] = mapped_column(String(255), nullable=True)
     emr_virtual_cluster_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

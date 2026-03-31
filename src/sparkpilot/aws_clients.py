@@ -357,6 +357,22 @@ def _assume_customer_role_for_discovery(role_arn: str, region_name: str) -> boto
     return assume_role_session(role_arn, region_name)
 
 
+def session_for_environment(environment: Any) -> boto3.Session:
+    """Assume the customer role for an environment, using environment-level ExternalId when set.
+
+    Resolution order:
+    1. environment.assume_role_external_id — per-environment override (if non-None)
+    2. settings.assume_role_external_id — global fallback (if env value is None)
+    3. No ExternalId — if both are empty/absent
+    """
+    env_external_id: str | None = getattr(environment, "assume_role_external_id", None)
+    return assume_role_session(
+        environment.customer_role_arn,
+        environment.region,
+        external_id=env_external_id,
+    )
+
+
 def _list_cluster_names(eks_client: Any, max_clusters: int) -> list[str]:
     cluster_names: list[str] = []
     paginator = eks_client.get_paginator("list_clusters")
@@ -506,7 +522,7 @@ class EmrEksClient:
             return f"vc-{uuid.uuid4().hex[:10]}"
 
         cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         client = session.client("emr-containers", region_name=environment.region)
         try:
             result = client.create_virtual_cluster(
@@ -555,7 +571,7 @@ class EmrEksClient:
                 "oidc_provider_arn": None,
             }
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         eks_client = session.client("eks", region_name=environment.region)
         try:
             cluster = eks_client.describe_cluster(name=cluster_name).get("cluster", {})
@@ -780,7 +796,7 @@ class EmrEksClient:
         validate_runtime_settings(self.settings)
         role_name = self._role_name_from_arn(self.settings.emr_execution_role_arn)
         account_id = self._account_id_from_arn(environment.eks_cluster_arn)
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
 
         eks_client = session.client("eks", region_name=environment.region)
         cluster = self._describe_cluster_for_trust_update(
@@ -845,7 +861,7 @@ class EmrEksClient:
             return None
 
         cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         client = session.client("emr-containers", region_name=environment.region)
         try:
             paginator = client.get_paginator("list_virtual_clusters")
@@ -886,7 +902,7 @@ class EmrEksClient:
                 }
             ]
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         eks_client = session.client("eks", region_name=environment.region)
 
         try:
@@ -1077,7 +1093,7 @@ class EmrEksClient:
         cluster_name = self._eks_cluster_name_from_arn(environment.eks_cluster_arn)
         role_name = self._role_name_from_arn(self.settings.emr_execution_role_arn)
         account_id = self._account_id_from_arn(environment.eks_cluster_arn)
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
 
         eks_client = session.client("eks", region_name=environment.region)
         cluster = self._describe_cluster_for_trust_check(eks_client=eks_client, cluster_name=cluster_name)
@@ -1130,7 +1146,7 @@ class EmrEksClient:
             }
 
         validate_runtime_settings(self.settings)
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         iam_client = session.client("iam")
 
         try:
@@ -1192,7 +1208,7 @@ class EmrEksClient:
                 "mode": "dry_run",
             }
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         eks_client = session.client("eks", region_name=environment.region)
         try:
             cluster = eks_client.describe_cluster(name=cluster_name).get("cluster", {})
@@ -1228,7 +1244,7 @@ class EmrEksClient:
                 "mode": "dry_run",
             }
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         eks_client = session.client("eks", region_name=environment.region)
         try:
             addon = eks_client.describe_addon(
@@ -1267,7 +1283,7 @@ class EmrEksClient:
         if self.settings.dry_run_mode:
             return []
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         eks_client = session.client("eks", region_name=environment.region)
         try:
             associations = []
@@ -1319,7 +1335,7 @@ class EmrEksClient:
                 "mode": "dry_run",
             }
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         emr_client = session.client("emr-containers", region_name=environment.region)
         try:
             import uuid as _uuid
@@ -1356,7 +1372,7 @@ class EmrEksClient:
                 "mode": "dry_run",
             }
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         emr_client = session.client("emr-containers", region_name=environment.region)
         try:
             resp = emr_client.describe_security_configuration(id=security_configuration_id)
@@ -1392,7 +1408,7 @@ class EmrEksClient:
         if self.settings.dry_run_mode:
             return []
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         emr_client = session.client("emr-containers", region_name=environment.region)
         try:
             configs = []
@@ -1517,7 +1533,7 @@ class EmrEksClient:
                 "namespace": namespace,
             }
 
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         client = session.client("emr-containers", region_name=environment.region)
         virtual_cluster = self._describe_virtual_cluster(
             client=client,
@@ -1570,7 +1586,7 @@ class EmrEksClient:
             )
 
         validate_runtime_settings(self.settings)
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         client = session.client("emr-containers", region_name=environment.region)
         spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
         project = environment.eks_namespace or environment.id
@@ -1658,7 +1674,7 @@ class EmrEksClient:
 
         if not run.emr_job_run_id:
             return "FAILED", "Missing EMR job id."
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         client = session.client("emr-containers", region_name=environment.region)
         try:
             result = client.describe_job_run(
@@ -1677,7 +1693,7 @@ class EmrEksClient:
             return None
         if not run.emr_job_run_id:
             return None
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         client = session.client("emr-containers", region_name=environment.region)
         result = client.cancel_job_run(
             virtualClusterId=environment.emr_virtual_cluster_id,
@@ -1696,7 +1712,7 @@ class EmrEksClient:
         tags: dict,
     ) -> str:
         """Create EMR on EKS job template, returns EMR template ID."""
-        session = assume_role_session(env.customer_role_arn, env.region)
+        session = session_for_environment(env)
         client = session.client("emr-containers", region_name=env.region)
         response = client.create_job_template(
             name=name,
@@ -1711,17 +1727,17 @@ class EmrEksClient:
         return response["id"]
 
     def describe_job_template(self, env: Environment, template_id: str) -> dict:
-        session = assume_role_session(env.customer_role_arn, env.region)
+        session = session_for_environment(env)
         client = session.client("emr-containers", region_name=env.region)
         return client.describe_job_template(id=template_id)["jobTemplate"]
 
     def delete_job_template(self, env: Environment, template_id: str) -> None:
-        session = assume_role_session(env.customer_role_arn, env.region)
+        session = session_for_environment(env)
         client = session.client("emr-containers", region_name=env.region)
         client.delete_job_template(id=template_id)
 
     def list_job_templates(self, env: Environment) -> list[dict]:
-        session = assume_role_session(env.customer_role_arn, env.region)
+        session = session_for_environment(env)
         client = session.client("emr-containers", region_name=env.region)
         paginator = client.get_paginator("list_job_templates")
         templates: list[dict] = []
@@ -1739,7 +1755,7 @@ class EmrEksClient:
         certificate_arn: str | None = None,
     ) -> str:
         """Create EMR on EKS managed endpoint, returns endpoint ID."""
-        session = assume_role_session(env.customer_role_arn, env.region)
+        session = session_for_environment(env)
         client = session.client("emr-containers", region_name=env.region)
         kwargs: dict = {
             "name": name,
@@ -1754,14 +1770,14 @@ class EmrEksClient:
         return response["id"]
 
     def describe_managed_endpoint(self, env: Environment, endpoint_id: str) -> dict:
-        session = assume_role_session(env.customer_role_arn, env.region)
+        session = session_for_environment(env)
         client = session.client("emr-containers", region_name=env.region)
         return client.describe_managed_endpoint(
             id=endpoint_id, virtualClusterId=env.emr_virtual_cluster_id
         )["endpoint"]
 
     def delete_managed_endpoint(self, env: Environment, endpoint_id: str) -> None:
-        session = assume_role_session(env.customer_role_arn, env.region)
+        session = session_for_environment(env)
         client = session.client("emr-containers", region_name=env.region)
         client.delete_managed_endpoint(id=endpoint_id, virtualClusterId=env.emr_virtual_cluster_id)
 
@@ -1775,7 +1791,7 @@ def detect_yunikorn(env: Environment) -> bool:
         cluster_name = EmrEksClient._eks_cluster_name_from_arn(cluster_arn)
     except ValueError:
         return False
-    session = assume_role_session(env.customer_role_arn, env.region)
+    session = session_for_environment(env)
     eks_client = session.client("eks", region_name=env.region)
     try:
         response = eks_client.describe_addon(
@@ -1858,7 +1874,7 @@ class EmrServerlessClient:
             )
 
         validate_runtime_settings(self.settings)
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         client = session.client("emr-serverless", region_name=environment.region)
         self._preflight_application(client, application_id)
 
@@ -1982,7 +1998,7 @@ class EmrEc2Client:
             )
 
         validate_runtime_settings(self.settings)
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         client = session.client("emr", region_name=environment.region)
         self._preflight_cluster(client, cluster_id)
 
