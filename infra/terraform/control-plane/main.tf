@@ -84,9 +84,18 @@ locals {
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
   https_enabled  = trimspace(var.acm_certificate_arn) != ""
-  vpc_endpoint_route_table_ids = distinct([
-    for rt in values(data.aws_route_table.endpoint_subnet_route_tables) : rt.id
-  ])
+  private_subnet_route_table_ids = distinct(flatten([
+    for route_tables in values(data.aws_route_tables.private_subnet_route_tables) : route_tables.ids
+  ]))
+  private_subnets_without_explicit_route_table = [
+    for subnet_id, route_tables in data.aws_route_tables.private_subnet_route_tables : subnet_id
+    if length(route_tables.ids) == 0
+  ]
+  vpc_main_route_table_id = try(data.aws_route_tables.main.ids[0], null)
+  vpc_endpoint_route_table_ids = distinct(concat(
+    local.private_subnet_route_table_ids,
+    length(local.private_subnets_without_explicit_route_table) > 0 && local.vpc_main_route_table_id != null ? [local.vpc_main_route_table_id] : [],
+  ))
 
   api_task_name = substr(replace("${local.name_prefix}-api", "_", "-"), 0, 32)
   api_tg_name   = substr(replace("${local.name_prefix}-api-tg", "_", "-"), 0, 32)
@@ -146,9 +155,23 @@ locals {
   }
 }
 
-data "aws_route_table" "endpoint_subnet_route_tables" {
-  for_each  = toset(var.private_subnet_ids)
-  subnet_id = each.value
+data "aws_route_tables" "private_subnet_route_tables" {
+  for_each = toset(var.private_subnet_ids)
+  vpc_id   = var.vpc_id
+
+  filter {
+    name   = "association.subnet-id"
+    values = [each.value]
+  }
+}
+
+data "aws_route_tables" "main" {
+  vpc_id = var.vpc_id
+
+  filter {
+    name   = "association.main"
+    values = ["true"]
+  }
 }
 
 check "emr_execution_role_required_in_live_mode" {
