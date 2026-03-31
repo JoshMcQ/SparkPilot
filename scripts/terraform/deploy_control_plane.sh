@@ -212,6 +212,7 @@ terraform -chdir="${terraform_root}" apply -input=false -lock-timeout=10m -auto-
 # ---------------------------------------------------------------------------
 
 postgres_address="$(terraform -chdir="${terraform_root}" output -raw postgres_address 2>/dev/null || true)"
+postgres_identifier="$(terraform -chdir="${terraform_root}" output -raw postgres_identifier 2>/dev/null || true)"
 db_name="$(terraform -chdir="${terraform_root}" output -raw postgres_db_name 2>/dev/null || true)"
 db_username="$(terraform -chdir="${terraform_root}" output -raw postgres_db_username 2>/dev/null || true)"
 database_url_secret_arn="$(terraform -chdir="${terraform_root}" output -raw database_url_secret_arn 2>/dev/null || true)"
@@ -237,6 +238,10 @@ if [[ -z "${postgres_address}" ]]; then
   echo "::error::Terraform output 'postgres_address' is empty." >&2
   exit 1
 fi
+if [[ -z "${postgres_identifier}" ]]; then
+  echo "::error::Terraform output 'postgres_identifier' is empty." >&2
+  exit 1
+fi
 if [[ -z "${db_name}" ]]; then
   echo "::error::Terraform output 'postgres_db_name' is empty." >&2
   exit 1
@@ -244,6 +249,42 @@ fi
 if [[ -z "${db_username}" ]]; then
   echo "::error::Terraform output 'postgres_db_username' is empty." >&2
   exit 1
+fi
+
+db_instance_status="$(
+  aws rds describe-db-instances \
+    --db-instance-identifier "${postgres_identifier}" \
+    --region "${AWS_REGION}" \
+    --query 'DBInstances[0].DBInstanceStatus' \
+    --output text 2>/dev/null || true
+)"
+
+if [[ "${db_instance_status}" == "stopped" ]]; then
+  echo "::notice::RDS instance ${postgres_identifier} is stopped; starting it for deployment."
+  aws rds start-db-instance \
+    --db-instance-identifier "${postgres_identifier}" \
+    --region "${AWS_REGION}" \
+    --output json > /dev/null
+  aws rds wait db-instance-available \
+    --db-instance-identifier "${postgres_identifier}" \
+    --region "${AWS_REGION}"
+elif [[ "${db_instance_status}" == "stopping" ]]; then
+  echo "::notice::RDS instance ${postgres_identifier} is stopping; waiting for stop, then starting."
+  aws rds wait db-instance-stopped \
+    --db-instance-identifier "${postgres_identifier}" \
+    --region "${AWS_REGION}"
+  aws rds start-db-instance \
+    --db-instance-identifier "${postgres_identifier}" \
+    --region "${AWS_REGION}" \
+    --output json > /dev/null
+  aws rds wait db-instance-available \
+    --db-instance-identifier "${postgres_identifier}" \
+    --region "${AWS_REGION}"
+elif [[ "${db_instance_status}" != "available" ]]; then
+  echo "::notice::RDS instance ${postgres_identifier} status is '${db_instance_status}'; waiting for available."
+  aws rds wait db-instance-available \
+    --db-instance-identifier "${postgres_identifier}" \
+    --region "${AWS_REGION}"
 fi
 
 # Construct the database URL from the RDS endpoint now that it is known.
