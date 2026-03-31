@@ -96,6 +96,17 @@ locals {
     local.private_subnet_route_table_ids,
     length(local.private_subnets_without_explicit_route_table) > 0 && local.vpc_main_route_table_id != null ? [local.vpc_main_route_table_id] : [],
   ))
+  shared_interface_vpc_endpoint_services = toset([
+    "com.amazonaws.${var.region}.secretsmanager",
+    "com.amazonaws.${var.region}.ecr.api",
+    "com.amazonaws.${var.region}.ecr.dkr",
+    "com.amazonaws.${var.region}.logs",
+    "com.amazonaws.${var.region}.sqs",
+    "com.amazonaws.${var.region}.sts",
+  ])
+  shared_interface_endpoint_security_group_ids = var.manage_vpc_endpoints ? [] : distinct(flatten([
+    for endpoint in data.aws_vpc_endpoint.shared_interface : endpoint.security_group_ids
+  ]))
 
   api_task_name = substr(replace("${local.name_prefix}-api", "_", "-"), 0, 32)
   api_tg_name   = substr(replace("${local.name_prefix}-api-tg", "_", "-"), 0, 32)
@@ -171,6 +182,22 @@ data "aws_route_tables" "main" {
   filter {
     name   = "association.main"
     values = ["true"]
+  }
+}
+
+data "aws_vpc_endpoint" "shared_interface" {
+  for_each = var.manage_vpc_endpoints ? tomap({}) : {
+    for service_name in local.shared_interface_vpc_endpoint_services :
+    service_name => service_name
+  }
+
+  vpc_id       = var.vpc_id
+  service_name = each.value
+  state        = "available"
+
+  filter {
+    name   = "vpc-endpoint-type"
+    values = ["Interface"]
   }
 }
 
@@ -394,6 +421,21 @@ resource "aws_vpc_security_group_ingress_rule" "aws_api_endpoints_https_from_ecs
   from_port                    = 443
   to_port                      = 443
   description                  = "Allow HTTPS from ECS tasks to interface endpoints"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "shared_aws_api_endpoints_https_from_ecs" {
+  for_each = var.manage_vpc_endpoints ? toset([]) : toset([
+    for security_group_id in local.shared_interface_endpoint_security_group_ids :
+    security_group_id
+    if security_group_id != aws_security_group.ecs_tasks.id
+  ])
+
+  security_group_id            = each.value
+  referenced_security_group_id = aws_security_group.ecs_tasks.id
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  description                  = "Allow HTTPS from ECS tasks to shared interface endpoints"
 }
 
 resource "aws_vpc_endpoint" "secretsmanager" {
