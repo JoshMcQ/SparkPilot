@@ -107,6 +107,7 @@ Optional break-glass variables per environment:
 - `<ENV>_RDS_DELETION_PROTECTION` (`true`/`false`, optional override)
 - `<ENV>_RDS_SKIP_FINAL_SNAPSHOT` (`true`/`false`, optional override)
 - `<ENV>_RDS_FINAL_SNAPSHOT_IDENTIFIER` (optional override)
+- `<ENV>_MANAGE_VPC_ENDPOINTS` (`true`/`false`, optional; defaults to `true` in Terraform. CI currently defaults staging to `false` to reuse shared VPC endpoints when staging and dev use the same VPC.)
 
 Optional CUR/chargeback variables per environment:
 
