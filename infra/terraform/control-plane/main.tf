@@ -112,6 +112,10 @@ locals {
   api_tg_name   = substr(replace("${local.name_prefix}-api-tg", "_", "-"), 0, 32)
   alb_name      = substr(replace("${local.name_prefix}-alb", "_", "-"), 0, 32)
 
+  ui_enabled   = trimspace(var.ui_image_uri) != ""
+  ui_task_name = substr(replace("${local.name_prefix}-ui", "_", "-"), 0, 32)
+  ui_tg_name   = substr(replace("${local.name_prefix}-ui-tg", "_", "-"), 0, 32)
+
   allowed_fargate_memory_by_cpu = {
     "256"  = [512, 1024, 2048]
     "512"  = [1024, 2048, 3072, 4096]
@@ -596,7 +600,7 @@ resource "aws_lb_listener" "api_http" {
   protocol          = "HTTP"
 
   # When HTTPS is configured, redirect all HTTP traffic to HTTPS.
-  # When HTTP-only (dev/internal), forward directly.
+  # When HTTP-only (dev/internal), forward to UI (if deployed) or API.
   dynamic "default_action" {
     for_each = local.https_enabled ? [1] : []
     content {
@@ -610,7 +614,15 @@ resource "aws_lb_listener" "api_http" {
   }
 
   dynamic "default_action" {
-    for_each = local.https_enabled ? [] : [1]
+    for_each = !local.https_enabled && local.ui_enabled ? [1] : []
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.ui[0].arn
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = !local.https_enabled && !local.ui_enabled ? [1] : []
     content {
       type             = "forward"
       target_group_arn = aws_lb_target_group.api.arn
@@ -626,9 +638,57 @@ resource "aws_lb_listener" "api_https" {
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = var.acm_certificate_arn
 
-  default_action {
+  # Default: UI when deployed, otherwise API.
+  dynamic "default_action" {
+    for_each = local.ui_enabled ? [1] : []
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.ui[0].arn
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = local.ui_enabled ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.api.arn
+    }
+  }
+}
+
+# When UI is deployed: route API paths to the API target group explicitly.
+# Priority 10 wins before the default UI catch-all.
+resource "aws_lb_listener_rule" "api_paths_http" {
+  count        = local.ui_enabled && !local.https_enabled ? 1 : 0
+  listener_arn = aws_lb_listener.api_http.arn
+  priority     = 10
+
+  action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.api.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/v1/*", "/healthz", "/openapi.json", "/docs", "/redoc"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "api_paths_https" {
+  count        = local.ui_enabled && local.https_enabled ? 1 : 0
+  listener_arn = aws_lb_listener.api_https[0].arn
+  priority     = 10
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/v1/*", "/healthz", "/openapi.json", "/docs", "/redoc"]
+    }
   }
 }
 
@@ -862,4 +922,119 @@ resource "aws_ecs_service" "worker" {
   }
 
   tags = local.tags
+}
+
+# ---------------------------------------------------------------------------
+# UI service (optional — only deployed when ui_image_uri is set)
+# ---------------------------------------------------------------------------
+
+resource "aws_cloudwatch_log_group" "ui" {
+  count             = local.ui_enabled ? 1 : 0
+  name              = "/${local.name_prefix}/ui"
+  retention_in_days = 30
+  kms_key_id        = aws_kms_key.control_plane.arn
+  tags              = local.tags
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ecs_ui_from_alb" {
+  count                        = local.ui_enabled ? 1 : 0
+  security_group_id            = aws_security_group.ecs_tasks.id
+  referenced_security_group_id = aws_security_group.alb.id
+  ip_protocol                  = "tcp"
+  from_port                    = 3000
+  to_port                      = 3000
+  description                  = "Allow UI traffic from ALB to ECS tasks"
+}
+
+resource "aws_lb_target_group" "ui" {
+  count       = local.ui_enabled ? 1 : 0
+  name        = local.ui_tg_name
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+  health_check {
+    enabled             = true
+    path                = "/"
+    port                = "traffic-port"
+    interval            = 15
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    matcher             = "200-399"
+  }
+  tags = local.tags
+}
+
+resource "aws_ecs_task_definition" "ui" {
+  count                    = local.ui_enabled ? 1 : 0
+  family                   = "${local.name_prefix}-ui"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = tostring(var.ui_task_cpu)
+  memory                   = tostring(var.ui_task_memory)
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  container_definitions = jsonencode([
+    {
+      name      = "sparkpilot-ui"
+      image     = var.ui_image_uri
+      essential = true
+      portMappings = [
+        {
+          containerPort = 3000
+          hostPort      = 3000
+          protocol      = "tcp"
+        }
+      ]
+      environment = [
+        { name = "NODE_ENV", value = "production" },
+        { name = "PORT", value = "3000" },
+        { name = "HOSTNAME", value = "0.0.0.0" },
+        { name = "SPARKPILOT_API", value = trimspace(var.ui_api_base_url) != "" ? var.ui_api_base_url : local.https_enabled ? "https://${aws_lb.api.dns_name}" : "http://${aws_lb.api.dns_name}" },
+        { name = "SPARKPILOT_UI_ENFORCE_AUTH", value = "true" },
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.ui[0].name
+          awslogs-region        = var.region
+          awslogs-stream-prefix = "ui"
+        }
+      }
+    }
+  ])
+  tags = local.tags
+}
+
+resource "aws_ecs_service" "ui" {
+  count                              = local.ui_enabled ? 1 : 0
+  name                               = local.ui_task_name
+  cluster                            = aws_ecs_cluster.control_plane.id
+  task_definition                    = aws_ecs_task_definition.ui[0].arn
+  desired_count                      = var.ui_desired_count
+  launch_type                        = "FARGATE"
+  health_check_grace_period_seconds  = 60
+  enable_execute_command             = var.enable_ecs_exec
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  network_configuration {
+    subnets          = var.private_subnet_ids
+    security_groups  = [aws_security_group.ecs_tasks.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.ui[0].arn
+    container_name   = "sparkpilot-ui"
+    container_port   = 3000
+  }
+
+  depends_on = [aws_lb_listener.api_http, aws_lb_listener.api_https, aws_lb_listener_rule.api_paths_http, aws_lb_listener_rule.api_paths_https]
+  tags       = local.tags
 }

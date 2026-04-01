@@ -152,3 +152,18 @@ output "worker_image_uri_deployed" {
   value       = var.worker_image_uri
   description = "Container image URI currently configured for worker task definitions."
 }
+
+output "ui_service_name" {
+  value       = local.ui_enabled ? aws_ecs_service.ui[0].name : ""
+  description = "ECS UI service name. Empty when UI is not deployed."
+}
+
+output "ui_enabled" {
+  value       = local.ui_enabled
+  description = "Whether the UI ECS service is deployed."
+}
+
+output "ui_base_url" {
+  value       = local.ui_enabled ? (local.https_enabled ? "https://${aws_lb.api.dns_name}" : "http://${aws_lb.api.dns_name}") : ""
+  description = "UI base URL (same ALB as API, path-routed). Empty when UI is not deployed."
+}

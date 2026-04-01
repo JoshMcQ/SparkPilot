@@ -93,6 +93,8 @@ enable_ecs_exec="$(normalize_bool "${ENABLE_ECS_EXEC:-false}")"
 acm_certificate_arn="$(echo "${ACM_CERTIFICATE_ARN:-}" | xargs)"
 cloudflare_proxied="$(normalize_bool "${CLOUDFLARE_PROXIED:-false}")"
 cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
+ui_image_uri="$(echo "${UI_IMAGE_URI:-}" | xargs)"
+ui_api_base_url="$(echo "${UI_API_BASE_URL:-}" | xargs)"
 
 # Reject localhost CORS in non-dev environments: deploy would succeed but ECS tasks would
 # fail at runtime when the API's validate_runtime_settings() rejects localhost origins.
@@ -174,6 +176,8 @@ jq -n \
   --argjson cloudflare_proxied "${cloudflare_proxied}" \
   --argjson cors_origins "${cors_origins_json}" \
   --argjson enable_ecs_exec "${enable_ecs_exec}" \
+  --arg ui_image_uri "${ui_image_uri}" \
+  --arg ui_api_base_url "${ui_api_base_url}" \
   '{
     environment: $environment,
     region: $region,
@@ -204,7 +208,9 @@ jq -n \
     acm_certificate_arn: $acm_certificate_arn,
     cloudflare_proxied: $cloudflare_proxied,
     cors_origins: $cors_origins,
-    enable_ecs_exec: $enable_ecs_exec
+    enable_ecs_exec: $enable_ecs_exec,
+    ui_image_uri: $ui_image_uri,
+    ui_api_base_url: $ui_api_base_url
   }' > "${tfvars_file}"
 
 if ! jq -e 'type == "object"' "${tfvars_file}" >/dev/null 2>&1; then
@@ -239,7 +245,13 @@ bootstrap_secret_arn="$(terraform -chdir="${terraform_root}" output -raw bootstr
 ecs_cluster_name="$(terraform -chdir="${terraform_root}" output -raw ecs_cluster_name 2>/dev/null || true)"
 ecs_worker_service_names_json="$(terraform -chdir="${terraform_root}" output -json ecs_worker_service_names 2>/dev/null || echo '{}')"
 ecs_api_service_name="$(terraform -chdir="${terraform_root}" output -raw ecs_api_service_name 2>/dev/null || true)"
+ecs_task_execution_role_arn="$(terraform -chdir="${terraform_root}" output -raw ecs_task_execution_role_arn 2>/dev/null || true)"
+ecs_task_runtime_role_arn="$(terraform -chdir="${terraform_root}" output -raw ecs_task_runtime_role_arn 2>/dev/null || true)"
+ecs_tasks_security_group_id="$(terraform -chdir="${terraform_root}" output -raw ecs_tasks_security_group_id 2>/dev/null || true)"
 alb_internal="$(terraform -chdir="${terraform_root}" output -raw alb_internal 2>/dev/null || echo "false")"
+ui_enabled_out="$(terraform -chdir="${terraform_root}" output -raw ui_enabled 2>/dev/null || echo "false")"
+ui_service_name="$(terraform -chdir="${terraform_root}" output -raw ui_service_name 2>/dev/null || true)"
+ui_base_url="$(terraform -chdir="${terraform_root}" output -raw ui_base_url 2>/dev/null || true)"
 
 if [[ -z "${alb_internal}" ]]; then
   alb_internal="false"
@@ -323,6 +335,76 @@ aws secretsmanager put-secret-value \
   --region "${AWS_REGION}" \
   --output json > /dev/null
 
+echo "Running database migrations..."
+# ---------------------------------------------------------------------------
+# Run Alembic migrations as a one-off ECS Fargate task before bringing up
+# the API service. The task uses the same API image + execution/runtime roles
+# so it inherits the exact same secret injection the API service uses. We
+# pass the DATABASE_URL directly (not via Secrets Manager) to avoid a timing
+# race: Secrets Manager replication can lag by a few seconds after put-secret-value,
+# and the Fargate task needs the value immediately at cold start.
+# ---------------------------------------------------------------------------
+subnet_ids_csv="$(echo "${private_subnets_json}" | jq -r 'join(",")')"
+
+if [[ -z "${ecs_task_execution_role_arn}" || -z "${ecs_task_runtime_role_arn}" || -z "${ecs_tasks_security_group_id}" ]]; then
+  echo "::error::Missing ECS role/SG Terraform outputs; cannot run migration task." >&2
+  exit 1
+fi
+
+migration_overrides="$(jq -n \
+  --arg db_url "${db_url}" \
+  '{
+    containerOverrides: [
+      {
+        name: "sparkpilot-api",
+        command: ["alembic", "upgrade", "head"],
+        environment: [
+          { name: "SPARKPILOT_DATABASE_URL", value: $db_url }
+        ]
+      }
+    ]
+  }')"
+
+migration_task_arn="$(
+  aws ecs run-task \
+    --cluster "${ecs_cluster_name}" \
+    --task-definition "${ecs_api_service_name}" \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[${subnet_ids_csv}],securityGroups=[${ecs_tasks_security_group_id}],assignPublicIp=DISABLED}" \
+    --overrides "${migration_overrides}" \
+    --region "${AWS_REGION}" \
+    --output json \
+  | jq -r '.tasks[0].taskArn'
+)"
+
+if [[ -z "${migration_task_arn}" || "${migration_task_arn}" == "null" ]]; then
+  echo "::error::Failed to start migration ECS task." >&2
+  exit 1
+fi
+
+echo "Migration task started: ${migration_task_arn}"
+echo "Waiting for migration task to complete..."
+aws ecs wait tasks-stopped \
+  --cluster "${ecs_cluster_name}" \
+  --tasks "${migration_task_arn}" \
+  --region "${AWS_REGION}"
+
+migration_exit_code="$(
+  aws ecs describe-tasks \
+    --cluster "${ecs_cluster_name}" \
+    --tasks "${migration_task_arn}" \
+    --region "${AWS_REGION}" \
+    --output json \
+  | jq -r '.tasks[0].containers[0].exitCode // 1'
+)"
+
+if [[ "${migration_exit_code}" != "0" ]]; then
+  echo "::error::Database migration task exited with code ${migration_exit_code}. Check CloudWatch logs for details." >&2
+  exit 1
+fi
+
+echo "Database migration completed successfully (exit code ${migration_exit_code})."
+
 echo "Secrets written. Forcing ECS service update to pull AWSCURRENT versions..."
 if [[ -n "${ecs_cluster_name}" && -n "${ecs_api_service_name}" ]]; then
   aws ecs update-service \
@@ -332,6 +414,17 @@ if [[ -n "${ecs_cluster_name}" && -n "${ecs_api_service_name}" ]]; then
     --region "${AWS_REGION}" \
     --output json > /dev/null
   echo "ECS API service update triggered."
+
+  # Redeploy UI service if deployed.
+  if [[ "${ui_enabled_out:-false}" == "true" && -n "${ui_service_name:-}" ]]; then
+    aws ecs update-service \
+      --cluster "${ecs_cluster_name}" \
+      --service "${ui_service_name}" \
+      --force-new-deployment \
+      --region "${AWS_REGION}" \
+      --output json > /dev/null
+    echo "ECS UI service update triggered: ${ui_service_name}"
+  fi
 
   # Redeploy worker services — they consume the same secrets and must also pick
   # up AWSCURRENT after secret values change.
@@ -357,9 +450,15 @@ if [[ -z "${api_base_url}" ]]; then
 fi
 
 echo "Deployed API base URL: ${api_base_url}"
+if [[ "${ui_enabled_out}" == "true" && -n "${ui_base_url}" ]]; then
+  echo "Deployed UI base URL: ${ui_base_url}"
+fi
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "api_base_url=${api_base_url}" >> "${GITHUB_OUTPUT}"
   echo "ecs_cluster_name=${ecs_cluster_name}" >> "${GITHUB_OUTPUT}"
   echo "ecs_api_service_name=${ecs_api_service_name}" >> "${GITHUB_OUTPUT}"
   echo "alb_internal=${alb_internal}" >> "${GITHUB_OUTPUT}"
+  echo "ui_enabled=${ui_enabled_out}" >> "${GITHUB_OUTPUT}"
+  echo "ui_base_url=${ui_base_url}" >> "${GITHUB_OUTPUT}"
+  echo "ui_service_name=${ui_service_name}" >> "${GITHUB_OUTPUT}"
 fi
