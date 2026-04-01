@@ -118,6 +118,7 @@ class EnvironmentCreateRequest(BaseModel):
     region: str = Field(default="us-east-1")
     instance_architecture: Literal["x86_64", "arm64", "mixed"] = "mixed"
     customer_role_arn: str
+    assume_role_external_id: str | None = Field(default=None, max_length=1024)
     eks_cluster_arn: str | None = None
     eks_namespace: str | None = Field(default=None, max_length=255)
     warm_pool_enabled: bool = False
@@ -138,6 +139,7 @@ class EnvironmentResponse(BaseModel):
     instance_architecture: Literal["x86_64", "arm64", "mixed"]
     status: EnvironmentState
     customer_role_arn: str
+    assume_role_external_id: str | None = None
     eks_cluster_arn: str | None
     eks_namespace: str | None
     emr_virtual_cluster_id: str | None

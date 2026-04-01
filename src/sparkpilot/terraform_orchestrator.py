@@ -86,6 +86,7 @@ class TerraformOrchestrator:
             "workspace": workspace,
             "state_key": state_key,
             "customer_role_arn": environment.customer_role_arn,
+            "assume_role_external_id": getattr(environment, "assume_role_external_id", None) or "",
         }
         if environment.eks_namespace:
             var_overrides["eks_namespace"] = environment.eks_namespace

@@ -18,6 +18,7 @@ from sparkpilot.aws_clients import (
     discover_eks_clusters_for_role,
     parse_role_account_id_from_arn,
     parse_role_name_from_arn,
+    session_for_environment,
 )
 from sparkpilot.config import get_settings
 from sparkpilot.exceptions import SparkPilotError
@@ -186,6 +187,94 @@ def test_assume_role_session_explicit_empty_external_id_disables_fallback(monkey
 
     assert "ExternalId" not in assume_role_kwargs
 
+    get_settings.cache_clear()
+
+
+def _make_fake_sts_client(assume_role_kwargs: dict) -> object:
+    class _FakeStsClient:
+        def assume_role(self, **kwargs):
+            assume_role_kwargs.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "AKIAEXAMPLE",
+                    "SecretAccessKey": "secret",
+                    "SessionToken": "token",
+                }
+            }
+    return _FakeStsClient()
+
+
+def test_session_for_environment_uses_env_external_id(monkeypatch) -> None:
+    """session_for_environment passes the env's assume_role_external_id to STS."""
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-fallback-id")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _make_fake_sts_client(assume_role_kwargs),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    env = SimpleNamespace(
+        customer_role_arn="arn:aws:iam::123456789012:role/TestRole",
+        region="us-east-1",
+        assume_role_external_id="per-env-id-override",
+    )
+    session_for_environment(env)
+
+    # Per-env external_id takes precedence over global.
+    assert assume_role_kwargs["ExternalId"] == "per-env-id-override"
+    get_settings.cache_clear()
+
+
+def test_session_for_environment_falls_back_to_global_when_env_id_is_none(monkeypatch) -> None:
+    """session_for_environment falls back to global ExternalId when env has none."""
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    monkeypatch.setenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", "global-only-id")
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _make_fake_sts_client(assume_role_kwargs),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    env = SimpleNamespace(
+        customer_role_arn="arn:aws:iam::123456789012:role/TestRole",
+        region="us-east-1",
+        assume_role_external_id=None,  # No per-env override
+    )
+    session_for_environment(env)
+
+    # Falls back to global setting.
+    assert assume_role_kwargs["ExternalId"] == "global-only-id"
+    get_settings.cache_clear()
+
+
+def test_session_for_environment_no_external_id_when_both_absent(monkeypatch) -> None:
+    """session_for_environment omits ExternalId when both env and global are unset."""
+    monkeypatch.delenv("ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    monkeypatch.delenv("SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", raising=False)
+    get_settings.cache_clear()
+
+    assume_role_kwargs: dict[str, object] = {}
+    monkeypatch.setattr(
+        "sparkpilot.aws_clients.boto3.client",
+        lambda service_name, region_name=None: _make_fake_sts_client(assume_role_kwargs),
+    )
+    monkeypatch.setattr("sparkpilot.aws_clients.boto3.Session", lambda **kwargs: kwargs)
+
+    env = SimpleNamespace(
+        customer_role_arn="arn:aws:iam::123456789012:role/TestRole",
+        region="us-east-1",
+        assume_role_external_id=None,
+    )
+    session_for_environment(env)
+
+    assert "ExternalId" not in assume_role_kwargs
     get_settings.cache_clear()
 
 

@@ -164,7 +164,7 @@ def test_issue3_iam_simulation_reports_denied_actions(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         preflight_checks,
-        "assume_role_session",
+        "session_for_environment",
         lambda *_args, **_kwargs: _FakeSession(iam_client=_FakeIamClient()),
     )
 
@@ -196,7 +196,7 @@ def test_issue3_eks_describe_cluster_fails_when_oidc_issuer_missing(monkeypatch)
     monkeypatch.setattr(preflight_checks, "EmrEksClient", _FakeEmrEksClient)
     monkeypatch.setattr(
         preflight_checks,
-        "assume_role_session",
+        "session_for_environment",
         lambda *_args, **_kwargs: _FakeSession(eks_client=_FakeEksClientMissingOidc()),
     )
 
@@ -284,7 +284,7 @@ def test_issue3_dispatch_gate_adds_all_pass_checks_with_mocked_aws(monkeypatch) 
     monkeypatch.setattr(preflight_checks, "EmrEksClient", _FakeEmrEksClient)
     monkeypatch.setattr(
         preflight_checks,
-        "assume_role_session",
+        "session_for_environment",
         lambda *_args, **_kwargs: _FakeSession(
             iam_client=_FakeIamAllAllowed(),
             eks_client=_FakeEksActive(),

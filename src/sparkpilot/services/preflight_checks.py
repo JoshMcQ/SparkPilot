@@ -14,7 +14,7 @@ from typing import Callable
 
 from botocore.exceptions import ClientError
 
-from sparkpilot.aws_clients import DISPATCH_SIMULATION_ACTIONS, EmrEksClient, assume_role_session
+from sparkpilot.aws_clients import DISPATCH_SIMULATION_ACTIONS, EmrEksClient, assume_role_session, session_for_environment
 from sparkpilot.config import get_settings
 from sparkpilot.models import Environment
 from sparkpilot.services.iam_validation import validate_assume_role_chain
@@ -76,11 +76,21 @@ def _add_issue3_sts_caller_identity_check(*, environment: Environment, add_check
         return False
 
     runtime_settings = get_settings()
-    configured_external_id = str(getattr(runtime_settings, "assume_role_external_id", "") or "").strip()
+    env_external_id = str(getattr(environment, "assume_role_external_id", "") or "").strip()
+    global_external_id = str(getattr(runtime_settings, "assume_role_external_id", "") or "").strip()
+    if env_external_id:
+        resolved_external_id = env_external_id
+        external_id_source = "environment"
+    elif global_external_id:
+        resolved_external_id = global_external_id
+        external_id_source = "global"
+    else:
+        resolved_external_id = ""
+        external_id_source = "none"
     result = validate_assume_role_chain(
         environment.customer_role_arn,
         environment.region,
-        external_id=configured_external_id or None,
+        external_id=resolved_external_id or None,
     )
     if result.get("success"):
         add_check(
@@ -90,7 +100,8 @@ def _add_issue3_sts_caller_identity_check(*, environment: Environment, add_check
             details={
                 "assumed_identity_arn": str(result.get("assumed_identity_arn") or result.get("assumed_role_arn") or ""),
                 "assumed_account": str(result.get("assumed_account") or ""),
-                "external_id_configured": bool(configured_external_id),
+                "external_id_configured": bool(resolved_external_id),
+                "external_id_source": external_id_source,
             },
         )
         return True
@@ -105,7 +116,8 @@ def _add_issue3_sts_caller_identity_check(*, environment: Environment, add_check
         ),
         details={
             "customer_role_arn": environment.customer_role_arn,
-            "external_id_configured": bool(configured_external_id),
+            "external_id_configured": bool(resolved_external_id),
+            "external_id_source": external_id_source,
         },
     )
     return False
@@ -142,7 +154,7 @@ def _add_issue3_iam_simulation_check(*, environment: Environment, add_check: Cal
         return False
 
     try:
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         iam_client = session.client("iam")
 
         dispatch_eval = iam_client.simulate_principal_policy(
@@ -246,7 +258,7 @@ def _add_issue3_eks_describe_cluster_check(*, environment: Environment, add_chec
     cluster_name = emr._eks_cluster_name_from_arn(environment.eks_cluster_arn)  # noqa: SLF001
 
     try:
-        session = assume_role_session(environment.customer_role_arn, environment.region)
+        session = session_for_environment(environment)
         eks_client = session.client("eks", region_name=environment.region)
         cluster = eks_client.describe_cluster(name=cluster_name).get("cluster", {})
     except ClientError as exc:

@@ -41,7 +41,7 @@ const TIERS = [
       "Full preflight + diagnostics suite",
       "CUR cost reconciliation",
       "Team budget enforcement",
-      "Policy engine (coming soon)",
+      "Policy engine",
       "Email support with SLA",
       "Deployment assistance",
       "Private Slack channel",

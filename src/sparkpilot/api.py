@@ -14,6 +14,7 @@ from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session
 
+from sparkpilot.aws_clients import parse_role_account_id_from_arn
 from sparkpilot.config import get_settings, validate_runtime_settings
 from sparkpilot.db import get_db, init_db
 from sparkpilot.exceptions import SparkPilotError
@@ -684,6 +685,62 @@ def get_environments(
     return [_response(model_to_dict(env), EnvironmentResponse) for env in rows]
 
 
+def _authorize_discovery(
+    db: Session,
+    access: "AccessContext",
+    customer_role_arn: str,
+) -> None:
+    """Enforce discovery authorization.
+
+    - Admin: allowed unconditionally.
+    - Operator: allowed only if the account_id embedded in customer_role_arn is already
+      associated with an environment in the caller's tenant, OR the caller's tenant has no
+      environments yet (first-time setup grace).
+    - All other roles: forbidden.
+
+    This prevents tenant-scoped operators from probing arbitrary cross-account roles while
+    still supporting the onboarding path (initial environment creation).
+    """
+    if access.role == "admin":
+        return
+
+    if access.role not in {"operator"}:
+        raise _forbidden("Admin or operator role is required for BYOC-Lite discovery.")
+
+    requested_account_id = parse_role_account_id_from_arn(customer_role_arn)
+    if not requested_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="customer_role_arn must be a valid IAM role ARN.",
+        )
+
+    tenant_envs = db.execute(
+        select(Environment).where(
+            Environment.tenant_id == access.tenant_id,
+            Environment.status != "deleted",
+        )
+    ).scalars().all()
+
+    if not tenant_envs:
+        # First-time setup: no environments yet in this tenant — allow discovery.
+        return
+
+    allowed_account_ids = {
+        parse_role_account_id_from_arn(env.customer_role_arn)
+        for env in tenant_envs
+        if env.customer_role_arn
+    }
+    allowed_account_ids.discard(None)
+
+    if requested_account_id not in allowed_account_ids:
+        raise _forbidden(
+            f"Operator discovery is restricted to AWS accounts already associated with your tenant "
+            f"({', '.join(sorted(allowed_account_ids)) or 'none'}). "
+            f"Requested account {requested_account_id} is not in the allowed set. "
+            f"Contact your SparkPilot admin to add a new account."
+        )
+
+
 @app.get("/v1/aws/byoc-lite/discovery", response_model=AwsByocLiteDiscoveryResponse)
 def get_byoc_lite_discovery(
     request: Request,
@@ -694,11 +751,11 @@ def get_byoc_lite_discovery(
 ) -> AwsByocLiteDiscoveryResponse:
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_admin(access)
+    normalized_role_arn = customer_role_arn.strip()
+    _authorize_discovery(db, access, normalized_role_arn)
 
     from sparkpilot.aws_clients import discover_eks_clusters_for_role
 
-    normalized_role_arn = customer_role_arn.strip()
     normalized_region = region.strip() or "us-east-1"
     if not normalized_role_arn:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="customer_role_arn is required.")

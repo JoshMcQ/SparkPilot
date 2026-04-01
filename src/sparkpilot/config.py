@@ -11,6 +11,8 @@ from sparkpilot.cost_center import parse_cost_center_policy
 EMR_EXECUTION_ROLE_PLACEHOLDER_ARN = "arn:aws:iam::111111111111:role/SparkPilotEmrExecutionRole"
 IAM_ROLE_ARN_PATTERN = re.compile(r"^arn:aws:iam::\d{12}:role/.+")
 MIN_BOOTSTRAP_SECRET_LENGTH = 16
+_DEFAULT_DATABASE_URL = "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
+_LOCALHOST_ORIGINS = {"localhost", "127.0.0.1", "::1"}
 
 
 class Settings(BaseSettings):
@@ -18,7 +20,7 @@ class Settings(BaseSettings):
 
     app_name: str = "SparkPilot API"
     environment: str = "dev"
-    database_url: str = "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
+    database_url: str = _DEFAULT_DATABASE_URL
     dry_run_mode: bool = False
     enable_full_byoc_mode: bool = False
     auth_mode: Literal["oidc"] = Field(
@@ -57,6 +59,7 @@ class Settings(BaseSettings):
     accepted_stale_minutes: int = 15
     submitted_stale_minutes: int = 30
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    ops_s3_bucket: str = "sparkpilot-ops"
     cur_athena_database: str = ""
     cur_athena_table: str = ""
     cur_athena_workgroup: str = "primary"
@@ -96,6 +99,21 @@ def _validate_environment_mode(settings: Settings) -> bool:
         raise ValueError(
             "SPARKPILOT_DRY_RUN_MODE=true is only allowed in development/test environments."
         )
+    if not is_dev_like_environment:
+        if settings.database_url == _DEFAULT_DATABASE_URL:
+            raise ValueError(
+                "SPARKPILOT_DATABASE_URL must be explicitly set in non-development environments. "
+                "The default localhost URL must not be used in staging or production."
+            )
+        localhost_cors = [
+            o for o in settings.cors_origin_list
+            if urlparse(o).hostname in _LOCALHOST_ORIGINS
+        ]
+        if localhost_cors:
+            raise ValueError(
+                f"SPARKPILOT_CORS_ORIGINS contains localhost origins {localhost_cors} "
+                "which are not allowed in non-development environments."
+            )
     return is_dev_like_environment
 
 

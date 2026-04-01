@@ -254,8 +254,8 @@ check "cur_reconciliation_configuration_complete" {
 
 check "https_required_for_non_dev" {
   assert {
-    condition     = local.is_dev_environment || local.alb_internal || local.https_enabled
-    error_message = "For internet-facing staging/prod deployments, set acm_certificate_arn to enable HTTPS. HTTP-only exposes credentials in transit."
+    condition     = local.is_dev_environment || local.alb_internal || local.https_enabled || var.cloudflare_proxied
+    error_message = "For internet-facing staging/prod deployments, either set acm_certificate_arn to enable HTTPS or set cloudflare_proxied=true (Cloudflare terminates TLS at the edge)."
   }
 }
 
