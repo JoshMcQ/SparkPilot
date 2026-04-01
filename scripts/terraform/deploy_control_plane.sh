@@ -93,6 +93,17 @@ enable_ecs_exec="$(normalize_bool "${ENABLE_ECS_EXEC:-false}")"
 acm_certificate_arn="$(echo "${ACM_CERTIFICATE_ARN:-}" | xargs)"
 cloudflare_proxied="$(normalize_bool "${CLOUDFLARE_PROXIED:-false}")"
 cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
+
+# Reject localhost CORS in non-dev environments: deploy would succeed but ECS tasks would
+# fail at runtime when the API's validate_runtime_settings() rejects localhost origins.
+_env_lower="$(echo "${SPARKPILOT_ENVIRONMENT}" | tr '[:upper:]' '[:lower:]' | xargs)"
+if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lower}" != "local" && "${_env_lower}" != "test" ]]; then
+  if [[ -z "${CORS_ORIGINS:-}" ]] || echo "${cors_origins_raw}" | tr ',' '\n' | grep -qiE '(localhost|127\.0\.0\.1|::1)'; then
+    echo "::error::CORS_ORIGINS must be set to a non-localhost value for non-dev environment '${SPARKPILOT_ENVIRONMENT}'. Set the CORS_ORIGINS variable (e.g. https://app.sparkpilot.cloud) before deploying." >&2
+    exit 1
+  fi
+fi
+
 # Convert comma-separated string to JSON array for Terraform
 cors_origins_json="$(echo "${cors_origins_raw}" | tr ',' '\n' | awk 'NF' | jq -R . | jq -s .)"
 rds_deletion_protection="$(normalize_nullable_bool "${RDS_DELETION_PROTECTION:-}")"

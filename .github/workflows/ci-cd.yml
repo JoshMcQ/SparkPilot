@@ -381,7 +381,7 @@ jobs:
           COST_CENTER_POLICY_JSON: ${{ vars.STAGING_COST_CENTER_POLICY_JSON || '' }}
           ACM_CERTIFICATE_ARN: ${{ secrets.STAGING_ACM_CERTIFICATE_ARN || '' }}
           CLOUDFLARE_PROXIED: ${{ vars.STAGING_CLOUDFLARE_PROXIED || 'false' }}
-          CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS || 'http://localhost:3000' }}
+          CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS || '' }}
           ENABLE_ECS_EXEC: ${{ vars.STAGING_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
