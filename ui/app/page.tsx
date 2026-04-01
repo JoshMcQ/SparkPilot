@@ -180,16 +180,25 @@ const ENGINES = [
 const INTEGRATIONS = [
   {
     name: "Apache Airflow",
-    desc: "SparkPilotSubmitRunOperator with full deferrable trigger support. Drop into any existing DAG — sync or async.",
-    detail: "Operator · Hook · Sensor · Async Trigger",
+    desc: "SparkPilotSubmitRunOperator with full deferrable trigger support. Drop into any existing DAG - sync or async.",
+    detail: "Operator | Hook | Sensor | Async Trigger",
   },
   {
     name: "Dagster",
     desc: "Native @asset definitions and ops for run submission, polling, and cancellation. Works with Dagster Cloud and OSS.",
-    detail: "Assets · Ops · Config Schema",
+    detail: "Assets | Ops | Config Schema",
+  },
+  {
+    name: "SparkPilot CLI",
+    desc: "Engineers can submit, inspect, cancel, and tail runs from terminal workflows without opening the dashboard.",
+    detail: "run-submit | run-list | run-logs | usage-get",
+  },
+  {
+    name: "SparkPilot API",
+    desc: "Teams can integrate SparkPilot into internal portals and automation jobs through authenticated REST endpoints.",
+    detail: "REST API | RBAC | Audit Trail",
   },
 ];
-
 const RUN_STATES = [
   { label: "queued", terminal: false },
   { label: "dispatching", terminal: false },
@@ -240,7 +249,7 @@ const HOW_IT_WORKS = [
     step: "4",
     title: "Submit through your orchestrator",
     description:
-      "Push jobs through the SparkPilot API, the Airflow operator, or the Dagster asset. Every submission passes preflight gates, gets a cost estimate, and is dispatched with deterministic logging.",
+      "Push jobs through the SparkPilot API, the SparkPilot CLI, the Airflow operator, or the Dagster asset. Every submission passes preflight gates, gets a cost estimate, and is dispatched with deterministic logging.",
   },
   {
     step: "5",
@@ -358,7 +367,7 @@ export default function LandingPage() {
           <div className="landing-section-badge">Run Lifecycle</div>
           <h2 className="landing-section-title">SparkPilot calls AWS — you don&apos;t have to</h2>
           <p className="landing-section-sub">
-            Submit a job through the SparkPilot API, Airflow, or Dagster. Three background
+            Submit a job through the SparkPilot API, SparkPilot CLI, Airflow, or Dagster. Three background
             workers handle dispatch, state reconciliation, and environment provisioning.
             Your data engineers interact with SparkPilot — not directly with AWS.
           </p>
@@ -447,11 +456,11 @@ export default function LandingPage() {
       {/* ── Integrations ─────────────────────────────── */}
       <section className="landing-section landing-section-alt" id="integrations">
         <div className="landing-section-header">
-          <div className="landing-section-badge">Orchestrator Integrations</div>
-          <h2 className="landing-section-title">Works with the orchestrators your team already uses</h2>
+          <div className="landing-section-badge">Integrations and Interfaces</div>
+          <h2 className="landing-section-title">Use SparkPilot from orchestrators, terminal, or API</h2>
           <p className="landing-section-sub">
-            Native provider packages for Apache Airflow and Dagster — not HTTP wrappers,
-            first-class operators with async support, config schemas, and error mapping.
+            SparkPilot supports workflow engines and engineer-first interfaces, so teams can
+            adopt it through existing DAGs, CI pipelines, and terminal-driven operations.
           </p>
         </div>
         <div className="landing-integrations-grid">
@@ -464,7 +473,7 @@ export default function LandingPage() {
           ))}
         </div>
         <div className="landing-integrations-note reveal">
-          Both packages are installable from source today. PyPI publishing pending.
+          Airflow and Dagster providers are installable from source today. CLI and API are available now for platform teams and automation.
         </div>
       </section>
 

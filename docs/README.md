@@ -25,6 +25,8 @@ This documentation set is organized as a product IA with five top-level paths.
 ## Integrate
 
 - [Airflow provider integration](./integrations/airflow-provider.md)
+- [Dagster provider integration](./integrations/dagster-provider.md)
+- [SparkPilot CLI integration](./integrations/cli.md)
 
 ## Govern
 
