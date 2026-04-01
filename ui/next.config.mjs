@@ -20,6 +20,7 @@ const allowedDevOrigins = Array.from(new Set([
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  output: "standalone",
   allowedDevOrigins,
   turbopack: {
     root: __dirname,

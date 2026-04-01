@@ -456,3 +456,45 @@ variable "enable_ecs_exec" {
   description = "Enable ECS Exec (SSM shell access to containers). Disable in production to reduce attack surface."
   default     = false
 }
+
+variable "ui_image_uri" {
+  type        = string
+  description = "Container image URI for SparkPilot UI. When empty, the UI ECS service is not deployed."
+  default     = ""
+}
+
+variable "ui_task_cpu" {
+  type        = number
+  description = "Fargate CPU units for UI task."
+  default     = 256
+  validation {
+    condition     = contains([256, 512, 1024, 2048, 4096], var.ui_task_cpu)
+    error_message = "ui_task_cpu must be a supported Fargate CPU value."
+  }
+}
+
+variable "ui_task_memory" {
+  type        = number
+  description = "Fargate memory (MiB) for UI task."
+  default     = 512
+  validation {
+    condition     = var.ui_task_memory >= 512
+    error_message = "ui_task_memory must be at least 512 MiB."
+  }
+}
+
+variable "ui_desired_count" {
+  type        = number
+  description = "Desired number of UI tasks."
+  default     = 1
+  validation {
+    condition     = var.ui_desired_count >= 0
+    error_message = "ui_desired_count must be zero or greater."
+  }
+}
+
+variable "ui_api_base_url" {
+  type        = string
+  description = "API base URL injected into UI container at runtime (SPARKPILOT_API env var). Defaults to empty, which uses the ALB URL resolved post-deploy."
+  default     = ""
+}

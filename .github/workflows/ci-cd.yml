@@ -60,6 +60,12 @@ jobs:
         run: npm ci
 
       - name: Build UI
+        env:
+          NEXT_PUBLIC_OIDC_ISSUER: https://auth.example.com
+          NEXT_PUBLIC_OIDC_CLIENT_ID: sparkpilot-ui
+          NEXT_PUBLIC_OIDC_REDIRECT_URI: https://app.example.com/auth/callback
+          NEXT_PUBLIC_OIDC_AUDIENCE: sparkpilot-api
+          NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE: "false"
         run: npm run build
 
   terraform-validate:
@@ -227,8 +233,13 @@ jobs:
             aws ecr create-repository --repository-name sparkpilot-worker-dev --image-scanning-configuration scanOnPush=true >/dev/null
           aws ecr put-image-scanning-configuration --repository-name sparkpilot-worker-dev --image-scanning-configuration scanOnPush=true >/dev/null
 
+          aws ecr describe-repositories --repository-names sparkpilot-ui-dev >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name sparkpilot-ui-dev --image-scanning-configuration scanOnPush=true >/dev/null
+          aws ecr put-image-scanning-configuration --repository-name sparkpilot-ui-dev --image-scanning-configuration scanOnPush=true >/dev/null
+
           echo "api_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-api-dev" >> "$GITHUB_OUTPUT"
           echo "worker_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-worker-dev" >> "$GITHUB_OUTPUT"
+          echo "ui_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-ui-dev" >> "$GITHUB_OUTPUT"
 
       - name: Build and push API image
         if: steps.preflight.outputs.skip != 'true'
@@ -251,6 +262,22 @@ jobs:
           tags: |
             ${{ steps.repos.outputs.worker_repo }}:${{ github.sha }}
             ${{ steps.repos.outputs.worker_repo }}:latest
+
+      - name: Build and push UI image
+        if: steps.preflight.outputs.skip != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/ui.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
+            ${{ steps.repos.outputs.ui_repo }}:latest
+          build-args: |
+            NEXT_PUBLIC_OIDC_ISSUER=${{ secrets.DEV_OIDC_ISSUER }}
+            NEXT_PUBLIC_OIDC_CLIENT_ID=sparkpilot-ui
+            NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.DEV_UI_APP_BASE_URL }}/auth/callback
+            NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
 
       - name: Terraform deploy (dev)
         if: steps.preflight.outputs.skip != 'true'
@@ -290,6 +317,8 @@ jobs:
           COST_CENTER_POLICY_JSON: ${{ vars.DEV_COST_CENTER_POLICY_JSON || '' }}
           ACM_CERTIFICATE_ARN: ${{ secrets.DEV_ACM_CERTIFICATE_ARN || '' }}
           CORS_ORIGINS: ${{ vars.DEV_CORS_ORIGINS || 'http://localhost:3000' }}
+          UI_IMAGE_URI: ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
+          UI_API_BASE_URL: ${{ vars.DEV_UI_API_BASE_URL || '' }}
           ENABLE_ECS_EXEC: ${{ vars.DEV_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
@@ -370,8 +399,13 @@ jobs:
             aws ecr create-repository --repository-name sparkpilot-worker-staging --image-scanning-configuration scanOnPush=true >/dev/null
           aws ecr put-image-scanning-configuration --repository-name sparkpilot-worker-staging --image-scanning-configuration scanOnPush=true >/dev/null
 
+          aws ecr describe-repositories --repository-names sparkpilot-ui-staging >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name sparkpilot-ui-staging --image-scanning-configuration scanOnPush=true >/dev/null
+          aws ecr put-image-scanning-configuration --repository-name sparkpilot-ui-staging --image-scanning-configuration scanOnPush=true >/dev/null
+
           echo "api_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-api-staging" >> "$GITHUB_OUTPUT"
           echo "worker_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-worker-staging" >> "$GITHUB_OUTPUT"
+          echo "ui_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-ui-staging" >> "$GITHUB_OUTPUT"
 
       - name: Build and push API image
         if: steps.preflight.outputs.skip != 'true'
@@ -394,6 +428,22 @@ jobs:
           tags: |
             ${{ steps.repos.outputs.worker_repo }}:${{ github.sha }}
             ${{ steps.repos.outputs.worker_repo }}:latest
+
+      - name: Build and push UI image
+        if: steps.preflight.outputs.skip != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/ui.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
+            ${{ steps.repos.outputs.ui_repo }}:latest
+          build-args: |
+            NEXT_PUBLIC_OIDC_ISSUER=${{ secrets.STAGING_OIDC_ISSUER }}
+            NEXT_PUBLIC_OIDC_CLIENT_ID=sparkpilot-ui
+            NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.STAGING_UI_APP_BASE_URL }}/auth/callback
+            NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
 
       - name: Terraform deploy (staging)
         if: steps.preflight.outputs.skip != 'true'
@@ -435,6 +485,8 @@ jobs:
           ACM_CERTIFICATE_ARN: ${{ secrets.STAGING_ACM_CERTIFICATE_ARN || '' }}
           CLOUDFLARE_PROXIED: ${{ vars.STAGING_CLOUDFLARE_PROXIED || 'false' }}
           CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS || '' }}
+          UI_IMAGE_URI: ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
+          UI_API_BASE_URL: ${{ vars.STAGING_UI_API_BASE_URL || '' }}
           ENABLE_ECS_EXEC: ${{ vars.STAGING_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
@@ -515,8 +567,13 @@ jobs:
             aws ecr create-repository --repository-name sparkpilot-worker-prod --image-scanning-configuration scanOnPush=true >/dev/null
           aws ecr put-image-scanning-configuration --repository-name sparkpilot-worker-prod --image-scanning-configuration scanOnPush=true >/dev/null
 
+          aws ecr describe-repositories --repository-names sparkpilot-ui-prod >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name sparkpilot-ui-prod --image-scanning-configuration scanOnPush=true >/dev/null
+          aws ecr put-image-scanning-configuration --repository-name sparkpilot-ui-prod --image-scanning-configuration scanOnPush=true >/dev/null
+
           echo "api_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-api-prod" >> "$GITHUB_OUTPUT"
           echo "worker_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-worker-prod" >> "$GITHUB_OUTPUT"
+          echo "ui_repo=${{ steps.ecr.outputs.registry }}/sparkpilot-ui-prod" >> "$GITHUB_OUTPUT"
 
       - name: Build and push API image
         if: steps.preflight.outputs.skip != 'true'
@@ -539,6 +596,22 @@ jobs:
           tags: |
             ${{ steps.repos.outputs.worker_repo }}:${{ github.sha }}
             ${{ steps.repos.outputs.worker_repo }}:latest
+
+      - name: Build and push UI image
+        if: steps.preflight.outputs.skip != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/ui.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
+            ${{ steps.repos.outputs.ui_repo }}:latest
+          build-args: |
+            NEXT_PUBLIC_OIDC_ISSUER=${{ secrets.PROD_OIDC_ISSUER }}
+            NEXT_PUBLIC_OIDC_CLIENT_ID=sparkpilot-ui
+            NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.PROD_UI_APP_BASE_URL }}/auth/callback
+            NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
 
       - name: Terraform deploy (prod)
         if: steps.preflight.outputs.skip != 'true'
@@ -579,6 +652,8 @@ jobs:
           ACM_CERTIFICATE_ARN: ${{ secrets.PROD_ACM_CERTIFICATE_ARN || '' }}
           CLOUDFLARE_PROXIED: ${{ vars.PROD_CLOUDFLARE_PROXIED || 'false' }}
           CORS_ORIGINS: ${{ vars.PROD_CORS_ORIGINS || '' }}
+          UI_IMAGE_URI: ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
+          UI_API_BASE_URL: ${{ vars.PROD_UI_API_BASE_URL || '' }}
           ENABLE_ECS_EXEC: ${{ vars.PROD_ENABLE_ECS_EXEC || 'false' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
