@@ -15,6 +15,7 @@ const ISSUER = (process.env.NEXT_PUBLIC_OIDC_ISSUER ?? "").trim();
 const CLIENT_ID = (process.env.NEXT_PUBLIC_OIDC_CLIENT_ID ?? "").trim();
 const REDIRECT_URI = (process.env.NEXT_PUBLIC_OIDC_REDIRECT_URI ?? "").trim();
 const AUDIENCE = (process.env.NEXT_PUBLIC_OIDC_AUDIENCE ?? "").trim();
+const IDP_NAME = (process.env.NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER ?? "").trim();
 
 const PKCE_VERIFIER_KEY = "sparkpilot.oidc.code_verifier";
 const PKCE_STATE_KEY = "sparkpilot.oidc.state";
@@ -116,6 +117,9 @@ export async function startLoginFlow(returnTo?: string): Promise<void> {
   });
   if (AUDIENCE) {
     params.set("audience", AUDIENCE);
+  }
+  if (IDP_NAME) {
+    params.set("identity_provider", IDP_NAME);
   }
 
   window.location.assign(`${authorization_endpoint}?${params.toString()}`);
