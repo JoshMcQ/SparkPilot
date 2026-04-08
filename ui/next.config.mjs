@@ -40,12 +40,18 @@ const nextConfig = {
     const connectSrcParts = ["'self'"];
     if (oidcIssuer) {
       try {
-        const issuerOrigin = new URL(oidcIssuer).origin;
+        const issuerUrl = new URL(oidcIssuer);
+        const issuerOrigin = issuerUrl.origin;
         if (issuerOrigin && issuerOrigin !== "null") {
           connectSrcParts.push(issuerOrigin);
         }
+        // Cognito often serves discovery on cognito-idp.* while token exchange
+        // uses the hosted auth domain (*.amazoncognito.com).
+        if (issuerUrl.hostname.includes("cognito-idp.")) {
+          connectSrcParts.push("https://*.amazoncognito.com");
+        }
       } catch {
-        // Invalid URL — keep deny-by-default
+        // Invalid URL - keep deny-by-default
       }
     }
     // Allow additional OIDC connect origins via env var (comma-separated)
