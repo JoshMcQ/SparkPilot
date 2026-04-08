@@ -279,3 +279,74 @@ def test_key_rotation_error_is_oidc_validation_error_subclass() -> None:
     err = OIDCKeyRotationError("test")
     assert isinstance(err, OIDCValidationError)
     assert isinstance(err, ValueError)
+
+
+def test_cognito_style_access_token_with_client_id_claim_is_accepted(tmp_path) -> None:
+    issuer = "https://issuer.test"
+    audience = "sparkpilot-api"
+    kid = "cognito-kid"
+    jwks_path = tmp_path / "jwks.json"
+    jwks_uri = jwks_path.resolve().as_uri()
+
+    key, jwk = _make_signing_key()
+    jwk["kid"] = kid
+    jwks_path.write_text(json.dumps({"keys": [jwk]}), encoding="utf-8")
+
+    verifier = OIDCTokenVerifier(
+        issuer=issuer,
+        audience=audience,
+        jwks_uri=jwks_uri,
+        jwks_cache_ttl_seconds=3600,
+    )
+
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "user:cognito",
+            "iss": issuer,
+            "client_id": audience,
+            "iat": now,
+            "exp": now + 600,
+        },
+        key,
+        algorithm="RS256",
+        headers={"kid": kid, "typ": "JWT"},
+    )
+
+    identity = verifier.verify_access_token(token)
+    assert identity.subject == "user:cognito"
+
+
+def test_missing_aud_and_client_id_is_rejected(tmp_path) -> None:
+    issuer = "https://issuer.test"
+    audience = "sparkpilot-api"
+    kid = "missing-aud-kid"
+    jwks_path = tmp_path / "jwks.json"
+    jwks_uri = jwks_path.resolve().as_uri()
+
+    key, jwk = _make_signing_key()
+    jwk["kid"] = kid
+    jwks_path.write_text(json.dumps({"keys": [jwk]}), encoding="utf-8")
+
+    verifier = OIDCTokenVerifier(
+        issuer=issuer,
+        audience=audience,
+        jwks_uri=jwks_uri,
+        jwks_cache_ttl_seconds=3600,
+    )
+
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "user:no-audience",
+            "iss": issuer,
+            "iat": now,
+            "exp": now + 600,
+        },
+        key,
+        algorithm="RS256",
+        headers={"kid": kid, "typ": "JWT"},
+    )
+
+    with pytest.raises(OIDCValidationError, match="audience/client_id"):
+        verifier.verify_access_token(token)
