@@ -637,6 +637,7 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.PROD_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.PROD_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.PROD_BOOTSTRAP_SECRET }}
+          TF_VAR_manage_vpc_endpoints: ${{ vars.PROD_MANAGE_VPC_ENDPOINTS || 'false' }}
           DRY_RUN_MODE: ${{ vars.PROD_DRY_RUN_MODE || 'false' }}
           ENABLE_FULL_BYOC_MODE: ${{ vars.PROD_ENABLE_FULL_BYOC_MODE || 'false' }}
           ALLOW_UNSAFE_RDS_CONFIGURATION: ${{ vars.PROD_ALLOW_UNSAFE_RDS_CONFIGURATION || 'false' }}
