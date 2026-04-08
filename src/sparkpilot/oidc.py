@@ -156,7 +156,10 @@ class OIDCTokenVerifier:
                     return False
                 self._record_forced_refresh()
 
-            payload = _read_uri_json(self.jwks_uri, timeout_seconds=self.http_timeout_seconds)
+            try:
+                payload = _read_uri_json(self.jwks_uri, timeout_seconds=self.http_timeout_seconds)
+            except (httpx.HTTPError, OSError, ValueError) as exc:
+                raise OIDCValidationError(f"OIDC JWKS retrieval failed: {exc}") from exc
             keys = payload.get("keys")
             if not isinstance(keys, list) or not keys:
                 raise OIDCValidationError("OIDC_JWKS_URI did not return a non-empty 'keys' array.")
@@ -213,6 +216,28 @@ class OIDCTokenVerifier:
 
         raise OIDCValidationError("JWT kid was not found in configured JWKS.")
 
+    def _claims_match_audience(self, claims: dict[str, Any]) -> bool:
+        """Support both standard `aud` and Cognito access-token `client_id`."""
+        aud_claim = claims.get("aud")
+        aud_values: list[str] = []
+        if isinstance(aud_claim, str):
+            text = aud_claim.strip()
+            if text:
+                aud_values.append(text)
+        elif isinstance(aud_claim, list):
+            for item in aud_claim:
+                text = str(item).strip()
+                if text:
+                    aud_values.append(text)
+
+        if aud_values:
+            return self.audience in aud_values
+
+        client_id = str(claims.get("client_id") or "").strip()
+        if client_id:
+            return client_id == self.audience
+        return False
+
     def verify_access_token(self, token: str) -> OIDCIdentity:
         algorithm, signing_key = self._resolve_signing_key(token)
         try:
@@ -220,9 +245,11 @@ class OIDCTokenVerifier:
                 token,
                 signing_key.key,
                 algorithms=[algorithm],
-                audience=self.audience,
                 issuer=self.issuer,
-                options={"require": ["sub", "iss", "aud", "exp"]},
+                options={
+                    "require": ["sub", "iss", "exp"],
+                    "verify_aud": False,
+                },
             )
         except jwt.InvalidSignatureError:
             # Support key rotation where an issuer reuses the same kid for a new key.
@@ -255,6 +282,10 @@ class OIDCTokenVerifier:
             raise OIDCValidationError(f"OIDC JWT validation failed: {exc}") from exc
         if not isinstance(claims, dict):
             raise OIDCValidationError("OIDC JWT claims payload must be an object.")
+        if not self._claims_match_audience(claims):
+            raise OIDCValidationError(
+                "OIDC JWT validation failed: token audience/client_id does not match expected audience."
+            )
         subject = str(claims.get("sub") or "").strip()
         if not subject:
             raise OIDCValidationError("OIDC JWT is missing required subject claim.")
