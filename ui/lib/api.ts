@@ -51,7 +51,7 @@ export async function isSessionActive(): Promise<boolean> {
   }
 }
 
-export function storeUserAccessToken(token: string): void {
+export async function storeUserAccessToken(token: string): Promise<void> {
   if (typeof window === "undefined") {
     return;
   }
@@ -60,7 +60,7 @@ export function storeUserAccessToken(token: string): void {
 
   // Store in HttpOnly cookie via session API (#58)
   if (value) {
-    fetch("/api/auth/session", {
+    await fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: value }),
@@ -68,7 +68,7 @@ export function storeUserAccessToken(token: string): void {
       // Silent fallback — cookie will be missing, header auth still works
     });
   } else {
-    fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
+    await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
   }
 
   // Keep localStorage for backward compat in dev mode only
@@ -510,6 +510,27 @@ export async function fetchQueueUtilization(environmentId: string): Promise<Queu
   }
   const payload = await response.json();
   return _asObject(payload, "Queue utilization fetch") as QueueUtilizationResponse;
+}
+
+export type KpiMetrics = {
+  preflight_outcome_rates: Record<string, unknown>;
+  dispatch_success_rate: Record<string, unknown>;
+  queue_to_running_latency: Record<string, unknown>;
+  budget_guardrail_triggers: Record<string, unknown>;
+  terminal_outcome_distribution: Record<string, unknown>;
+  jwks_refresh_stats: Record<string, unknown>;
+};
+
+export async function fetchKpiMetrics(): Promise<KpiMetrics> {
+  const response = await fetch(`${API_PREFIX}/v1/metrics/kpis`, {
+    cache: "no-store",
+    headers: _headers(false),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load KPI metrics"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "KPI metrics fetch") as KpiMetrics;
 }
 
 export type RunSubmitRequest = {
