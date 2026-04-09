@@ -176,6 +176,7 @@ export default function LandingPage() {
         </p>
       </section>
 
+      <div id="features" />
       <section className="landing-section" id="truth-map">
         <div className="landing-section-header">
           <div className="landing-section-badge">Product Truth Map</div>
@@ -191,6 +192,7 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <div id="integrations" />
       <section className="landing-section landing-section-alt" id="workflow">
         <div className="landing-section-header">
           <div className="landing-section-badge">Validated Workflow</div>
@@ -206,7 +208,7 @@ export default function LandingPage() {
             <Link href="/login?next=%2Fonboarding%2Faws" className="button button-secondary">
               Open sign-in
             </Link>
-            <Link href="/onboarding/aws" className="button button-secondary">
+            <Link href="/login?next=%2Fonboarding%2Faws" className="button button-secondary">
               Open onboarding
             </Link>
             <Link href="/runs" className="button button-secondary">

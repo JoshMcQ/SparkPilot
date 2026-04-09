@@ -170,8 +170,8 @@ export default function GettingStartedPage() {
           </div>
 
           <div className="getting-started-section-title-row">
-            <h2>Command line quickstart (after sign-in)</h2>
-            <p>SparkPilot supports terminal-first batch operations for platform teams and CI workflows.</p>
+            <h2>Command line quickstart (human + automation)</h2>
+            <p>SparkPilot supports terminal-first batch operations for interactive users and service automation.</p>
           </div>
           <div className="getting-started-grid">
             <article className="getting-started-card">
@@ -184,7 +184,10 @@ export default function GettingStartedPage() {
                   </li>
                 ))}
               </ul>
-              <p>CLI auth uses OIDC client-credentials for service-style automation, not browser user sessions.</p>
+              <p>
+                Human CLI path: sign in via the web app first, then run CLI commands for day-to-day operations.
+                Service automation path: use OIDC client-credentials for non-interactive jobs and CI workflows.
+              </p>
             </article>
           </div>
         </div>

@@ -28,7 +28,8 @@ function AuthCallbackContent() {
       .then((nextPath) => {
         // Use a full navigation so middleware reads the freshly persisted
         // HttpOnly session cookie on the first authenticated route load.
-        window.location.assign(nextPath);
+        // replace() prevents users from navigating back to a stale callback URL.
+        window.location.replace(nextPath);
       })
       .catch((err: unknown) => {
         setAsyncError(err instanceof Error ? err.message : "Login failed. Please try again.");
