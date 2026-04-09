@@ -1,0 +1,114 @@
+name: nonprod-cost-guardrails
+
+on:
+  schedule:
+    - cron: "20 5 * * *"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Environment to scale down"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+      stop_rds:
+        description: "Stop RDS instance in target environment"
+        required: true
+        default: false
+        type: boolean
+      dry_run:
+        description: "Print actions without applying changes"
+        required: true
+        default: false
+        type: boolean
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  nightly-dev-scale-down:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gate - dev deploy role configured
+        id: gate
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}" ]; then
+            echo "INFO: skipping nightly dev scale-down; AWS_DEV_DEPLOY_ROLE_ARN is not configured."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        if: steps.gate.outputs.skip != 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Scale down dev non-prod footprint
+        if: steps.gate.outputs.skip != 'true'
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: dev
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SCALE_ECS: "true"
+          STOP_RDS: "true"
+          DRY_RUN: "false"
+        run: bash scripts/ops/scale_nonprod_idle.sh
+
+  manual-dev-scale-down:
+    if: github.event_name == 'workflow_dispatch' && inputs.target_environment == 'dev'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Manual scale down (dev)
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: dev
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SCALE_ECS: "true"
+          STOP_RDS: ${{ inputs.stop_rds && 'true' || 'false' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: bash scripts/ops/scale_nonprod_idle.sh
+
+  manual-staging-scale-down:
+    if: github.event_name == 'workflow_dispatch' && inputs.target_environment == 'staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Manual scale down (staging)
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: staging
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SCALE_ECS: "true"
+          STOP_RDS: ${{ inputs.stop_rds && 'true' || 'false' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: bash scripts/ops/scale_nonprod_idle.sh

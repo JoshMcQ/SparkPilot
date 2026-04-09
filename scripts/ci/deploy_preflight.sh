@@ -1,41 +1,64 @@
 #!/usr/bin/env bash
-# deploy_preflight.sh — validate required deploy secrets before AWS auth.
+# deploy_preflight.sh - validate deploy gates/secrets before AWS auth.
 #
 # Environment variables expected (all injected from GHA secrets/vars):
-#   DEPLOY_ENV          — lowercase env name: dev | staging | prod
-#   ROLE_ARN            — AWS deploy role ARN (AWS_{ENV}_DEPLOY_ROLE_ARN)
-#   TF_STATE_BUCKET     — Terraform state S3 bucket
-#   TF_LOCK_TABLE       — Terraform DynamoDB lock table
-#   VPC_ID              — VPC ID for the environment
-#   PRIVATE_SUBNET_IDS_JSON — JSON array of private subnet IDs
-#   DB_PASSWORD         — RDS database password
-#   OIDC_ISSUER         — OIDC issuer URL
-#   OIDC_AUDIENCE       — OIDC audience
-#   OIDC_JWKS_URI       — OIDC JWKS URI
-#   BOOTSTRAP_SECRET    — API bootstrap secret
-#   EMR_EXECUTION_ROLE_ARN — EMR execution role ARN
+#   DEPLOY_ENV              - lowercase env name: dev | staging | prod
+#   DEPLOY_ENABLED          - optional gate. true enables deploy; false skips job.
+#   ROLE_ARN                - AWS deploy role ARN (AWS_{ENV}_DEPLOY_ROLE_ARN)
+#   TF_STATE_BUCKET         - Terraform state S3 bucket
+#   TF_LOCK_TABLE           - Terraform DynamoDB lock table
+#   VPC_ID                  - VPC ID for the environment
+#   PRIVATE_SUBNET_IDS_JSON - JSON array of private subnet IDs
+#   DB_PASSWORD             - RDS database password
+#   OIDC_ISSUER             - OIDC issuer URL
+#   OIDC_AUDIENCE           - OIDC audience
+#   OIDC_JWKS_URI           - OIDC JWKS URI
+#   BOOTSTRAP_SECRET        - API bootstrap secret
+#   EMR_EXECUTION_ROLE_ARN  - EMR execution role ARN
 #
 # Outputs (via GITHUB_OUTPUT):
-#   skip=true   — role ARN not set; environment not configured; job should skip remaining steps
-#   skip=false  — all required secrets present; proceed with deploy
+#   skip=true   - deploy disabled, role missing, or environment not configured
+#   skip=false  - all required gates/secrets present; proceed with deploy
 #
 # Exit codes:
-#   0  — skip=true (not configured) or skip=false (all good)
-#   1  — role ARN is set but one or more other required secrets are missing (actionable error)
+#   0 - skip=true (not configured/disabled) or skip=false (all good)
+#   1 - deploy is enabled and one or more required secrets are missing
 
 set -euo pipefail
 
-ENV_UPPER="${DEPLOY_ENV^^}"
+normalize_bool() {
+  local raw="${1:-}"
+  raw="$(echo "${raw}" | tr '[:upper:]' '[:lower:]' | xargs)"
+  case "${raw}" in
+    true|1|yes|y|on) echo "true" ;;
+    false|0|no|n|off|"") echo "false" ;;
+    *)
+      echo "::error::Invalid boolean value '${1}' for DEPLOY_ENABLED. Use true/false." >&2
+      exit 1
+      ;;
+  esac
+}
 
-# ── Gate 1: Is this environment configured at all? ──────────────────────────
+ENV_UPPER="${DEPLOY_ENV^^}"
+DEPLOY_ENABLED_NORMALIZED="$(normalize_bool "${DEPLOY_ENABLED:-true}")"
+
+# Gate 0: explicit deploy lane switch (cost control / freeze switch)
+if [[ "${DEPLOY_ENABLED_NORMALIZED}" != "true" ]]; then
+  echo "INFO: ${DEPLOY_ENV} deploy skipped - DEPLOY_ENABLED is false."
+  echo "      Set ${ENV_UPPER}_DEPLOY_ENABLED=true (GitHub environment variable) to re-enable this lane."
+  echo "skip=true" >> "${GITHUB_OUTPUT}"
+  exit 0
+fi
+
+# Gate 1: Is this environment configured at all?
 if [ -z "${ROLE_ARN:-}" ]; then
-  echo "INFO: ${DEPLOY_ENV} deploy skipped — AWS_${ENV_UPPER}_DEPLOY_ROLE_ARN is not set."
+  echo "INFO: ${DEPLOY_ENV} deploy skipped - AWS_${ENV_UPPER}_DEPLOY_ROLE_ARN is not set."
   echo "      Configure this secret in the '${DEPLOY_ENV}' GitHub environment to enable ${DEPLOY_ENV} deploys."
   echo "skip=true" >> "${GITHUB_OUTPUT}"
   exit 0
 fi
 
-# ── Gate 2: Role ARN is present — validate all other required secrets ────────
+# Gate 2: Role ARN is present - validate all other required secrets
 declare -a MISSING=()
 
 [ -z "${TF_STATE_BUCKET:-}" ]         && MISSING+=("${ENV_UPPER}_TF_STATE_BUCKET")
@@ -55,7 +78,7 @@ fi
 [ -z "${EMR_EXECUTION_ROLE_ARN:-}" ]  && MISSING+=("${ENV_UPPER}_EMR_EXECUTION_ROLE_ARN")
 
 if [ "${#MISSING[@]}" -gt 0 ]; then
-  echo "::error::${DEPLOY_ENV} deploy preflight FAILED — role ARN is set but ${#MISSING[@]} required secret(s) are missing:"
+  echo "::error::${DEPLOY_ENV} deploy preflight FAILED - role ARN is set but ${#MISSING[@]} required secret(s) are missing:"
   for key in "${MISSING[@]}"; do
     echo "  missing: ${key}"
   done
@@ -65,4 +88,4 @@ if [ "${#MISSING[@]}" -gt 0 ]; then
 fi
 
 echo "skip=false" >> "${GITHUB_OUTPUT}"
-echo "INFO: ${DEPLOY_ENV} deploy preflight passed — all required secrets present."
+echo "INFO: ${DEPLOY_ENV} deploy preflight passed - all required secrets present."

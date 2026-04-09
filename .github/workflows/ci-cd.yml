@@ -178,11 +178,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy preflight — validate required secrets
+      - name: Deploy preflight - validate required secrets
         id: preflight
         shell: bash
         env:
           DEPLOY_ENV: dev
+          DEPLOY_ENABLED: ${{ vars.DEV_DEPLOY_ENABLED || 'false' }}
           ROLE_ARN: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
           TF_STATE_BUCKET: ${{ secrets.DEV_TF_STATE_BUCKET }}
           TF_LOCK_TABLE: ${{ secrets.DEV_TF_LOCK_TABLE }}
@@ -193,6 +194,10 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.DEV_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.DEV_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.DEV_BOOTSTRAP_SECRET }}
+          TF_VAR_api_desired_count: ${{ vars.DEV_API_DESIRED_COUNT || '1' }}
+          TF_VAR_worker_desired_count: ${{ vars.DEV_WORKER_DESIRED_COUNT || '0' }}
+          TF_VAR_ui_desired_count: ${{ vars.DEV_UI_DESIRED_COUNT || '0' }}
+          TF_VAR_db_instance_class: ${{ vars.DEV_DB_INSTANCE_CLASS || 'db.t4g.micro' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.DEV_EMR_EXECUTION_ROLE_ARN }}
         run: bash scripts/ci/deploy_preflight.sh
 
@@ -301,6 +306,10 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.DEV_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.DEV_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.DEV_BOOTSTRAP_SECRET }}
+          TF_VAR_api_desired_count: ${{ vars.DEV_API_DESIRED_COUNT || '1' }}
+          TF_VAR_worker_desired_count: ${{ vars.DEV_WORKER_DESIRED_COUNT || '0' }}
+          TF_VAR_ui_desired_count: ${{ vars.DEV_UI_DESIRED_COUNT || '0' }}
+          TF_VAR_db_instance_class: ${{ vars.DEV_DB_INSTANCE_CLASS || 'db.t4g.micro' }}
           DRY_RUN_MODE: ${{ vars.DEV_DRY_RUN_MODE || 'false' }}
           ENABLE_FULL_BYOC_MODE: ${{ vars.DEV_ENABLE_FULL_BYOC_MODE || 'false' }}
           ALLOW_UNSAFE_RDS_CONFIGURATION: ${{ vars.DEV_ALLOW_UNSAFE_RDS_CONFIGURATION || 'false' }}
@@ -345,11 +354,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy preflight — validate required secrets
+      - name: Deploy preflight - validate required secrets
         id: preflight
         shell: bash
         env:
           DEPLOY_ENV: staging
+          DEPLOY_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED || 'true' }}
           ROLE_ARN: ${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}
           TF_STATE_BUCKET: ${{ secrets.STAGING_TF_STATE_BUCKET }}
           TF_LOCK_TABLE: ${{ secrets.STAGING_TF_LOCK_TABLE }}
@@ -360,6 +370,10 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.STAGING_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.STAGING_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.STAGING_BOOTSTRAP_SECRET }}
+          TF_VAR_api_desired_count: ${{ vars.STAGING_API_DESIRED_COUNT || '1' }}
+          TF_VAR_worker_desired_count: ${{ vars.STAGING_WORKER_DESIRED_COUNT || '1' }}
+          TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '1' }}
+          TF_VAR_db_instance_class: ${{ vars.STAGING_DB_INSTANCE_CLASS || 'db.t4g.small' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.STAGING_EMR_EXECUTION_ROLE_ARN }}
         run: bash scripts/ci/deploy_preflight.sh
 
@@ -468,6 +482,10 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.STAGING_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.STAGING_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.STAGING_BOOTSTRAP_SECRET }}
+          TF_VAR_api_desired_count: ${{ vars.STAGING_API_DESIRED_COUNT || '1' }}
+          TF_VAR_worker_desired_count: ${{ vars.STAGING_WORKER_DESIRED_COUNT || '1' }}
+          TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '1' }}
+          TF_VAR_db_instance_class: ${{ vars.STAGING_DB_INSTANCE_CLASS || 'db.t4g.small' }}
           TF_VAR_manage_vpc_endpoints: ${{ vars.STAGING_MANAGE_VPC_ENDPOINTS || 'false' }}
           DRY_RUN_MODE: ${{ vars.STAGING_DRY_RUN_MODE || 'false' }}
           ENABLE_FULL_BYOC_MODE: ${{ vars.STAGING_ENABLE_FULL_BYOC_MODE || 'false' }}
@@ -514,11 +532,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy preflight — validate required secrets
+      - name: Deploy preflight - validate required secrets
         id: preflight
         shell: bash
         env:
           DEPLOY_ENV: prod
+          DEPLOY_ENABLED: ${{ vars.PROD_DEPLOY_ENABLED || 'false' }}
           ROLE_ARN: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
           TF_STATE_BUCKET: ${{ secrets.PROD_TF_STATE_BUCKET }}
           TF_LOCK_TABLE: ${{ secrets.PROD_TF_LOCK_TABLE }}
@@ -529,6 +548,10 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.PROD_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.PROD_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.PROD_BOOTSTRAP_SECRET }}
+          TF_VAR_api_desired_count: ${{ vars.PROD_API_DESIRED_COUNT || '1' }}
+          TF_VAR_worker_desired_count: ${{ vars.PROD_WORKER_DESIRED_COUNT || '1' }}
+          TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '1' }}
+          TF_VAR_db_instance_class: ${{ vars.PROD_DB_INSTANCE_CLASS || 'db.t4g.medium' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.PROD_EMR_EXECUTION_ROLE_ARN }}
         run: bash scripts/ci/deploy_preflight.sh
 
@@ -637,6 +660,10 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.PROD_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.PROD_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.PROD_BOOTSTRAP_SECRET }}
+          TF_VAR_api_desired_count: ${{ vars.PROD_API_DESIRED_COUNT || '1' }}
+          TF_VAR_worker_desired_count: ${{ vars.PROD_WORKER_DESIRED_COUNT || '1' }}
+          TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '1' }}
+          TF_VAR_db_instance_class: ${{ vars.PROD_DB_INSTANCE_CLASS || 'db.t4g.medium' }}
           TF_VAR_manage_vpc_endpoints: ${{ vars.PROD_MANAGE_VPC_ENDPOINTS || 'false' }}
           DRY_RUN_MODE: ${{ vars.PROD_DRY_RUN_MODE || 'false' }}
           ENABLE_FULL_BYOC_MODE: ${{ vars.PROD_ENABLE_FULL_BYOC_MODE || 'false' }}
@@ -673,3 +700,4 @@ jobs:
           SMOKE_MAX_ATTEMPTS: "40"
           SMOKE_SLEEP_SECONDS: "5"
         run: bash scripts/smoke/control_plane_api.sh
+
