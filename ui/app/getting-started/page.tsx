@@ -42,7 +42,7 @@ const TRACKS = [
     bullets: [
       "Request access or invitation from your SparkPilot admin.",
       "Sign in with SSO and open Start Here onboarding.",
-      "Create/select a job template, submit a run, and verify costs.",
+      "Create/select a job definition, submit a run, and verify costs.",
       "You should not need AWS IAM, CloudFormation, or Terraform access.",
     ],
   },
@@ -108,7 +108,7 @@ export default function GettingStartedPage() {
           <p className="getting-started-sub">
             This page is public and explains where to start. End users sign in and follow authenticated onboarding.
             Platform admins handle one-time
-            workspace setup and access mapping.
+            workspace setup and access mapping for the current batch-first launch scope.
           </p>
           <div className="landing-hero-actions">
             <Link href="/login?next=%2Fonboarding%2Faws" className="landing-btn landing-btn-primary">Sign in and continue</Link>
@@ -116,6 +116,8 @@ export default function GettingStartedPage() {
           </div>
           <div className="getting-started-callout">
             Public flow ends here. Product operations (Onboarding, Environments, Runs, Costs, Access) require sign-in.
+            Interactive endpoints, advanced template/security workflows, Lake Formation depth, and broader runtime parity
+            are not part of the current launch path yet.
           </div>
         </div>
 
@@ -169,7 +171,7 @@ export default function GettingStartedPage() {
 
           <div className="getting-started-section-title-row">
             <h2>Command line quickstart (after sign-in)</h2>
-            <p>SparkPilot supports terminal-first operations for platform teams and CI workflows.</p>
+            <p>SparkPilot supports terminal-first batch operations for platform teams and CI workflows.</p>
           </div>
           <div className="getting-started-grid">
             <article className="getting-started-card">
@@ -182,7 +184,7 @@ export default function GettingStartedPage() {
                   </li>
                 ))}
               </ul>
-              <p>Use the same authenticated workspace context as the dashboard and API.</p>
+              <p>CLI auth uses OIDC client-credentials for service-style automation, not browser user sessions.</p>
             </article>
           </div>
         </div>
@@ -192,3 +194,4 @@ export default function GettingStartedPage() {
     </div>
   );
 }
+

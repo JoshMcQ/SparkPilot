@@ -1,94 +1,83 @@
-"use client";
-
 import Link from "next/link";
-import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";
+import { LandingNav } from "@/components/landing-nav";
 
 const TIERS = [
   {
-    name: "Community",
+    name: "Open Source",
     price: "Free",
-    period: "forever",
-    description: "Self-hosted on your own infrastructure. Everything you need to get started.",
-    cta: "Get started",
+    period: "self-hosted",
+    description: "Code access and local development workflows.",
+    cta: "View repository",
     ctaHref: "https://github.com/JoshMcQ/SparkPilot",
     ctaStyle: "landing-btn-secondary",
     featured: false,
     features: [
-      "Single tenant",
-      "Up to 3 environments",
-      "BYOC-Lite provisioning",
-      "20+ preflight safety checks",
-      "Run lifecycle management",
-      "Cost estimation",
-      "Airflow & Dagster providers",
-      "Community support (GitHub)",
+      "Core API and UI codebase",
+      "CLI and provider source packages",
+      "Local and mocked test workflows",
+      "No hosted SLA commitments",
     ],
   },
   {
-    name: "Team",
-    price: "Contact us",
+    name: "Staging Pilot",
+    price: "Current focus",
     period: "",
-    description: "Supported deployment for growing data platform teams with production SLAs.",
-    cta: "Talk to us",
-    ctaHref: "/contact",
+    description: "Validated, batch-first staged workflow for real customer-style trials.",
+    cta: "Start staging flow",
+    ctaHref: "/getting-started",
     ctaStyle: "landing-btn-primary",
     featured: true,
     features: [
-      "Multi-tenant",
-      "Unlimited environments",
-      "BYOC-Lite provisioning",
-      "Full preflight + diagnostics suite",
-      "CUR cost reconciliation",
-      "Team budget enforcement",
-      "Policy engine",
-      "Email support with SLA",
-      "Deployment assistance",
-      "Private Slack channel",
+      "OIDC sign-in and onboarding",
+      "BYOC-Lite environment connection",
+      "Batch run submit, monitor, logs, diagnostics",
+      "Usage and KPI visibility",
+      "Policy and governance basics (limited validation)",
+      "Advanced runtime features clearly labeled as beta or coming soon",
     ],
   },
   {
-    name: "Enterprise",
-    price: "Custom",
+    name: "Enterprise Expansion",
+    price: "Coming soon",
     period: "",
-    description: "For organizations with compliance requirements, advanced security, and scale.",
-    cta: "Contact sales",
+    description: "Broader multi-engine and enterprise packaging after additional live validation.",
+    cta: "Talk to us",
     ctaHref: "/contact",
     ctaStyle: "landing-btn-secondary",
     featured: false,
     features: [
-      "Everything in Team",
-      "SSO / SAML integration",
-      "Custom RBAC policies",
-      "Audit log export",
-      "SOC 2 documentation",
-      "Dedicated support engineer",
-      "Custom SLA",
-      "Procurement & legal review",
+      "Interactive endpoints maturity",
+      "Customer-facing job template workflows",
+      "Security configuration workflows",
+      "Lake Formation and YuniKorn rollout depth",
+      "Broader runtime parity",
+      "Expanded compliance and support packaging",
+      "Only announced after evidence-backed readiness",
     ],
   },
 ];
 
 const FAQ = [
   {
-    q: "Does SparkPilot have access to my AWS account?",
-    a: "No. SparkPilot runs inside your AWS account using a cross-account IAM role you provision. Your Spark job data, S3 buckets, and VPC resources never leave your perimeter.",
+    q: "Is SparkPilot fully production-wide today?",
+    a: "Not yet. The current honest scope is a staged, batch-first workflow with clearly marked beta and coming-soon areas.",
   },
   {
-    q: "What does BYOC mean?",
-    a: "Bring Your Own Cloud. You provide the EKS cluster and IAM setup. SparkPilot registers your environment, validates prerequisites, and dispatches jobs — all within your account.",
+    q: "What is the best path to evaluate right now?",
+    a: "Use the staging flow end-to-end: sign in, onboard, connect BYOC-Lite environment, submit a run, and verify logs/diagnostics/usage.",
   },
   {
-    q: "What AWS services does SparkPilot require?",
-    a: "EMR on EKS (virtual cluster), EKS (your cluster), IAM (cross-account role + IRSA bindings), CloudWatch (log retrieval), and optionally Athena + S3 for CUR cost reconciliation.",
+    q: "Are all backend features customer-ready?",
+    a: "No. Some backend capabilities exist without full customer-surface or live validation yet; those are marked as beta or coming soon.",
   },
   {
-    q: "Is there a free trial for the Team plan?",
-    a: "Yes. We offer a 30-day evaluation for qualifying teams. Get in touch and we'll set you up.",
+    q: "How are advanced features currently classified?",
+    a: "Interactive endpoints, template/security workflows, Lake Formation depth, YuniKorn controls, and broader orchestration rollout are currently beta or coming soon unless explicitly proven.",
   },
   {
-    q: "Can I self-host the Team or Enterprise version?",
-    a: "Yes. SparkPilot deploys on ECS Fargate in your AWS account. We provide the Terraform modules and deployment support.",
+    q: "Does SparkPilot run in our AWS account?",
+    a: "Yes. SparkPilot is BYOC-oriented and keeps workload execution and data inside your AWS account boundary.",
   },
 ];
 
@@ -98,13 +87,14 @@ export default function PricingPage() {
       <LandingNav />
 
       <section className="landing-hero" style={{ paddingBottom: "clamp(28px, 4vw, 48px)" }}>
-        <div className="landing-hero-badge">Pricing</div>
+        <div className="landing-hero-badge">Plans and Scope</div>
         <h2 className="landing-hero-title">
-          Simple, transparent<br />
-          <span className="landing-hero-accent">pricing for every team</span>
+          Honest packaging for the <br />
+          <span className="landing-hero-accent">current product stage</span>
         </h2>
         <p className="landing-hero-sub">
-          Start free with self-hosted Community. Talk to us when you need production support, SLAs, or enterprise compliance.
+          This page reflects current reality: what is usable now, what is in limited validation, and what is not yet
+          a launch commitment.
         </p>
       </section>
 
@@ -112,7 +102,7 @@ export default function PricingPage() {
         <div className="pricing-grid">
           {TIERS.map((tier) => (
             <div key={tier.name} className={`pricing-card${tier.featured ? " pricing-card-featured" : ""}`}>
-              {tier.featured && <div className="pricing-badge">Most Popular</div>}
+              {tier.featured && <div className="pricing-badge">Current Recommended Path</div>}
               <div className="pricing-header">
                 <h3 className="pricing-name">{tier.name}</h3>
                 <div className="pricing-price">
@@ -130,10 +120,10 @@ export default function PricingPage() {
                 {tier.cta}
               </Link>
               <ul className="pricing-features">
-                {tier.features.map((f) => (
-                  <li key={f} className="pricing-feature">
-                    <span className="pricing-check" aria-hidden="true">✓</span>
-                    {f}
+                {tier.features.map((feature) => (
+                  <li key={feature} className="pricing-feature">
+                    <span className="pricing-check" aria-hidden="true">+</span>
+                    {feature}
                   </li>
                 ))}
               </ul>
@@ -145,7 +135,7 @@ export default function PricingPage() {
       <section className="landing-section">
         <div className="landing-section-header">
           <div className="landing-section-badge">FAQ</div>
-          <h2 className="landing-section-title">Common questions</h2>
+          <h2 className="landing-section-title">Scope clarity</h2>
         </div>
         <div className="faq-list">
           {FAQ.map((item) => (
@@ -158,13 +148,11 @@ export default function PricingPage() {
       </section>
 
       <section className="landing-cta">
-        <h2>Not sure which plan is right for you?</h2>
-        <p>Talk to us. We'll help you figure out the right setup for your team's size and AWS footprint.</p>
+        <h2>Need an evidence-backed pilot path?</h2>
+        <p>Start with the staged workflow and expand scope only after live validation in your environment.</p>
         <div className="landing-hero-actions">
-          <Link href="/contact" className="landing-btn landing-btn-primary">Talk to us</Link>
-          <Link href="https://github.com/JoshMcQ/SparkPilot" target="_blank" rel="noopener noreferrer" className="landing-btn landing-btn-secondary">
-            View docs
-          </Link>
+          <Link href="/getting-started" className="landing-btn landing-btn-primary">Open getting started</Link>
+          <Link href="/contact" className="landing-btn landing-btn-secondary">Talk to us</Link>
         </div>
       </section>
 
@@ -172,3 +160,4 @@ export default function PricingPage() {
     </div>
   );
 }
+
