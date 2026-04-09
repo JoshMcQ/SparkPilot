@@ -2,11 +2,10 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { handleCallback } from "@/lib/oidc-client";
 
 function AuthCallbackContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const code = searchParams.get("code");
   const state = searchParams.get("state");
@@ -27,12 +26,15 @@ function AuthCallbackContent() {
 
     handleCallback(code, state)
       .then((nextPath) => {
-        router.replace(nextPath);
+        // Use a full navigation so middleware reads the freshly persisted
+        // HttpOnly session cookie on the first authenticated route load.
+        // replace() prevents users from navigating back to a stale callback URL.
+        window.location.replace(nextPath);
       })
       .catch((err: unknown) => {
         setAsyncError(err instanceof Error ? err.message : "Login failed. Please try again.");
       });
-  }, [callbackError, code, state, router]);
+  }, [callbackError, code, state]);
 
   const effectiveError = asyncError ?? callbackError;
 

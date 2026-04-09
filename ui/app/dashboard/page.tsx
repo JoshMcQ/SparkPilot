@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   fetchEnvironments,
+  fetchKpiMetrics,
   fetchRuns,
   fetchUsage,
   type Run,
@@ -14,7 +15,7 @@ import {
 function shortId(value: string): string {
   if (!value) return "-";
   if (value.length <= 12) return value;
-  return `${value.slice(0, 8)}…${value.slice(-4)}`;
+  return `${value.slice(0, 8)}...${value.slice(-4)}`;
 }
 
 function formatUsd(value: number | null): string {
@@ -42,6 +43,9 @@ export default function DashboardPage() {
   const [runRows, setRunRows] = useState<Run[]>([]);
   const [estimatedCostUsd, setEstimatedCostUsd] = useState<number | null>(null);
   const [costRangeLabel, setCostRangeLabel] = useState<string | null>(null);
+  const [preflightPassRatePct, setPreflightPassRatePct] = useState<number | null>(null);
+  const [dispatchSuccessRatePct, setDispatchSuccessRatePct] = useState<number | null>(null);
+  const [jwksForcedRefreshes, setJwksForcedRefreshes] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -55,6 +59,9 @@ export default function DashboardPage() {
 
         let nextEstimatedCostUsd: number | null = null;
         let nextCostRangeLabel: string | null = null;
+        let nextPreflightPassRatePct: number | null = null;
+        let nextDispatchSuccessRatePct: number | null = null;
+        let nextJwksForcedRefreshes: number | null = null;
         if (envData.length > 0) {
           try {
             const usage = await fetchUsage(envData[0].tenant_id);
@@ -62,11 +69,30 @@ export default function DashboardPage() {
               (sum, item) => sum + item.estimated_cost_usd_micros,
               0
             ) / 1_000_000;
-            nextCostRangeLabel = `${formatTimestamp(usage.from_ts)} – ${formatTimestamp(usage.to_ts)}`;
+            nextCostRangeLabel = `${formatTimestamp(usage.from_ts)} - ${formatTimestamp(usage.to_ts)}`;
           } catch {
             nextEstimatedCostUsd = null;
             nextCostRangeLabel = null;
           }
+        }
+        try {
+          const kpis = await fetchKpiMetrics();
+          const preflight = kpis.preflight_outcome_rates as { preflight_pass_rate_pct?: unknown };
+          const dispatch = kpis.dispatch_success_rate as { success_rate_pct?: unknown };
+          const jwks = kpis.jwks_refresh_stats as { forced?: unknown };
+          if (typeof preflight.preflight_pass_rate_pct === "number") {
+            nextPreflightPassRatePct = preflight.preflight_pass_rate_pct;
+          }
+          if (typeof dispatch.success_rate_pct === "number") {
+            nextDispatchSuccessRatePct = dispatch.success_rate_pct;
+          }
+          if (typeof jwks.forced === "number") {
+            nextJwksForcedRefreshes = jwks.forced;
+          }
+        } catch {
+          nextPreflightPassRatePct = null;
+          nextDispatchSuccessRatePct = null;
+          nextJwksForcedRefreshes = null;
         }
 
         if (cancelled) return;
@@ -76,6 +102,9 @@ export default function DashboardPage() {
         setRunning(runData.filter((r) => ["accepted", "running", "dispatching"].includes(r.state)).length);
         setEstimatedCostUsd(nextEstimatedCostUsd);
         setCostRangeLabel(nextCostRangeLabel);
+        setPreflightPassRatePct(nextPreflightPassRatePct);
+        setDispatchSuccessRatePct(nextDispatchSuccessRatePct);
+        setJwksForcedRefreshes(nextJwksForcedRefreshes);
         setError(null);
       } catch (err: unknown) {
         if (!cancelled) {
@@ -129,7 +158,7 @@ export default function DashboardPage() {
       <div className="card">
         <h3>Dashboard</h3>
         <p className="subtle" style={{ marginTop: 8 }}>
-          Live metrics for your SparkPilot environments, runs, and cost tracking.
+          Operational view of environments and runs, with KPI and cost surfaces that are still expanding in validation depth.
         </p>
       </div>
 
@@ -183,6 +212,18 @@ export default function DashboardPage() {
           <h3>Estimated Cost</h3>
           <div className="stat-value">{formatUsd(estimatedCostUsd)}</div>
           <div className="subtle">Usage API summary{costRangeLabel ? ` (${costRangeLabel})` : ""}</div>
+        </article>
+        <article className="card">
+          <h3>KPI Snapshot</h3>
+          <div className="subtle">
+            Preflight pass: {preflightPassRatePct != null ? `${preflightPassRatePct}%` : "N/A"}
+          </div>
+          <div className="subtle">
+            Dispatch success: {dispatchSuccessRatePct != null ? `${dispatchSuccessRatePct}%` : "N/A"}
+          </div>
+          <div className="subtle">
+            JWKS forced refreshes: {jwksForcedRefreshes != null ? jwksForcedRefreshes : "N/A"}
+          </div>
         </article>
       </div>
 
@@ -255,10 +296,11 @@ export default function DashboardPage() {
         </article>
         <article className="card">
           <h3>Workflow Integrations</h3>
-          <p className="subtle">Airflow and Dagster entry points for orchestrated team operations.</p>
+          <p className="subtle">Airflow and Dagster entry points (limited validation for production rollout).</p>
           <Link href="/integrations" className="inline-link">Open integrations &rarr;</Link>
         </article>
       </div>
     </section>
   );
 }
+

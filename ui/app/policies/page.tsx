@@ -44,7 +44,7 @@ const RULE_TYPE_DESCRIPTIONS: Record<PolicyRuleType, string> = {
   required_tags:
     "Require specific Spark tags (e.g. cost_center, project) on every submission.",
   allowed_golden_paths:
-    "Restrict submissions to a specific set of job template golden paths.",
+    "Restrict submissions to a specific set of approved job-definition golden paths.",
   allowed_release_labels:
     "Allow only specific EMR release labels (e.g. emr-7.2.0). Blocks deprecated or EOL releases.",
   allowed_instance_types:
@@ -77,8 +77,8 @@ function enforcementBadge(enforcement: PolicyEnforcement, active: boolean) {
 
 function scopeLabel(scope: PolicyScope, scopeId: string | null): string {
   if (scope === "global") return "Global";
-  if (scope === "tenant") return `Tenant ${scopeId ? scopeId.slice(0, 8) : "—"}`;
-  return `Environment ${scopeId ? scopeId.slice(0, 8) : "—"}`;
+  if (scope === "tenant") return `Tenant ${scopeId ? scopeId.slice(0, 8) : "-"}`;
+  return `Environment ${scopeId ? scopeId.slice(0, 8) : "-"}`;
 }
 
 function configSummary(ruleType: PolicyRuleType, config: Record<string, unknown>): string {
@@ -88,23 +88,23 @@ function configSummary(ruleType: PolicyRuleType, config: Record<string, unknown>
     }
     if (ruleType === "required_tags") {
       const tags = config.tags;
-      return Array.isArray(tags) && tags.length > 0 ? tags.map(String).join(", ") : "—";
+      return Array.isArray(tags) && tags.length > 0 ? tags.map(String).join(", ") : "-";
     }
     if (ruleType === "allowed_golden_paths") {
       const paths = config.paths;
-      return Array.isArray(paths) && paths.length > 0 ? paths.map(String).join(", ") : "—";
+      return Array.isArray(paths) && paths.length > 0 ? paths.map(String).join(", ") : "-";
     }
     if (ruleType === "allowed_release_labels") {
       const labels = config.labels;
-      return Array.isArray(labels) && labels.length > 0 ? labels.map(String).join(", ") : "—";
+      return Array.isArray(labels) && labels.length > 0 ? labels.map(String).join(", ") : "-";
     }
     if (ruleType === "allowed_instance_types") {
       const types = config.types;
-      return Array.isArray(types) && types.length > 0 ? types.map(String).join(", ") : "—";
+      return Array.isArray(types) && types.length > 0 ? types.map(String).join(", ") : "-";
     }
     return JSON.stringify(config);
   } catch {
-    return "—";
+    return "-";
   }
 }
 
@@ -222,8 +222,8 @@ function CreatePolicyForm({
             value={form.enforcement}
             onChange={(e) => setForm((f) => ({ ...f, enforcement: e.target.value as PolicyEnforcement }))}
           >
-            <option value="hard">Hard block — reject submission</option>
-            <option value="soft">Soft warn — allow with warning</option>
+            <option value="hard">Hard block - reject submission</option>
+            <option value="soft">Soft warn - allow with warning</option>
           </select>
         </label>
 
@@ -236,9 +236,9 @@ function CreatePolicyForm({
               setForm((f) => ({ ...f, scope, scope_id: null }));
             }}
           >
-            <option value="global">Global — applies to all tenants</option>
-            <option value="tenant">Tenant — applies to one tenant</option>
-            <option value="environment">Environment — applies to one environment</option>
+            <option value="global">Global - applies to all tenants</option>
+            <option value="tenant">Tenant - applies to one tenant</option>
+            <option value="environment">Environment - applies to one environment</option>
           </select>
         </label>
 
@@ -322,7 +322,7 @@ const POLICY_WORKFLOW = [
   "Hard-block policies reject the submission with a clear error and the policy name.",
   "Soft-warn policies allow the submission but record the warning in the run audit trail.",
   "Policies apply to all scopes below them: a global policy applies everywhere; a tenant policy applies to all environments in that tenant.",
-  "The policy engine is active in production. Creating a hard-block policy with an incorrect config will block real submissions.",
+  "Policy behavior is active in environments where policy checks are enabled. Validate policy configs in staging before broad rollout.",
 ];
 
 export default function PoliciesPage() {
@@ -366,7 +366,8 @@ export default function PoliciesPage() {
         <h3>Policy Engine</h3>
         <div className="subtle">
           Submission guardrails evaluated at preflight before every run. Hard-block policies reject
-          submissions; soft-warn policies allow with a warning recorded in the audit trail.
+          submissions; soft-warn policies allow with a warning recorded in the audit trail. This
+          surface is in limited-validation status for staged rollout.
         </div>
       </div>
 
@@ -451,3 +452,4 @@ export default function PoliciesPage() {
     </section>
   );
 }
+
