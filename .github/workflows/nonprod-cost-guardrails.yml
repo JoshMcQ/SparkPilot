@@ -69,6 +69,57 @@ jobs:
           DRY_RUN: "false"
         run: bash scripts/ops/scale_nonprod_idle.sh
 
+  nightly-staging-scale-down:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gate - staging nightly scale-down enabled
+        id: gate_enabled
+        shell: bash
+        env:
+          STAGING_NIGHTLY_SCALE_DOWN_ENABLED: ${{ vars.STAGING_NIGHTLY_SCALE_DOWN_ENABLED || 'false' }}
+        run: |
+          if [ "${STAGING_NIGHTLY_SCALE_DOWN_ENABLED}" != "true" ]; then
+            echo "INFO: skipping nightly staging scale-down; STAGING_NIGHTLY_SCALE_DOWN_ENABLED is not true."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate - staging deploy role configured
+        id: gate_role
+        if: steps.gate_enabled.outputs.skip != 'true'
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}" ]; then
+            echo "INFO: skipping nightly staging scale-down; AWS_STAGING_DEPLOY_ROLE_ARN is not configured."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_role.outputs.skip != 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Scale down staging non-prod footprint
+        if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_role.outputs.skip != 'true'
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: staging
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SCALE_ECS: "true"
+          STOP_RDS: "true"
+          DRY_RUN: "false"
+        run: bash scripts/ops/scale_nonprod_idle.sh
+
   manual-dev-scale-down:
     if: github.event_name == 'workflow_dispatch' && inputs.target_environment == 'dev'
     runs-on: ubuntu-latest
