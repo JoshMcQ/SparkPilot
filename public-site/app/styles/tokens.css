@@ -1,0 +1,115 @@
+:root {
+  --bg-canvas-top: #eef4f4;
+  --bg-canvas-bottom: #d9e2e1;
+  --bg-noise-light: rgba(255, 255, 255, 0.2);
+  --bg-noise-dark: rgba(16, 24, 30, 0.05);
+
+  --surface-0: #f4f8f8;
+  --surface-1: #fcfefe;
+  --surface-2: #f3f8f7;
+  --surface-3: #e8f0ef;
+  --surface-overlay: rgba(250, 254, 253, 0.82);
+
+  --text-strong: #112029;
+  --text: #1a2d38;
+  --text-soft: #355061;
+  --text-muted: #5f7382;
+  --text-inverse: #eff7f5;
+
+  --line: #c5d2d7;
+  --line-strong: #93a9b3;
+  --line-soft: rgba(147, 169, 179, 0.4);
+
+  --accent: #0d7f5e;
+  --accent-strong: #0b654c;
+  --accent-soft: #d2f1e7;
+  --accent-surface: #e8f8f1;
+
+  --info: #2869be;
+  --info-soft: #dce8ff;
+
+  --warning: #8b5600;
+  --warning-soft: #ffe8c7;
+
+  --danger: #a63a3a;
+  --danger-soft: #ffe2e2;
+
+  --radius-xs: 7px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  --shadow-inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --shadow-sm: 0 1px 2px rgba(9, 20, 28, 0.08), 0 4px 12px rgba(9, 20, 28, 0.05);
+  --shadow-md: 0 2px 5px rgba(8, 18, 24, 0.1), 0 14px 28px rgba(8, 18, 24, 0.08);
+  --shadow-lg: 0 16px 34px rgba(8, 18, 24, 0.12), 0 3px 7px rgba(8, 18, 24, 0.08);
+  --shadow-focus: 0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 0 5px rgba(13, 127, 94, 0.42);
+
+  --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 140ms;
+  --duration-mid: 220ms;
+
+  --bg: var(--surface-0);
+  --surface: var(--surface-1);
+  --muted: var(--text-muted);
+  --brand: var(--accent);
+  --brand-soft: var(--accent-soft);
+  --warn: var(--warning);
+  --warn-soft: var(--warning-soft);
+  --error: var(--danger);
+  --error-soft: var(--danger-soft);
+}
+
+:root[data-theme="dark"] {
+  --bg-canvas-top: #0d141b;
+  --bg-canvas-bottom: #16232c;
+  --bg-noise-light: rgba(255, 255, 255, 0.03);
+  --bg-noise-dark: rgba(0, 0, 0, 0.18);
+
+  --surface-0: #101820;
+  --surface-1: #16212a;
+  --surface-2: #1a2731;
+  --surface-3: #22313b;
+  --surface-overlay: rgba(18, 28, 36, 0.86);
+
+  --text-strong: #edf6f8;
+  --text: #dbe8ec;
+  --text-soft: #b7cad2;
+  --text-muted: #95aab4;
+  --text-inverse: #0d141b;
+
+  --line: #35505f;
+  --line-strong: #547182;
+  --line-soft: rgba(113, 145, 163, 0.34);
+
+  --accent: #51c8a1;
+  --accent-strong: #7ee0bc;
+  --accent-soft: rgba(81, 200, 161, 0.16);
+  --accent-surface: rgba(81, 200, 161, 0.12);
+
+  --info: #79afff;
+  --info-soft: rgba(121, 175, 255, 0.18);
+
+  --warning: #f0b257;
+  --warning-soft: rgba(240, 178, 87, 0.16);
+
+  --danger: #ff8b8b;
+  --danger-soft: rgba(255, 139, 139, 0.16);
+
+  --shadow-inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 20px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 2px 5px rgba(0, 0, 0, 0.38), 0 18px 36px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 20px 42px rgba(0, 0, 0, 0.28), 0 6px 12px rgba(0, 0, 0, 0.18);
+  --shadow-focus: 0 0 0 2px rgba(13, 20, 27, 0.95), 0 0 0 5px rgba(81, 200, 161, 0.35);
+}

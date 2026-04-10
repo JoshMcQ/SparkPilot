@@ -2,26 +2,32 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SRC_DIR="${ROOT_DIR}/public-site/src"
+PUBLIC_SITE_DIR="${ROOT_DIR}/public-site"
 DIST_DIR="${ROOT_DIR}/public-site/dist"
 APP_URL_RAW="${PUBLIC_SITE_APP_URL:-https://app.sparkpilot.cloud}"
 APP_URL="${APP_URL_RAW%/}"
-APP_URL_ESCAPED="$(printf '%s' "${APP_URL}" | sed -e 's/[\\&]/\\&/g')"
+OUT_DIR="${PUBLIC_SITE_DIR}/out"
 
-if [[ ! -d "${SRC_DIR}" ]]; then
-  echo "ERROR: public-site source directory not found: ${SRC_DIR}" >&2
+if [[ ! -f "${PUBLIC_SITE_DIR}/package.json" ]]; then
+  echo "ERROR: public-site package.json not found: ${PUBLIC_SITE_DIR}/package.json" >&2
+  exit 1
+fi
+
+pushd "${PUBLIC_SITE_DIR}" >/dev/null
+
+npm ci
+NEXT_PUBLIC_APP_URL="${APP_URL}" npm run build
+
+popd >/dev/null
+
+if [[ ! -d "${OUT_DIR}" ]]; then
+  echo "ERROR: next export output not found: ${OUT_DIR}" >&2
   exit 1
 fi
 
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}"
-cp -R "${SRC_DIR}/." "${DIST_DIR}/"
-
-while IFS= read -r -d '' html_file; do
-  tmp_file="${html_file}.tmp"
-  sed "s|__APP_URL__|${APP_URL_ESCAPED}|g" "${html_file}" > "${tmp_file}"
-  mv "${tmp_file}" "${html_file}"
-done < <(find "${DIST_DIR}" -type f -name '*.html' -print0)
+cp -R "${OUT_DIR}/." "${DIST_DIR}/"
 
 echo "Public site built: ${DIST_DIR}"
 echo "App URL wired to: ${APP_URL}"

@@ -1,6 +1,6 @@
 # SparkPilot Public Site
 
-This directory contains the standalone, static public marketing site.
+This directory contains the standalone public marketing site as a static Next.js export.
 
 ## Purpose
 
@@ -22,7 +22,6 @@ Environment variable:
 - `PUBLIC_SITE_APP_URL` (optional, default: `https://app.sparkpilot.cloud`)
 
 Build output:
-
 - `public-site/dist`
 
 ## Deploy
