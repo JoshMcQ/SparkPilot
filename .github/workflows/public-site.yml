@@ -1,0 +1,110 @@
+name: public-site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - public-site/**
+      - scripts/public_site/**
+      - .github/workflows/public-site.yml
+  pull_request:
+    paths:
+      - public-site/**
+      - scripts/public_site/**
+      - .github/workflows/public-site.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: public-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-public-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build static public site artifact
+        shell: bash
+        env:
+          PUBLIC_SITE_APP_URL: ${{ vars.PUBLIC_SITE_APP_URL || 'https://app.sparkpilot.cloud' }}
+        run: bash scripts/public_site/build_public_site.sh
+
+      - name: Upload public site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-site-dist
+          path: public-site/dist
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy-public-site:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-public-site
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Gate deploy toggle
+        id: gate_enabled
+        shell: bash
+        env:
+          PUBLIC_SITE_DEPLOY_ENABLED: ${{ vars.PUBLIC_SITE_DEPLOY_ENABLED || 'false' }}
+        run: |
+          if [ "${PUBLIC_SITE_DEPLOY_ENABLED}" != "true" ]; then
+            echo "INFO: skipping public-site deploy; PUBLIC_SITE_DEPLOY_ENABLED is not true."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate required deploy secrets
+        id: gate_secrets
+        if: steps.gate_enabled.outputs.skip != 'true'
+        shell: bash
+        env:
+          ROLE_ARN: ${{ secrets.AWS_PUBLIC_SITE_DEPLOY_ROLE_ARN }}
+          BUCKET: ${{ secrets.PUBLIC_SITE_S3_BUCKET }}
+        run: |
+          if [ -z "${ROLE_ARN}" ] || [ -z "${BUCKET}" ]; then
+            echo "INFO: skipping public-site deploy; required secrets are missing."
+            echo "      Need AWS_PUBLIC_SITE_DEPLOY_ROLE_ARN and PUBLIC_SITE_S3_BUCKET in production environment secrets."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download artifact
+        if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_secrets.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: public-site-dist
+          path: public-site/dist
+
+      - name: Configure AWS credentials
+        if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_secrets.outputs.skip != 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PUBLIC_SITE_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Sync static site to S3
+        if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_secrets.outputs.skip != 'true'
+        shell: bash
+        env:
+          BUCKET: ${{ secrets.PUBLIC_SITE_S3_BUCKET }}
+        run: |
+          aws s3 sync public-site/dist "s3://${BUCKET}" --delete --cache-control "public, max-age=300"
+
+      - name: Invalidate CloudFront cache (optional)
+        if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_secrets.outputs.skip != 'true' && secrets.PUBLIC_SITE_CLOUDFRONT_DISTRIBUTION_ID != ''
+        shell: bash
+        env:
+          DISTRIBUTION_ID: ${{ secrets.PUBLIC_SITE_CLOUDFRONT_DISTRIBUTION_ID }}
+        run: |
+          aws cloudfront create-invalidation --distribution-id "${DISTRIBUTION_ID}" --paths "/*"

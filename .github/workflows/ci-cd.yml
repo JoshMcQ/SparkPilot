@@ -65,6 +65,7 @@ jobs:
           NEXT_PUBLIC_OIDC_CLIENT_ID: sparkpilot-ui
           NEXT_PUBLIC_OIDC_REDIRECT_URI: https://app.example.com/auth/callback
           NEXT_PUBLIC_OIDC_AUDIENCE: sparkpilot-api
+          NEXT_PUBLIC_MARKETING_SITE_URL: https://sparkpilot.cloud
           NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE: "false"
         run: npm run build
 
@@ -194,7 +195,7 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.DEV_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.DEV_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.DEV_BOOTSTRAP_SECRET }}
-          TF_VAR_api_desired_count: ${{ vars.DEV_API_DESIRED_COUNT || '1' }}
+          TF_VAR_api_desired_count: ${{ vars.DEV_API_DESIRED_COUNT || '0' }}
           TF_VAR_worker_desired_count: ${{ vars.DEV_WORKER_DESIRED_COUNT || '0' }}
           TF_VAR_ui_desired_count: ${{ vars.DEV_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.DEV_DB_INSTANCE_CLASS || 'db.t4g.micro' }}
@@ -283,6 +284,7 @@ jobs:
             NEXT_PUBLIC_OIDC_CLIENT_ID=${{ secrets.DEV_OIDC_CLIENT_ID }}
             NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.DEV_UI_APP_BASE_URL }}/auth/callback
             NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
+            NEXT_PUBLIC_MARKETING_SITE_URL=${{ vars.DEV_MARKETING_SITE_URL || 'https://sparkpilot.cloud' }}
             NEXT_PUBLIC_SPARKPILOT_API_PREFIX=${{ vars.DEV_SPARKPILOT_API_PREFIX || '/api/sparkpilot' }}
             NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER=${{ vars.DEV_COGNITO_IDENTITY_PROVIDER || '' }}
 
@@ -307,7 +309,7 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.DEV_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.DEV_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.DEV_BOOTSTRAP_SECRET }}
-          TF_VAR_api_desired_count: ${{ vars.DEV_API_DESIRED_COUNT || '1' }}
+          TF_VAR_api_desired_count: ${{ vars.DEV_API_DESIRED_COUNT || '0' }}
           TF_VAR_worker_desired_count: ${{ vars.DEV_WORKER_DESIRED_COUNT || '0' }}
           TF_VAR_ui_desired_count: ${{ vars.DEV_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.DEV_DB_INSTANCE_CLASS || 'db.t4g.micro' }}
@@ -371,9 +373,9 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.STAGING_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.STAGING_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.STAGING_BOOTSTRAP_SECRET }}
-          TF_VAR_api_desired_count: ${{ vars.STAGING_API_DESIRED_COUNT || '1' }}
-          TF_VAR_worker_desired_count: ${{ vars.STAGING_WORKER_DESIRED_COUNT || '1' }}
-          TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '1' }}
+          TF_VAR_api_desired_count: ${{ vars.STAGING_API_DESIRED_COUNT || '0' }}
+          TF_VAR_worker_desired_count: ${{ vars.STAGING_WORKER_DESIRED_COUNT || '0' }}
+          TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.STAGING_DB_INSTANCE_CLASS || 'db.t4g.small' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.STAGING_EMR_EXECUTION_ROLE_ARN }}
         run: bash scripts/ci/deploy_preflight.sh
@@ -460,6 +462,7 @@ jobs:
             NEXT_PUBLIC_OIDC_CLIENT_ID=${{ secrets.STAGING_OIDC_CLIENT_ID }}
             NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.STAGING_UI_APP_BASE_URL }}/auth/callback
             NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
+            NEXT_PUBLIC_MARKETING_SITE_URL=${{ vars.STAGING_MARKETING_SITE_URL || 'https://sparkpilot.cloud' }}
             NEXT_PUBLIC_SPARKPILOT_API_PREFIX=${{ vars.STAGING_SPARKPILOT_API_PREFIX || '/api/sparkpilot' }}
             NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER=${{ vars.STAGING_COGNITO_IDENTITY_PROVIDER || '' }}
 
@@ -484,9 +487,9 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.STAGING_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.STAGING_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.STAGING_BOOTSTRAP_SECRET }}
-          TF_VAR_api_desired_count: ${{ vars.STAGING_API_DESIRED_COUNT || '1' }}
-          TF_VAR_worker_desired_count: ${{ vars.STAGING_WORKER_DESIRED_COUNT || '1' }}
-          TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '1' }}
+          TF_VAR_api_desired_count: ${{ vars.STAGING_API_DESIRED_COUNT || '0' }}
+          TF_VAR_worker_desired_count: ${{ vars.STAGING_WORKER_DESIRED_COUNT || '0' }}
+          TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.STAGING_DB_INSTANCE_CLASS || 'db.t4g.small' }}
           TF_VAR_manage_vpc_endpoints: ${{ vars.STAGING_MANAGE_VPC_ENDPOINTS || 'false' }}
           DRY_RUN_MODE: ${{ vars.STAGING_DRY_RUN_MODE || 'false' }}
@@ -550,9 +553,9 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.PROD_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.PROD_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.PROD_BOOTSTRAP_SECRET }}
-          TF_VAR_api_desired_count: ${{ vars.PROD_API_DESIRED_COUNT || '1' }}
-          TF_VAR_worker_desired_count: ${{ vars.PROD_WORKER_DESIRED_COUNT || '1' }}
-          TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '1' }}
+          TF_VAR_api_desired_count: ${{ vars.PROD_API_DESIRED_COUNT || '0' }}
+          TF_VAR_worker_desired_count: ${{ vars.PROD_WORKER_DESIRED_COUNT || '0' }}
+          TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.PROD_DB_INSTANCE_CLASS || 'db.t4g.medium' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.PROD_EMR_EXECUTION_ROLE_ARN }}
         run: bash scripts/ci/deploy_preflight.sh
@@ -639,6 +642,7 @@ jobs:
             NEXT_PUBLIC_OIDC_CLIENT_ID=${{ secrets.PROD_OIDC_CLIENT_ID }}
             NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.PROD_UI_APP_BASE_URL }}/auth/callback
             NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
+            NEXT_PUBLIC_MARKETING_SITE_URL=${{ vars.PROD_MARKETING_SITE_URL || 'https://sparkpilot.cloud' }}
             NEXT_PUBLIC_SPARKPILOT_API_PREFIX=${{ vars.PROD_SPARKPILOT_API_PREFIX || '/api/sparkpilot' }}
             NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER=${{ vars.PROD_COGNITO_IDENTITY_PROVIDER || '' }}
 
@@ -663,9 +667,9 @@ jobs:
           OIDC_AUDIENCE: ${{ secrets.PROD_OIDC_AUDIENCE }}
           OIDC_JWKS_URI: ${{ secrets.PROD_OIDC_JWKS_URI }}
           BOOTSTRAP_SECRET: ${{ secrets.PROD_BOOTSTRAP_SECRET }}
-          TF_VAR_api_desired_count: ${{ vars.PROD_API_DESIRED_COUNT || '1' }}
-          TF_VAR_worker_desired_count: ${{ vars.PROD_WORKER_DESIRED_COUNT || '1' }}
-          TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '1' }}
+          TF_VAR_api_desired_count: ${{ vars.PROD_API_DESIRED_COUNT || '0' }}
+          TF_VAR_worker_desired_count: ${{ vars.PROD_WORKER_DESIRED_COUNT || '0' }}
+          TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.PROD_DB_INSTANCE_CLASS || 'db.t4g.medium' }}
           TF_VAR_manage_vpc_endpoints: ${{ vars.PROD_MANAGE_VPC_ENDPOINTS || 'false' }}
           DRY_RUN_MODE: ${{ vars.PROD_DRY_RUN_MODE || 'false' }}

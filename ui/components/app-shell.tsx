@@ -11,8 +11,8 @@ import { UserAuthPanel } from "@/components/user-auth-panel";
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const MARKETING_ROUTES = ["/", "/pricing", "/login", "/getting-started", "/about", "/contact", "/security"];
-  const isLanding = MARKETING_ROUTES.includes(pathname);
+  const CHROMELESS_ROUTES = ["/login", "/auth/callback"];
+  const isLanding = CHROMELESS_ROUTES.includes(pathname);
 
   if (isLanding) {
     return <>{children}</>;

@@ -7,6 +7,7 @@ This repository contains:
 - `src/sparkpilot`: FastAPI control-plane API, workers, and shared services
 - `providers/airflow`: `apache-airflow-providers-sparkpilot` package (hook/operator/sensor/trigger)
 - `ui`: Next.js thin operator UI
+- `public-site`: Standalone static public website artifact (`sparkpilot.cloud`)
 - `infra/terraform/control-plane`: Terraform baseline for SparkPilot control plane
 - `infra/cloudformation`: Customer bootstrap templates
 - `tests`: API and workflow tests
@@ -71,6 +72,27 @@ sparkpilot --help
 ```powershell
 docker compose down
 ```
+
+## Public Site / App Split
+
+SparkPilot now uses a decoupled surface model:
+
+- Public site (`sparkpilot.cloud`): static site from `public-site/dist`
+- Product app (`app.sparkpilot.cloud`): authenticated runtime from `ui`
+
+Build public site artifact:
+
+```powershell
+bash scripts/public_site/build_public_site.sh
+```
+
+Public site deploy workflow:
+
+- `.github/workflows/public-site.yml`
+
+Runtime on/off control workflow (dev/staging/prod):
+
+- `.github/workflows/environment-runtime-toggle.yml`
 
 ## Database Migrations
 

@@ -1,0 +1,164 @@
+name: environment-runtime-toggle
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Environment to toggle
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      action:
+        description: Runtime action
+        required: true
+        type: choice
+        options:
+          - up
+          - down
+      manage_rds:
+        description: Start/stop RDS with action
+        required: true
+        default: true
+        type: boolean
+      wait_for_db_available:
+        description: Wait for DB availability when action=up
+        required: true
+        default: false
+        type: boolean
+      api_desired_count:
+        description: API desired count (used when action=up)
+        required: false
+        default: "1"
+      ui_desired_count:
+        description: UI desired count (used when action=up)
+        required: false
+        default: "1"
+      worker_desired_count:
+        description: Worker desired count (used when action=up)
+        required: false
+        default: "1"
+      dry_run:
+        description: Print actions only
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  toggle-dev:
+    if: inputs.target_environment == 'dev'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gate - dev deploy role configured
+        id: gate
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}" ]; then
+            echo "::error::AWS_DEV_DEPLOY_ROLE_ARN is not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Toggle dev runtime
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: dev
+          ACTION: ${{ inputs.action }}
+          API_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.api_desired_count || '0' }}
+          UI_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.ui_desired_count || '0' }}
+          WORKER_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.worker_desired_count || '0' }}
+          MANAGE_RDS: ${{ inputs.manage_rds && 'true' || 'false' }}
+          WAIT_FOR_DB_AVAILABLE: ${{ inputs.wait_for_db_available && 'true' || 'false' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: bash scripts/ops/set_environment_runtime.sh
+
+  toggle-staging:
+    if: inputs.target_environment == 'staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gate - staging deploy role configured
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}" ]; then
+            echo "::error::AWS_STAGING_DEPLOY_ROLE_ARN is not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Toggle staging runtime
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: staging
+          ACTION: ${{ inputs.action }}
+          API_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.api_desired_count || '0' }}
+          UI_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.ui_desired_count || '0' }}
+          WORKER_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.worker_desired_count || '0' }}
+          MANAGE_RDS: ${{ inputs.manage_rds && 'true' || 'false' }}
+          WAIT_FOR_DB_AVAILABLE: ${{ inputs.wait_for_db_available && 'true' || 'false' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: bash scripts/ops/set_environment_runtime.sh
+
+  toggle-prod:
+    if: inputs.target_environment == 'prod'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gate - prod deploy role configured
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}" ]; then
+            echo "::error::AWS_PROD_DEPLOY_ROLE_ARN is not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Toggle prod runtime
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: prod
+          ACTION: ${{ inputs.action }}
+          API_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.api_desired_count || '0' }}
+          UI_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.ui_desired_count || '0' }}
+          WORKER_DESIRED_COUNT: ${{ inputs.action == 'up' && inputs.worker_desired_count || '0' }}
+          MANAGE_RDS: ${{ inputs.manage_rds && 'true' || 'false' }}
+          WAIT_FOR_DB_AVAILABLE: ${{ inputs.wait_for_db_available && 'true' || 'false' }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: bash scripts/ops/set_environment_runtime.sh
