@@ -102,9 +102,13 @@ jobs:
           aws s3 sync public-site/dist "s3://${BUCKET}" --delete --cache-control "public, max-age=300"
 
       - name: Invalidate CloudFront cache (optional)
-        if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_secrets.outputs.skip != 'true' && secrets.PUBLIC_SITE_CLOUDFRONT_DISTRIBUTION_ID != ''
+        if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_secrets.outputs.skip != 'true'
         shell: bash
         env:
           DISTRIBUTION_ID: ${{ secrets.PUBLIC_SITE_CLOUDFRONT_DISTRIBUTION_ID }}
         run: |
+          if [ -z "${DISTRIBUTION_ID}" ]; then
+            echo "INFO: PUBLIC_SITE_CLOUDFRONT_DISTRIBUTION_ID is not set; skipping invalidation."
+            exit 0
+          fi
           aws cloudfront create-invalidation --distribution-id "${DISTRIBUTION_ID}" --paths "/*"
