@@ -36,5 +36,6 @@
 
 - Workflow: `.github/workflows/environment-runtime-toggle.yml`
 - Script: `scripts/ops/set_environment_runtime.sh`
+- Operator runbook: `docs/ops/public-site-dormant-ops.md`
 
 This provides explicit `up`/`down` actions for `dev`, `staging`, and `prod` ECS+RDS runtime state so app environments can stay dormant by default and be enabled only for active demos/pilots/customer sessions.
