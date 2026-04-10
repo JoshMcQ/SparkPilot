@@ -1,4 +1,5 @@
-const API_PREFIX = "/api/sparkpilot";
+const RAW_API_PREFIX = (process.env.NEXT_PUBLIC_SPARKPILOT_API_PREFIX ?? "/api/sparkpilot").trim();
+const API_PREFIX = RAW_API_PREFIX === "/" ? "" : RAW_API_PREFIX.replace(/\/+$/, "");
 export const USER_ACCESS_TOKEN_STORAGE_KEY = "sparkpilot.userAccessToken";
 export const USER_ACCESS_TOKEN_CHANGED_EVENT = "sparkpilot:user-access-token-changed";
 /**

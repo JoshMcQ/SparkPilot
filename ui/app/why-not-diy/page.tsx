@@ -63,36 +63,36 @@ const COSTS = [
 
 const WHAT_SP_SHIPS = [
   {
-    title: "Live now: Preflight checks",
+    title: "Available today: Preflight checks",
     body: "20+ IAM, OIDC, quota, policy, release, and spot readiness checks run before every dispatch - not after the job fails.",
   },
   {
-    title: "Live now: BYOC-Lite onboarding",
+    title: "Available today: BYOC-Lite onboarding",
     body: "Automated virtual cluster provisioning, trust policy management, and OIDC provider association in your account.",
   },
   {
-    title: "Limited validation: Policy engine",
-    body: "Policy CRUD and enforcement paths are implemented, with broader enterprise hardening and validation still in progress.",
+    title: "Current focus: Policy engine",
+    body: "Policy CRUD and enforcement are available now, with expanded enterprise policy packs in active delivery.",
   },
   {
-    title: "Limited validation: Cost reconciliation",
-    body: "Per-run cost tagging and CUR reconciliation paths exist, but proof depth is still environment-dependent.",
+    title: "Current focus: Cost reconciliation",
+    body: "Per-run cost tagging and CUR reconciliation are available, with depth tied to each customer's CUR setup.",
   },
   {
-    title: "Limited validation: EMR release lifecycle",
-    body: "Release lifecycle checks and warnings exist, but broad production validation across customer release matrices is still progressing.",
+    title: "Current focus: EMR release lifecycle",
+    body: "Release lifecycle checks and warnings are available and expanding across broader rollout scenarios.",
   },
   {
-    title: "Limited validation: Team budgets",
-    body: "Budget guardrail logic is implemented with warning and block behavior, with limited live validation so far.",
+    title: "Current focus: Team budgets",
+    body: "Budget guardrails support warning and block behavior for operator-controlled rollout.",
   },
   {
-    title: "Live now: Structured diagnostics",
+    title: "Available today: Structured diagnostics",
     body: "CloudWatch log analysis with pattern matching for spot interruptions, OOM, executor failures, and configuration errors.",
   },
   {
-    title: "Coming soon: YuniKorn scheduling controls",
-    body: "Queue utilization hints exist, while fully proven multi-tenant YuniKorn workflow guarantees remain in progress.",
+    title: "Planned next: YuniKorn scheduling controls",
+    body: "Queue utilization hints are in place, with fuller multi-tenant queue controls planned next.",
   },
 ];
 
@@ -108,9 +108,8 @@ export default function WhyNotDIYPage() {
             &ldquo;We can build this ourselves.&rdquo;
           </h1>
           <p className="objection-hero-sub">
-            You can. Platform teams have been doing it for years. Here is an honest accounting
-            of what that actually costs - and what you are giving up every month you are doing
-            it by hand.
+            You can. Platform teams do it every day. This is a practical breakdown of what it costs to build
+            and operate in-house - and what you can accelerate with SparkPilot.
           </p>
         </section>
 
@@ -118,8 +117,8 @@ export default function WhyNotDIYPage() {
         <section className="objection-section">
           <h2 className="objection-section-title">The real cost of DIY EMR on EKS</h2>
           <p className="objection-section-sub">
-            These estimates are based on work we observed while building SparkPilot.
-            Your numbers will vary - but the categories won't.
+            These are directional planning estimates based on common platform delivery patterns.
+            Your numbers will vary, but the workload categories are consistent across teams.
           </p>
           <div className="objection-cost-grid">
             {COSTS.map((c) => (
@@ -145,8 +144,7 @@ export default function WhyNotDIYPage() {
         <section className="objection-section objection-section-alt">
           <h2 className="objection-section-title">What SparkPilot ships today</h2>
           <p className="objection-section-sub">
-            Not roadmap placeholders. These are implemented product surfaces, with validation
-            depth varying by feature and runtime.
+            Core product capabilities for pilot rollout, plus the next set of expansion areas.
           </p>
           <div className="objection-ships-grid">
             {WHAT_SP_SHIPS.map((item) => (

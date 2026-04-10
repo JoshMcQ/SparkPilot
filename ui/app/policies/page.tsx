@@ -322,7 +322,7 @@ const POLICY_WORKFLOW = [
   "Hard-block policies reject the submission with a clear error and the policy name.",
   "Soft-warn policies allow the submission but record the warning in the run audit trail.",
   "Policies apply to all scopes below them: a global policy applies everywhere; a tenant policy applies to all environments in that tenant.",
-  "Policy behavior is active in environments where policy checks are enabled. Validate policy configs in staging before broad rollout.",
+  "Policy behavior is active in environments where policy checks are enabled. Validate policy configs in non-production before broad rollout.",
 ];
 
 export default function PoliciesPage() {
@@ -367,7 +367,7 @@ export default function PoliciesPage() {
         <div className="subtle">
           Submission guardrails evaluated at preflight before every run. Hard-block policies reject
           submissions; soft-warn policies allow with a warning recorded in the audit trail. This
-          surface is in limited-validation status for staged rollout.
+          surface is designed for operator-driven rollout.
         </div>
       </div>
 

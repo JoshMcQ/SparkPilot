@@ -20,31 +20,31 @@ const LIVE_NOW = [
     icon: <IconCheck />,
     title: "Batch run lifecycle",
     description:
-      "End-to-end staged flow is live: sign in, submit batch runs, monitor state, open logs, and view diagnostics.",
+      "Sign in, submit governed batch runs, track status, inspect logs, and review diagnostics in one workflow.",
   },
   {
     icon: <IconCompass />,
     title: "BYOC-Lite onboarding",
     description:
-      "Admins can connect an existing EKS cluster and reach a ready EMR on EKS environment through guided onboarding.",
+      "Admins can connect an existing EKS cluster and bring up an EMR on EKS environment through guided onboarding.",
   },
   {
     icon: <IconLock />,
     title: "OIDC auth and scoped access",
     description:
-      "OIDC sign-in and role checks are active in the API and UI for admin/operator/user access boundaries.",
+      "OIDC sign-in and role-aware access controls are available across the API and product UI.",
   },
   {
     icon: <IconActivity />,
     title: "Run operations workspace",
     description:
-      "Runs page supports job definition creation, run submission, queue/status visibility, logs, and diagnostics.",
+      "The Runs workspace supports job definition setup, run submission, status tracking, logs, and diagnostics.",
   },
   {
     icon: <IconDollar />,
     title: "Usage and KPI visibility",
     description:
-      "Usage records and KPI endpoints are wired and visible for staged operational evidence.",
+      "Usage records and KPI views are available for day-to-day operational visibility.",
   },
 ];
 
@@ -53,25 +53,25 @@ const LIMITED_VALIDATION = [
     icon: <IconGitBranch />,
     title: "Policy engine",
     description:
-      "Policy CRUD and preflight evaluation paths are implemented, but enterprise-hardening and broader runtime proof are still in progress.",
+      "Policy CRUD and preflight enforcement are available today, with broader enterprise packaging in active delivery.",
   },
   {
     icon: <IconTrendingDown />,
     title: "CUR reconciliation and budget workflows",
     description:
-      "Cost and budget surfaces are implemented, but customer-by-customer CUR data wiring and validation depth vary.",
+      "Cost and budget workflows are in place, with customer-specific CUR setup depending on each AWS environment.",
   },
   {
     icon: <IconLayers />,
     title: "Lake Formation and queue signals",
     description:
-      "Lake Formation preflight logic and queue utilization APIs exist, but customer-facing rollout proof is still limited by environment-specific setup.",
+      "Lake Formation checks and queue utilization signals are implemented and being expanded into broader operator workflows.",
   },
   {
     icon: <IconCloud />,
     title: "Orchestration packages",
     description:
-      "Airflow and Dagster providers are implemented in-source, with narrower live validation for customer production rollout.",
+      "Airflow and Dagster packages are available in-source and are being expanded for wider production onboarding.",
   },
 ];
 
@@ -80,19 +80,19 @@ const COMING_SOON = [
     icon: <IconAlertTriangle />,
     title: "Interactive endpoints",
     description:
-      "Endpoint APIs exist, but interactive governance controls and operational maturity are not yet launch-ready.",
+      "Interactive endpoint management with enterprise governance controls.",
   },
   {
     icon: <IconCloud />,
     title: "Multi-engine runtime parity",
     description:
-      "Serverless, EMR on EC2, and Databricks code paths exist in backend routing but are not yet proven launch workflows.",
+      "Expanded runtime coverage across EMR Serverless, EMR on EC2, and Databricks.",
   },
   {
     icon: <IconAlertTriangle />,
     title: "Template and security workflows",
     description:
-      "Job template, security configuration, and YuniKorn queue controls need stronger customer-facing UX and rollout evidence before launch claims.",
+      "Broader template, security configuration, and YuniKorn operator workflows in the product UI.",
   },
 ];
 
@@ -117,7 +117,7 @@ const NOT_LAUNCH_SCOPE = [
   "Lake Formation and YuniKorn customer-facing operations",
   "Full multi-engine customer parity",
   "Enterprise compliance packaging claims",
-  "Broad orchestration-runtime guarantees beyond staged proof",
+  "Broad orchestration guarantees across every runtime",
 ];
 
 function CapabilityColumn({
@@ -154,41 +154,41 @@ export default function LandingPage() {
       <LandingNav />
 
       <section className="landing-hero" id="hero">
-        <div className="landing-hero-badge">AWS-first batch governance control plane</div>
+        <div className="landing-hero-badge">AWS-first Spark control plane</div>
         <h2 className="landing-hero-title">
-          SparkPilot launch scope is now <br />
-          <span className="landing-hero-accent">explicit and evidence-backed</span>
+          Governed Spark operations <br />
+          <span className="landing-hero-accent">for enterprise AWS teams</span>
         </h2>
         <p className="landing-hero-sub">
-          SparkPilot is focused on one honest story for launch: governed batch Spark operations in your AWS account.
-          We separate what is live now from what is beta and what is still coming soon.
+          SparkPilot helps platform teams connect their AWS environment, run governed batch workloads, and operate with
+          clear diagnostics and cost visibility.
         </p>
         <div className="landing-hero-actions">
           <Link href="/getting-started" className="landing-btn landing-btn-primary">
-            Start with staged flow
+            Start evaluation
           </Link>
           <Link href="/pricing" className="landing-btn landing-btn-secondary">
-            View scope and plans
+            View plans
           </Link>
         </div>
         <p className="landing-hero-note">
-          BYOC-Lite is the current validated path. Full BYOC and broader engine coverage are limited validation.
+          Current release focus: batch-first on EMR on EKS. Interactive workflows and broader runtime coverage are planned next.
         </p>
       </section>
 
       <div id="features" />
       <section className="landing-section" id="truth-map">
         <div className="landing-section-header">
-          <div className="landing-section-badge">Product Truth Map</div>
-          <h2 className="landing-section-title">Live now, limited validation, and coming soon</h2>
+          <div className="landing-section-badge">Product Overview</div>
+          <h2 className="landing-section-title">Available today, current focus, and planned next</h2>
           <p className="landing-section-sub">
-            Capability labels are tied to current staging evidence and implementation depth.
+            A clear view of what teams can use now, what is expanding next, and what is on the roadmap.
           </p>
         </div>
         <div className="landing-engines-grid">
-          <CapabilityColumn title="Live now" subtitle="Validated in staged customer workflow." rows={LIVE_NOW} />
-          <CapabilityColumn title="Limited validation / beta" subtitle="Implemented with narrower live proof." rows={LIMITED_VALIDATION} />
-          <CapabilityColumn title="Coming soon" subtitle="Do not treat as launch commitments yet." rows={COMING_SOON} />
+          <CapabilityColumn title="Available today" subtitle="Ready for pilots and technical evaluations." rows={LIVE_NOW} />
+          <CapabilityColumn title="Current focus" subtitle="In active delivery for broader enterprise rollout." rows={LIMITED_VALIDATION} />
+          <CapabilityColumn title="Planned next" subtitle="On the roadmap for future releases." rows={COMING_SOON} />
         </div>
       </section>
 
@@ -258,10 +258,9 @@ export default function LandingPage() {
       </section>
 
       <section className="landing-cta">
-        <h2>Need a realistic pilot path?</h2>
+        <h2>Need a practical pilot plan?</h2>
         <p>
-          Start with the staged batch-first workflow, validate against your own BYOC setup, then expand capability
-          claims only after live evidence exists.
+          Start with a batch-first rollout in your AWS account, then expand scope as your production readiness grows.
         </p>
         <div className="landing-hero-actions">
           <Link href="/getting-started" className="landing-btn landing-btn-primary">
