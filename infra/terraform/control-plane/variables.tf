@@ -216,8 +216,8 @@ variable "api_desired_count" {
   description = "Desired number of API tasks."
   default     = 1
   validation {
-    condition     = var.api_desired_count >= 1
-    error_message = "api_desired_count must be at least 1."
+    condition     = var.api_desired_count >= 0
+    error_message = "api_desired_count must be zero or greater."
   }
 }
 
