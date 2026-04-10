@@ -25,15 +25,15 @@ export default function IntegrationsPage() {
         <div className="eyebrow">WORKFLOW INTEGRATIONS</div>
         <h3>SparkPilot integration surfaces</h3>
         <p className="subtle" style={{ marginTop: 8 }}>
-          The web app, API, and CLI are the primary validated workflow surfaces today.
-          Airflow and Dagster packages exist in-source and are still in limited live validation.
+          The web app, API, and CLI are the primary operating surfaces today.
+          Airflow and Dagster packages are available in-source for team evaluation and rollout planning.
         </p>
       </div>
 
       <div className="card-grid">
         <article className="card">
           <h3>Airflow Provider</h3>
-          <p className="subtle">Hook/operator/sensor/trigger package exists. Production scheduler validation depth is still limited.</p>
+          <p className="subtle">Hook/operator/sensor/trigger package for integrating SparkPilot run operations into Airflow DAGs.</p>
           <div className="button-row">
             <a
               href="https://github.com/JoshMcQ/SparkPilot/tree/main/providers/airflow"
@@ -49,7 +49,7 @@ export default function IntegrationsPage() {
 
         <article className="card">
           <h3>Dagster Package</h3>
-          <p className="subtle">Resource + ops + assets package exists. End-to-end customer runtime validation is still limited.</p>
+          <p className="subtle">Resource + ops + assets package for Dagster-first teams standardizing run submission and monitoring.</p>
           <div className="button-row">
             <a
               href="https://github.com/JoshMcQ/SparkPilot/tree/main/providers/dagster"
@@ -73,8 +73,7 @@ export default function IntegrationsPage() {
           <li>Usage and KPI views provide operational evidence while broader cost reconciliation remains environment-dependent.</li>
         </ol>
         <p className="subtle" style={{ marginTop: 10 }}>
-          Coming soon for customer rollout claims: interactive endpoints, customer-facing template/security workflows,
-          and full multi-engine orchestration guarantees.
+          Planned next: interactive endpoint operations, richer template/security workflows, and broader multi-engine rollout.
         </p>
         <div className="button-row" style={{ marginTop: 12 }}>
           <Link href="/access" className="button button-secondary">Access</Link>

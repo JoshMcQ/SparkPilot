@@ -33,7 +33,7 @@ const TRADEOFFS = [
     description:
       "YuniKorn provides queue-based fair scheduling, guaranteed vCPU allocations per team, and preemption policies. None of these exist in Serverless - every application competes for capacity without SLA guarantees.",
     sparkpilot:
-      "SparkPilot supports YuniKorn queue fields and preflight queue-capacity checks, but customer rollout validation is still limited.",
+      "SparkPilot supports YuniKorn queue fields and preflight queue-capacity checks, with broader queue operations planned next.",
   },
   {
     title: "No cost allocation per team",
@@ -41,7 +41,7 @@ const TRADEOFFS = [
     description:
       "Serverless bills by application-level resource usage, but does not give you per-team or per-run cost attribution unless you build it yourself using resource tags and a CUR pipeline.",
     sparkpilot:
-      "SparkPilot tracks per-run usage and attribution fields, with deeper cost reconciliation depending on customer CUR setup and validation depth.",
+      "SparkPilot tracks per-run usage and attribution fields, with deeper cost reconciliation based on customer CUR setup.",
   },
   {
     title: "No BYOC model",
@@ -57,7 +57,7 @@ const TRADEOFFS = [
     description:
       "Serverless will accept and start any job you submit. Resource limits, release label policies, and team budget caps are not enforced at submission time. You discover overages in the bill.",
     sparkpilot:
-      "SparkPilot policy checks run at preflight, with policy maturity currently in limited-validation status.",
+      "SparkPilot policy checks run at preflight and support operator-controlled rollout.",
   },
   {
     title: "Limited Spark configuration surface",
@@ -125,8 +125,8 @@ export default function WhyNotServerlessPage() {
             &ldquo;Why not just use EMR Serverless?&rdquo;
           </h1>
           <p className="objection-hero-sub">
-            EMR Serverless is a legitimate option for some workloads. Here is an honest breakdown
-            of the tradeoffs - so you can make the right call for your team's actual requirements.
+            EMR Serverless is a strong choice for some workloads. This page outlines the tradeoffs so platform teams
+            can choose the right operating model.
           </p>
         </section>
 
@@ -164,8 +164,7 @@ export default function WhyNotServerlessPage() {
         <section className="objection-section objection-section-alt">
           <h2 className="objection-section-title">Tradeoff deep-dive</h2>
           <p className="objection-section-sub">
-            These are real constraints - not marketing FUD. Each one matters in specific
-            production scenarios.
+            These constraints matter in real production scenarios and should be evaluated against your workload profile.
           </p>
           <div className="objection-tradeoff-list">
             {TRADEOFFS.map((t) => (
@@ -206,9 +205,8 @@ export default function WhyNotServerlessPage() {
         <section className="objection-section objection-section-highlight">
           <h2 className="objection-section-title">EMR Serverless path status</h2>
           <p>
-            SparkPilot includes backend dispatch code for EMR Serverless, but the current launch scope is
-            batch-first on EMR on EKS. Treat Serverless as coming soon until complete end-to-end validation
-            and support workflows are in place.
+            SparkPilot includes backend dispatch code for EMR Serverless. The current product focus is batch-first on
+            EMR on EKS, with broader multi-engine operations planned next.
           </p>
           <p>
             If your immediate priority is low-ops ad-hoc execution, EMR Serverless may still be the better short-term

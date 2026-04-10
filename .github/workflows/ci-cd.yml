@@ -283,6 +283,7 @@ jobs:
             NEXT_PUBLIC_OIDC_CLIENT_ID=${{ secrets.DEV_OIDC_CLIENT_ID }}
             NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.DEV_UI_APP_BASE_URL }}/auth/callback
             NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
+            NEXT_PUBLIC_SPARKPILOT_API_PREFIX=${{ vars.DEV_SPARKPILOT_API_PREFIX || '/api/sparkpilot' }}
             NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER=${{ vars.DEV_COGNITO_IDENTITY_PROVIDER || '' }}
 
       - name: Terraform deploy (dev)
@@ -459,6 +460,7 @@ jobs:
             NEXT_PUBLIC_OIDC_CLIENT_ID=${{ secrets.STAGING_OIDC_CLIENT_ID }}
             NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.STAGING_UI_APP_BASE_URL }}/auth/callback
             NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
+            NEXT_PUBLIC_SPARKPILOT_API_PREFIX=${{ vars.STAGING_SPARKPILOT_API_PREFIX || '/api/sparkpilot' }}
             NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER=${{ vars.STAGING_COGNITO_IDENTITY_PROVIDER || '' }}
 
       - name: Terraform deploy (staging)
@@ -637,6 +639,7 @@ jobs:
             NEXT_PUBLIC_OIDC_CLIENT_ID=${{ secrets.PROD_OIDC_CLIENT_ID }}
             NEXT_PUBLIC_OIDC_REDIRECT_URI=${{ vars.PROD_UI_APP_BASE_URL }}/auth/callback
             NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
+            NEXT_PUBLIC_SPARKPILOT_API_PREFIX=${{ vars.PROD_SPARKPILOT_API_PREFIX || '/api/sparkpilot' }}
             NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER=${{ vars.PROD_COGNITO_IDENTITY_PROVIDER || '' }}
 
       - name: Terraform deploy (prod)

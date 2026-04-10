@@ -158,7 +158,7 @@ export default function DashboardPage() {
       <div className="card">
         <h3>Dashboard</h3>
         <p className="subtle" style={{ marginTop: 8 }}>
-          Operational view of environments and runs, with KPI and cost surfaces that are still expanding in validation depth.
+          Operational view of environments and runs, plus KPI and cost signals for platform teams.
         </p>
       </div>
 
@@ -296,7 +296,7 @@ export default function DashboardPage() {
         </article>
         <article className="card">
           <h3>Workflow Integrations</h3>
-          <p className="subtle">Airflow and Dagster entry points (limited validation for production rollout).</p>
+          <p className="subtle">Airflow and Dagster entry points for orchestration-driven teams.</p>
           <Link href="/integrations" className="inline-link">Open integrations &rarr;</Link>
         </article>
       </div>

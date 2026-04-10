@@ -21,9 +21,9 @@ const TIERS = [
   },
   {
     name: "Staging Pilot",
-    price: "Current focus",
+    price: "Pilot-ready",
     period: "",
-    description: "Validated, batch-first staged workflow for real customer-style trials.",
+    description: "Batch-first enterprise workflow for pilots, evaluations, and internal rollout.",
     cta: "Start staging flow",
     ctaHref: "/getting-started",
     ctaStyle: "landing-btn-primary",
@@ -33,15 +33,15 @@ const TIERS = [
       "BYOC-Lite environment connection",
       "Batch run submit, monitor, logs, diagnostics",
       "Usage and KPI visibility",
-      "Policy and governance basics (limited validation)",
-      "Advanced runtime features clearly labeled as beta or coming soon",
+      "Policy and governance foundation",
+      "Clear roadmap for advanced runtime capabilities",
     ],
   },
   {
     name: "Enterprise Expansion",
     price: "Coming soon",
     period: "",
-    description: "Broader multi-engine and enterprise packaging after additional live validation.",
+    description: "Expanded runtime coverage and enterprise packaging as the platform roadmap advances.",
     cta: "Talk to us",
     ctaHref: "/contact",
     ctaStyle: "landing-btn-secondary",
@@ -53,7 +53,7 @@ const TIERS = [
       "Lake Formation and YuniKorn rollout depth",
       "Broader runtime parity",
       "Expanded compliance and support packaging",
-      "Only announced after evidence-backed readiness",
+      "Co-developed with pilot and customer rollout priorities",
     ],
   },
 ];
@@ -61,19 +61,19 @@ const TIERS = [
 const FAQ = [
   {
     q: "Is SparkPilot fully production-wide today?",
-    a: "Not yet. The current honest scope is a staged, batch-first workflow with clearly marked beta and coming-soon areas.",
+    a: "Today’s launch scope is batch-first on EMR on EKS with BYOC-Lite onboarding, governed runs, and operator workflows.",
   },
   {
     q: "What is the best path to evaluate right now?",
-    a: "Use the staging flow end-to-end: sign in, onboard, connect BYOC-Lite environment, submit a run, and verify logs/diagnostics/usage.",
+    a: "Run the full pilot path: sign in, connect BYOC-Lite, submit a run, and review logs, diagnostics, and usage.",
   },
   {
     q: "Are all backend features customer-ready?",
-    a: "No. Some backend capabilities exist without full customer-surface or live validation yet; those are marked as beta or coming soon.",
+    a: "No. Some backend capabilities are still maturing into full customer workflows and are listed under Planned next.",
   },
   {
-    q: "How are advanced features currently classified?",
-    a: "Interactive endpoints, template/security workflows, Lake Formation depth, YuniKorn controls, and broader orchestration rollout are currently beta or coming soon unless explicitly proven.",
+    q: "What is planned next?",
+    a: "Interactive endpoints, richer template/security workflows, Lake Formation depth, YuniKorn controls, and broader orchestration rollout.",
   },
   {
     q: "Does SparkPilot run in our AWS account?",
@@ -89,12 +89,11 @@ export default function PricingPage() {
       <section className="landing-hero" style={{ paddingBottom: "clamp(28px, 4vw, 48px)" }}>
         <div className="landing-hero-badge">Plans and Scope</div>
         <h2 className="landing-hero-title">
-          Honest packaging for the <br />
-          <span className="landing-hero-accent">current product stage</span>
+          Packaging for pilot rollout <br />
+          <span className="landing-hero-accent">and enterprise expansion</span>
         </h2>
         <p className="landing-hero-sub">
-          This page reflects current reality: what is usable now, what is in limited validation, and what is not yet
-          a launch commitment.
+          Start with the pilot-ready path today, then expand into broader enterprise capabilities as your rollout grows.
         </p>
       </section>
 
@@ -135,7 +134,7 @@ export default function PricingPage() {
       <section className="landing-section">
         <div className="landing-section-header">
           <div className="landing-section-badge">FAQ</div>
-          <h2 className="landing-section-title">Scope clarity</h2>
+          <h2 className="landing-section-title">Plan clarity</h2>
         </div>
         <div className="faq-list">
           {FAQ.map((item) => (
@@ -148,8 +147,8 @@ export default function PricingPage() {
       </section>
 
       <section className="landing-cta">
-        <h2>Need an evidence-backed pilot path?</h2>
-        <p>Start with the staged workflow and expand scope only after live validation in your environment.</p>
+        <h2>Need a rollout plan for your team?</h2>
+        <p>Start with the pilot workflow, then expand scope in line with your production timeline.</p>
         <div className="landing-hero-actions">
           <Link href="/getting-started" className="landing-btn landing-btn-primary">Open getting started</Link>
           <Link href="/contact" className="landing-btn landing-btn-secondary">Talk to us</Link>
