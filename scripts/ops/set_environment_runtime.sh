@@ -40,14 +40,16 @@ MANAGE_RDS="$(normalize_bool "${MANAGE_RDS:-true}")"
 WAIT_FOR_DB_AVAILABLE="$(normalize_bool "${WAIT_FOR_DB_AVAILABLE:-false}")"
 DRY_RUN="$(normalize_bool "${DRY_RUN:-false}")"
 
-ECS_CLUSTER_NAME_OVERRIDE="$(echo "${ECS_CLUSTER_NAME:-}" | xargs)"
+ECS_CLUSTER_NAME_OVERRIDE="$(echo "${ECS_CLUSTER_NAME_OVERRIDE:-${ECS_CLUSTER_NAME:-}}" | xargs)"
 RDS_INSTANCE_IDENTIFIER="$(echo "${RDS_INSTANCE_IDENTIFIER:-sparkpilot-${SPARKPILOT_ENVIRONMENT}-postgres}" | xargs)"
 
 run_cmd() {
   if [[ "${DRY_RUN}" == "true" ]]; then
-    echo "DRY_RUN: $*"
+    printf 'DRY_RUN:'
+    printf ' %q' "$@"
+    printf '\n'
   else
-    eval "$*"
+    "$@"
   fi
 }
 
@@ -108,37 +110,11 @@ echo "Desired counts (api/ui/workers): ${API_DESIRED_COUNT}/${UI_DESIRED_COUNT}/
 echo "RDS target: ${RDS_INSTANCE_IDENTIFIER}"
 echo "Manage RDS: ${MANAGE_RDS}, Wait for DB available: ${WAIT_FOR_DB_AVAILABLE}, Dry run: ${DRY_RUN}"
 
-if [[ -n "${ECS_CLUSTER_NAME}" ]]; then
-  services="$(aws ecs list-services \
-    --cluster "${ECS_CLUSTER_NAME}" \
-    --region "${AWS_REGION}" \
-    --query 'serviceArns' \
-    --output text 2>/dev/null || true)"
-
-  if [[ -z "${services}" || "${services}" == "None" ]]; then
-    echo "INFO: no ECS services found in ${ECS_CLUSTER_NAME}"
-  else
-    for service_arn in ${services}; do
-      service_name="${service_arn##*/}"
-      desired_target="$(service_target_count "${service_name}")"
-      current_desired="$(aws ecs describe-services \
-        --cluster "${ECS_CLUSTER_NAME}" \
-        --services "${service_name}" \
-        --region "${AWS_REGION}" \
-        --query 'services[0].desiredCount' \
-        --output text 2>/dev/null || echo "-1")"
-
-      if [[ "${current_desired}" != "${desired_target}" ]]; then
-        echo "Updating ECS service ${service_name}: ${current_desired} -> ${desired_target}"
-        run_cmd "aws ecs update-service --cluster '${ECS_CLUSTER_NAME}' --service '${service_name}' --desired-count ${desired_target} --region '${AWS_REGION}' >/dev/null"
-      else
-        echo "ECS service already at desired count: ${service_name}=${desired_target}"
-      fi
-    done
+manage_rds_runtime() {
+  if [[ "${MANAGE_RDS}" != "true" ]]; then
+    return
   fi
-fi
 
-if [[ "${MANAGE_RDS}" == "true" ]]; then
   db_status="$(aws rds describe-db-instances \
     --db-instance-identifier "${RDS_INSTANCE_IDENTIFIER}" \
     --region "${AWS_REGION}" \
@@ -149,7 +125,10 @@ if [[ "${MANAGE_RDS}" == "true" ]]; then
     case "${db_status}" in
       available)
         echo "Stopping RDS instance: ${RDS_INSTANCE_IDENTIFIER}"
-        run_cmd "aws rds stop-db-instance --db-instance-identifier '${RDS_INSTANCE_IDENTIFIER}' --region '${AWS_REGION}' >/dev/null"
+        run_cmd aws rds stop-db-instance \
+          --db-instance-identifier "${RDS_INSTANCE_IDENTIFIER}" \
+          --region "${AWS_REGION}" \
+          >/dev/null
         ;;
       stopped)
         echo "RDS already stopped: ${RDS_INSTANCE_IDENTIFIER}"
@@ -165,7 +144,10 @@ if [[ "${MANAGE_RDS}" == "true" ]]; then
     case "${db_status}" in
       stopped)
         echo "Starting RDS instance: ${RDS_INSTANCE_IDENTIFIER}"
-        run_cmd "aws rds start-db-instance --db-instance-identifier '${RDS_INSTANCE_IDENTIFIER}' --region '${AWS_REGION}' >/dev/null"
+        run_cmd aws rds start-db-instance \
+          --db-instance-identifier "${RDS_INSTANCE_IDENTIFIER}" \
+          --region "${AWS_REGION}" \
+          >/dev/null
         if [[ "${WAIT_FOR_DB_AVAILABLE}" == "true" ]]; then
           if [[ "${DRY_RUN}" == "true" ]]; then
             echo "DRY_RUN: aws rds wait db-instance-available --db-instance-identifier '${RDS_INSTANCE_IDENTIFIER}' --region '${AWS_REGION}'"
@@ -186,6 +168,58 @@ if [[ "${MANAGE_RDS}" == "true" ]]; then
         ;;
     esac
   fi
+}
+
+scale_ecs_services() {
+  if [[ -z "${ECS_CLUSTER_NAME}" ]]; then
+    return
+  fi
+
+  services="$(aws ecs list-services \
+    --cluster "${ECS_CLUSTER_NAME}" \
+    --region "${AWS_REGION}" \
+    --query 'serviceArns' \
+    --output text 2>/dev/null || true)"
+
+  if [[ -z "${services}" || "${services}" == "None" ]]; then
+    echo "INFO: no ECS services found in ${ECS_CLUSTER_NAME}"
+    return
+  fi
+
+  for service_arn in ${services}; do
+    service_name="${service_arn##*/}"
+    desired_target="$(service_target_count "${service_name}")"
+    current_desired="$(aws ecs describe-services \
+      --cluster "${ECS_CLUSTER_NAME}" \
+      --services "${service_name}" \
+      --region "${AWS_REGION}" \
+      --query 'services[0].desiredCount' \
+      --output text 2>/dev/null || echo "-1")"
+
+    if [[ "${current_desired}" != "${desired_target}" ]]; then
+      echo "Updating ECS service ${service_name}: ${current_desired} -> ${desired_target}"
+      run_cmd aws ecs update-service \
+        --cluster "${ECS_CLUSTER_NAME}" \
+        --service "${service_name}" \
+        --desired-count "${desired_target}" \
+        --region "${AWS_REGION}" \
+        >/dev/null
+    else
+      echo "ECS service already at desired count: ${service_name}=${desired_target}"
+    fi
+  done
+}
+
+# Bring database up before scaling services on ACTION=up.
+if [[ "${ACTION}" == "up" ]]; then
+  manage_rds_runtime
+fi
+
+scale_ecs_services
+
+# Scale services down before stopping database on ACTION=down.
+if [[ "${ACTION}" == "down" ]]; then
+  manage_rds_runtime
 fi
 
 echo "Environment runtime toggle completed."

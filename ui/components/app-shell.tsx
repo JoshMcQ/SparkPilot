@@ -7,14 +7,14 @@ import { UserAuthPanel } from "@/components/user-auth-panel";
 
 /**
  * Wraps the internal app chrome (header, nav, auth panel).
- * Hidden on the landing page (/) so it renders as a clean marketing page.
+ * Hidden on auth-only routes where chrome is not needed.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const CHROMELESS_ROUTES = ["/login", "/auth/callback"];
-  const isLanding = CHROMELESS_ROUTES.includes(pathname);
+  const isChromeless = CHROMELESS_ROUTES.includes(pathname);
 
-  if (isLanding) {
+  if (isChromeless) {
     return <>{children}</>;
   }
 

@@ -50,6 +50,10 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: environment-runtime-toggle-${{ github.repository }}-${{ inputs.target_environment }}
+  cancel-in-progress: true
+
 env:
   AWS_REGION: us-east-1
 

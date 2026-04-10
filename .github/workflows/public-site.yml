@@ -99,7 +99,10 @@ jobs:
         env:
           BUCKET: ${{ secrets.PUBLIC_SITE_S3_BUCKET }}
         run: |
-          aws s3 sync public-site/dist "s3://${BUCKET}" --delete --cache-control "public, max-age=300"
+          aws s3 sync public-site/dist "s3://${BUCKET}" --delete --cache-control "public, max-age=3600"
+          if [ -d "public-site/dist/assets" ]; then
+            aws s3 sync public-site/dist/assets "s3://${BUCKET}/assets" --cache-control "public, max-age=86400, immutable"
+          fi
 
       - name: Invalidate CloudFront cache (optional)
         if: steps.gate_enabled.outputs.skip != 'true' && steps.gate_secrets.outputs.skip != 'true'
@@ -111,4 +114,17 @@ jobs:
             echo "INFO: PUBLIC_SITE_CLOUDFRONT_DISTRIBUTION_ID is not set; skipping invalidation."
             exit 0
           fi
-          aws cloudfront create-invalidation --distribution-id "${DISTRIBUTION_ID}" --paths "/*"
+          aws cloudfront create-invalidation \
+            --distribution-id "${DISTRIBUTION_ID}" \
+            --paths \
+              "/" \
+              "/index.html" \
+              "/pricing/index.html" \
+              "/getting-started/index.html" \
+              "/integrations/index.html" \
+              "/policies/index.html" \
+              "/why-not-diy/index.html" \
+              "/why-not-serverless/index.html" \
+              "/about/index.html" \
+              "/contact/index.html" \
+              "/assets/*"

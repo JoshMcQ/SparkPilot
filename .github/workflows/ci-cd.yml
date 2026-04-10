@@ -336,7 +336,7 @@ jobs:
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (dev)
-        if: steps.preflight.outputs.skip != 'true'
+        if: steps.preflight.outputs.skip != 'true' && (vars.DEV_API_DESIRED_COUNT || '0') != '0'
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}
@@ -516,7 +516,7 @@ jobs:
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (staging)
-        if: steps.preflight.outputs.skip != 'true'
+        if: steps.preflight.outputs.skip != 'true' && (vars.STAGING_API_DESIRED_COUNT || '0') != '0'
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}
@@ -696,7 +696,7 @@ jobs:
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (prod)
-        if: steps.preflight.outputs.skip != 'true'
+        if: steps.preflight.outputs.skip != 'true' && (vars.PROD_API_DESIRED_COUNT || '0') != '0'
         shell: bash
         env:
           API_BASE_URL: ${{ steps.terraform_deploy.outputs.api_base_url }}
