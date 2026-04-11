@@ -31,7 +31,7 @@ const TRADEOFFS = [
     title: "No YuniKorn fair scheduling",
     impact: "Medium",
     description:
-      "YuniKorn provides queue-based fair scheduling, guaranteed vCPU allocations per team, and preemption policies. None of these exist in Serverless — every application competes for capacity without SLA guarantees.",
+      "YuniKorn provides queue-based fair scheduling, guaranteed vCPU allocations per team, and preemption policies. None of these exist in Serverless, so every application competes for capacity without SLA guarantees.",
     sparkpilot:
       "SparkPilot exposes YuniKorn queue configuration per environment, validates queue utilization at preflight, and enforces guaranteed vs max vCPU bounds per team.",
   },
@@ -49,7 +49,7 @@ const TRADEOFFS = [
     description:
       "EMR Serverless is a fully managed AWS service. Your job artifacts run in AWS-managed infrastructure. There is no way to ensure workers run inside your VPC, your subnets, or your security groups without complex VPC connector configuration.",
     sparkpilot:
-      "SparkPilot is BYOC-first. The control plane runs in your account, your VPC, your EKS cluster. Your data never leaves your perimeter. The BYOC-Lite role grants SparkPilot exactly the permissions it needs — nothing more.",
+      "SparkPilot is BYOC-first. The control plane runs in your account, your VPC, your EKS cluster. Your data never leaves your perimeter. The BYOC-Lite role grants SparkPilot exactly the permissions it needs, and nothing more.",
   },
   {
     title: "No pre-dispatch policy enforcement",
@@ -83,7 +83,7 @@ const WHEN_SERVERLESS_WINS = [
   {
     scenario: "Very small teams",
     detail:
-      "Teams of 1–2 data engineers where the multi-tenant isolation, policy engine, and cost allocation overhead is not worth the setup.",
+      "Teams of 1 to 2 data engineers where the multi-tenant isolation, policy engine, and cost allocation overhead is not worth the setup.",
   },
   {
     scenario: "AWS Glue replacement",
@@ -126,7 +126,7 @@ export default function WhyNotServerlessPage() {
           </h1>
           <p className="objection-hero-sub">
             EMR Serverless is a legitimate option for some workloads. Here is an honest breakdown
-            of the tradeoffs — so you can make the right call for your team&apos;s actual requirements.
+            of the tradeoffs so you can make the right call for your team&apos;s actual requirements.
           </p>
         </section>
 
@@ -164,8 +164,7 @@ export default function WhyNotServerlessPage() {
         <section className="objection-section objection-section-alt">
           <h2 className="objection-section-title">Tradeoff deep-dive</h2>
           <p className="objection-section-sub">
-            These are real constraints — not marketing FUD. Each one matters in specific
-            production scenarios.
+            These are real constraints, and each one matters in specific production scenarios.
           </p>
           <div className="objection-tradeoff-list">
             {TRADEOFFS.map((t) => (
@@ -209,10 +208,10 @@ export default function WhyNotServerlessPage() {
             SparkPilot is not an either/or choice. The same preflight pipeline, policy engine,
             and cost tagging runs regardless of which execution engine you use. You can route
             production batch workloads to EMR on EKS for latency and cost control, and route
-            ad-hoc or dev workloads to Serverless from the same control plane.
+            ad-hoc or dev workloads to Serverless from the same control plane. EMR on EKS is available now; Serverless routing is in beta.
           </p>
           <p>
-            The governance layer — preflight checks, policies, CUR reconciliation, audit trail —
+            The governance layer, including preflight checks, policies, CUR reconciliation, and audit trail,
             applies to all engines. You get visibility and control over every job, regardless
             of which AWS service runs it.
           </p>

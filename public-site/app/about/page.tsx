@@ -5,7 +5,7 @@ import { LandingFooter } from "@/components/landing-footer";
 const VALUES = [
   {
     title: "Honest over optimistic",
-    body: "We document what's tested on real AWS and what isn't. Our business overview names what works and what hasn't been validated yet. We'd rather have a smaller, trusted product than a large one nobody can rely on.",
+    body: "We keep product claims grounded in what customers can use now. We would rather be clear and reliable than broad and vague.",
   },
   {
     title: "Pre-dispatch, not post-mortem",
@@ -13,7 +13,7 @@ const VALUES = [
   },
   {
     title: "Your cloud, your data",
-    body: "SparkPilot runs in your AWS account. Your Spark job artifacts, S3 buckets, and VPC never leave your perimeter. BYOC isn't a feature — it's the foundation.",
+    body: "SparkPilot runs in your AWS account. Your Spark job artifacts, S3 buckets, and VPC stay in your perimeter. BYOC is the foundation.",
   },
   {
     title: "Platform teams first",
@@ -24,7 +24,7 @@ const VALUES = [
 const TIMELINE = [
   {
     date: "Feb 2026",
-    event: "First preflight engine written — 20+ IAM, OIDC, and quota checks before job dispatch.",
+    event: "First preflight engine shipped with IAM, OIDC, and quota checks before job dispatch.",
   },
   {
     date: "Mar 3, 2026",
@@ -32,7 +32,7 @@ const TIMELINE = [
   },
   {
     date: "Mar 18, 2026",
-    event: "Second-operator validation — a non-author completed the full BYOC-Lite loop end-to-end on real AWS.",
+    event: "Second-operator validation completed end-to-end BYOC-Lite setup and first run execution.",
   },
   {
     date: "Mar 2026",
@@ -52,7 +52,7 @@ export default function AboutPage() {
           <span className="landing-hero-accent">for platform engineers</span>
         </h2>
         <p className="landing-hero-sub">
-          SparkPilot exists because every company running Spark on EKS eventually builds the same internal control plane — and then maintains it forever. We built the third option.
+          SparkPilot exists because teams running Spark on EKS eventually build the same control-plane layer and then carry the maintenance forever. We built a better third option.
         </p>
       </section>
 
@@ -65,7 +65,7 @@ export default function AboutPage() {
               Runtime optimizers like Ocean for Apache Spark make running jobs cheaper. FinOps platforms like Kubecost show you what you spent. Observability tools like Unravel diagnose failures after the fact.
             </p>
             <p>
-              None of them sit at <strong>pre-dispatch</strong> — the moment before a job starts, when you can still stop it. Before IAM misconfigurations waste startup cost. Before a team blows its monthly budget at 2 AM. Before a bad EMR release label causes a silent failure.
+              None of them sit at <strong>pre-dispatch</strong>, the moment before a job starts when you can still stop it. Before IAM misconfigurations waste startup cost. Before a team blows its monthly budget at 2 AM. Before a bad EMR release label causes a silent failure.
             </p>
             <p>
               That's where SparkPilot sits. We call it the workload contract: an enforceable declaration evaluated at submission time that a job is allowed to run, is likely to succeed, and will stay within defined cost and governance bounds.
@@ -108,7 +108,7 @@ export default function AboutPage() {
       <section className="landing-cta">
         <h2>Want to know more?</h2>
         <p>
-          We're happy to walk you through the architecture, the validation evidence, and how SparkPilot would fit your team's setup.
+          We are happy to walk you through architecture details and how SparkPilot fits your team setup.
         </p>
         <div className="landing-hero-actions">
           <Link href="/contact" className="landing-btn landing-btn-primary">Talk to us</Link>

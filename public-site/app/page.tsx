@@ -51,13 +51,13 @@ const FEATURES = [
     icon: <IconShield />,
     title: "Preflight Safety Gates",
     description:
-      "IAM, IRSA, OIDC, resource quota, Spot capacity, and Lake Formation permission checks run before a single byte moves. Bad configs are blocked at the gate with exact remediation steps — no silent failures.",
+      "IAM, IRSA, OIDC, resource quota, Spot capacity, and Lake Formation permission checks run before a single byte moves. Bad configs are blocked with clear remediation steps so teams can fix issues before dispatch.",
   },
   {
     icon: <IconDollar />,
     title: "CUR-Aligned Cost Attribution",
     description:
-      "Every run gets an estimated cost before dispatch. After completion, SparkPilot reconciles against your real AWS Cost and Usage Report via Athena — not estimates, actual line-item costs attributed to teams.",
+      "Every run gets an estimated cost before dispatch. After completion, SparkPilot reconciles against your AWS Cost and Usage Report in Athena so teams can review actual line-item spend.",
   },
   {
     icon: <IconLayers />,
@@ -81,19 +81,19 @@ const FEATURES = [
     icon: <IconActivity />,
     title: "Runtime Management",
     description:
-      "Three background workers — Scheduler, Reconciler, and Provisioner — own the full run lifecycle. SparkPilot dispatches queued jobs to AWS, polls EMR for state transitions, and surfaces deterministic log pointers. You track runs in a dashboard, not a CloudWatch stream.",
+      "Three background workers, Scheduler, Reconciler, and Provisioner, manage the run lifecycle. SparkPilot dispatches queued jobs to AWS, polls EMR for state transitions, and surfaces deterministic log pointers. You track runs in a dashboard, not a CloudWatch stream.",
   },
   {
     icon: <IconAlertTriangle />,
     title: "Structured Diagnostics",
     description:
-      "When a run fails, SparkPilot classifies the cause — OOM kill, Spot interruption, S3 access denied, timeout, unknown user error. Engineers get root cause with remediation context, not raw EMR error codes.",
+      "When a run fails, SparkPilot classifies the cause such as OOM kill, Spot interruption, S3 access denied, timeout, or user error. Engineers get a clear starting point for remediation.",
   },
   {
     icon: <IconCompass />,
     title: "Guided Onboarding",
     description:
-      "A step-by-step wizard validates cross-account trust, OIDC federation, namespace prerequisites, and execution role bindings — with exact remediation for every misconfiguration.",
+      "A step-by-step wizard validates cross-account trust, OIDC federation, namespace prerequisites, and execution role bindings, with actionable guidance for misconfigurations.",
   },
   {
     icon: <IconTrendingDown />,
@@ -111,14 +111,14 @@ const FEATURES = [
     icon: <IconGitBranch />,
     title: "Policy Engine",
     description:
-      "Define submission guardrails as policy rules — restrict instance types, enforce release labels, require cost center tags, or block teams from exceeding vCPU limits. Applied at preflight before dispatch.",
+      "Define submission guardrails as policy rules, including allowed instance types, required cost tags, release labels, and vCPU limits. Policies are checked during preflight before dispatch.",
   },
 ];
 
 const BEFORE_AFTER = [
   {
     before: "Manually validate IAM trust policy and OIDC association before every job",
-    after: "SparkPilot checks 15+ conditions automatically — fails fast with remediation steps",
+    after: "SparkPilot checks 15+ conditions automatically and fails fast with remediation steps",
   },
   {
     before: "Hunt through 6 different CloudWatch log groups to find your job output",
@@ -142,38 +142,38 @@ const BEFORE_AFTER = [
   },
   {
     before: "Poll EMR DescribeJobRun in a cron loop to know when your job finishes",
-    after: "SparkPilot's Reconciler polls EMR continuously and writes structured state transitions — queued → running → succeeded",
+    after: "SparkPilot's Reconciler polls EMR continuously and writes structured state transitions from queued to running to succeeded",
   },
   {
     before: "Parse raw EMR error events to understand why a job failed",
-    after: "SparkPilot classifies failures — OOM, Spot interruption, S3 access denied, timeout — with remediation context",
+    after: "SparkPilot classifies failures, including OOM, Spot interruption, S3 access denied, and timeout, with remediation context",
   },
 ];
 
 const ENGINES = [
   {
     name: "EMR on EKS",
-    badge: "Proven",
+    badge: "Available now",
     badgeClass: "badge-proven",
-    desc: "Native EMR virtual cluster on your EKS cluster. Validated end-to-end with real workloads including Structured Streaming.",
+    desc: "Native EMR virtual cluster on your EKS cluster for production Spark workloads.",
   },
   {
     name: "EMR Serverless",
-    badge: "Supported",
+    badge: "Beta",
     badgeClass: "badge-supported",
     desc: "Submit to an EMR Serverless application for fully managed capacity. No EKS cluster required.",
   },
   {
     name: "EMR on EC2",
-    badge: "Supported",
+    badge: "Beta",
     badgeClass: "badge-supported",
     desc: "Dispatch to existing EMR on EC2 clusters via step submission. Integrates with your current EC2-based Spark estate.",
   },
   {
     name: "Databricks on AWS",
-    badge: "Supported",
-    badgeClass: "badge-supported",
-    desc: "Submit to a Databricks workspace via the Jobs API. Unified control plane for mixed Databricks and EMR environments.",
+    badge: "Coming soon",
+    badgeClass: "badge-soon",
+    desc: "Planned support for Databricks Jobs API routing from the SparkPilot control plane.",
   },
 ];
 
@@ -216,12 +216,12 @@ const WORKERS = [
   {
     name: "Reconciler",
     icon: <IconActivity />,
-    desc: "Continuously polls EMR for job state changes and writes structured transitions — accepted → running → succeeded/failed. Detects stalled runs and triggers timeout handling.",
+    desc: "Continuously polls EMR for job state changes and writes structured transitions from accepted to running to succeeded or failed. Detects stalled runs and triggers timeout handling.",
   },
   {
     name: "Provisioner",
     icon: <IconLayers />,
-    desc: "Manages environment lifecycle — BYOC-Lite and Full BYOC provisioning, checkpoint recovery across Terraform stages, and environment teardown.",
+    desc: "Manages environment lifecycle, including BYOC-Lite and Full BYOC provisioning, checkpoint recovery across Terraform stages, and environment teardown.",
   },
 ];
 
@@ -230,20 +230,20 @@ const HOW_IT_WORKS = [
     step: "1",
     title: "Connect your AWS account",
     description:
-      "Create a cross-account IAM role and OIDC association. SparkPilot validates the trust relationship, required permissions, and namespace prerequisites automatically — with exact remediation for every failure. Supports Cognito, Auth0, Okta, and any standards-compliant OIDC provider.",
+      "Create a cross-account IAM role and OIDC association. SparkPilot validates trust relationships, required permissions, and namespace prerequisites automatically, with clear remediation guidance. Supports Cognito, Auth0, Okta, and other standards-based OIDC providers.",
     docLink: { href: "/getting-started", label: "Start here onboarding guide" },
   },
   {
     step: "2",
     title: "Choose your deployment model",
     description:
-      "BYOC-Lite connects to an existing EKS cluster and provisions the EMR virtual cluster in minutes. Full BYOC runs Terraform to provision VPC, EKS, and EMR from scratch — with checkpoint recovery if any stage fails.",
+      "BYOC-Lite connects to an existing EKS cluster and provisions the EMR virtual cluster quickly. Full BYOC runs Terraform to provision VPC, EKS, and EMR from scratch, with checkpoint recovery if any stage fails.",
   },
   {
     step: "3",
     title: "Define job templates",
     description:
-      "Encode submission patterns as versioned templates — Spot configurations, Graviton instance preferences, S3 Express paths, container images, and Spark configuration golden paths.",
+      "Encode submission patterns as versioned templates, including Spot configurations, Graviton instance preferences, S3 Express paths, container images, and Spark configuration baselines.",
   },
   {
     step: "4",
@@ -255,7 +255,7 @@ const HOW_IT_WORKS = [
     step: "5",
     title: "Track cost and usage",
     description:
-      "Estimated costs appear immediately. After the job finishes, SparkPilot reconciles against your AWS Cost and Usage Report via Athena — actual line-item costs attributed to teams and environments.",
+      "Estimated costs appear immediately. After the job finishes, SparkPilot reconciles against your AWS Cost and Usage Report in Athena for line-item cost attribution by team and environment.",
   },
 ];
 
@@ -291,7 +291,7 @@ export default function LandingPage() {
           <span className="landing-hero-accent">Ship with confidence.</span>
         </h2>
         <p className="landing-hero-sub">
-          Data engineers submit a job — SparkPilot handles everything else. Preflight
+          Data engineers submit a job, and SparkPilot handles the control-plane workflow. Preflight
           validation, AWS dispatch, real-time run tracking, structured failure diagnostics,
           and CUR-aligned cost attribution. One control plane for the full Spark lifecycle,
           inside your AWS account.
@@ -326,7 +326,7 @@ export default function LandingPage() {
                 <span className="landing-ba-icon landing-ba-icon-no" aria-hidden><IconX /></span>
                 <span>{row.before}</span>
               </div>
-              <div className="landing-ba-arrow" aria-hidden>→</div>
+              <div className="landing-ba-arrow" aria-hidden>{"->"}</div>
               <div className="landing-ba-after">
                 <span className="landing-ba-icon landing-ba-icon-yes" aria-hidden><IconCheck /></span>
                 <span>{row.after}</span>
@@ -342,8 +342,7 @@ export default function LandingPage() {
           <div className="landing-section-badge">Capabilities</div>
           <h2 className="landing-section-title">Everything your platform team needs</h2>
           <p className="landing-section-sub">
-            Each capability is fully implemented and validated on real AWS — not
-            checkbox features or marketing claims.
+            Core control-plane capabilities are available now. Beta and coming-soon items are labeled where they affect planning.
           </p>
         </div>
         <div className="landing-features-grid">
@@ -365,11 +364,11 @@ export default function LandingPage() {
       <section className="landing-section landing-section-alt" id="lifecycle">
         <div className="landing-section-header">
           <div className="landing-section-badge">Run Lifecycle</div>
-          <h2 className="landing-section-title">SparkPilot calls AWS — you don&apos;t have to</h2>
+          <h2 className="landing-section-title">SparkPilot calls AWS so your team does not have to</h2>
           <p className="landing-section-sub">
             Submit a job through the SparkPilot API, SparkPilot CLI, Airflow, or Dagster. Three background
             workers handle dispatch, state reconciliation, and environment provisioning.
-            Your data engineers interact with SparkPilot — not directly with AWS.
+            Your data engineers interact with SparkPilot instead of stitching together direct AWS calls.
           </p>
         </div>
 
@@ -380,7 +379,7 @@ export default function LandingPage() {
               <span style={{ fontSize: "0.76rem", fontWeight: 600, letterSpacing: "0.03em", padding: "3px 11px", borderRadius: "999px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", color: "var(--text-soft)" }}>
                 {s.label}
               </span>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>→</span>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{"->"}</span>
             </span>
           ))}
           <span style={{ fontSize: "0.76rem", fontWeight: 600, letterSpacing: "0.03em", padding: "3px 11px", borderRadius: "999px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", color: "var(--text-muted)" }}>
@@ -409,7 +408,7 @@ export default function LandingPage() {
           <h2 className="landing-section-title">One control plane, four Spark runtimes</h2>
           <p className="landing-section-sub">
             SparkPilot routes submissions to EMR on EKS, EMR Serverless, EMR on EC2, or
-            Databricks — from the same API and the same preflight pipeline.
+            Databricks from the same API and preflight pipeline.
           </p>
         </div>
         <div className="landing-engines-grid">
@@ -424,8 +423,9 @@ export default function LandingPage() {
           ))}
         </div>
         <p className="landing-engines-note">
-          <strong>Proven</strong> = validated end-to-end on real AWS with real run IDs and CloudWatch output.&nbsp;
-          <strong>Supported</strong> = dispatch code is implemented and routed; live end-to-end validation in progress.
+          <strong>Available now</strong> for EMR on EKS production paths.&nbsp;
+          <strong>Beta</strong> for EMR Serverless and EMR on EC2 expansion paths.&nbsp;
+          <strong>Coming soon</strong> for Databricks routing.
         </p>
       </section>
 
@@ -444,7 +444,7 @@ export default function LandingPage() {
                 <p>{s.description}</p>
                 {"docLink" in s && s.docLink ? (
                   <Link href={s.docLink.href} className="landing-step-doc-link">
-                    {s.docLink.label} →
+                    {s.docLink.label} {"->"}
                   </Link>
                 ) : null}
               </div>
@@ -523,8 +523,8 @@ export default function LandingPage() {
         </div>
         <div className="landing-compare-caveat">
           This comparison reflects capabilities of the SparkPilot control plane, not the
-          underlying AWS services. Rows marked with ✓ for DIY reflect platform primitives
-          you can build yourself — SparkPilot ships them configured and enforced.
+          underlying AWS services. Rows marked as available in DIY reflect platform primitives
+          you can build yourself, while SparkPilot ships them configured and enforced.
         </div>
       </section>
 
@@ -534,8 +534,7 @@ export default function LandingPage() {
           <div className="landing-section-badge">Still evaluating?</div>
           <h2 className="landing-section-title">Common questions, honest answers</h2>
           <p className="landing-section-sub">
-            We document the real tradeoffs. No marketing spin — so you can make the right
-            call for your team.
+            We document the real tradeoffs with direct product language so you can make the right call for your team.
           </p>
         </div>
         <div className="landing-learnmore-grid">
@@ -543,19 +542,19 @@ export default function LandingPage() {
             <div className="landing-learnmore-icon">🔧</div>
             <h3>Why not build it yourself?</h3>
             <p>
-              130–250 hours to reach parity. 40–80 hours of ongoing maintenance per month.
+              130 to 250 hours to reach parity. 40 to 80 hours of ongoing maintenance per month.
               An honest cost accounting of DIY EMR on EKS.
             </p>
-            <span className="landing-learnmore-link">Read the breakdown →</span>
+            <span className="landing-learnmore-link">Read the breakdown {"->"}</span>
           </Link>
           <Link href="/why-not-serverless" className="landing-learnmore-card">
             <div className="landing-learnmore-icon">☁️</div>
             <h3>Why not EMR Serverless?</h3>
             <p>
               Cold-start latency, no persistent clusters, no YuniKorn, no BYOC. When
-              Serverless is the right answer — and when it isn&apos;t.
+              Serverless is the right answer, and when it is not.
             </p>
-            <span className="landing-learnmore-link">Read the tradeoffs →</span>
+            <span className="landing-learnmore-link">Read the tradeoffs {"->"}</span>
           </Link>
         </div>
       </section>

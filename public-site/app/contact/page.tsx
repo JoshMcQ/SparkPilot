@@ -27,7 +27,7 @@ export default function ContactPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setState("submitting");
-    // mailto fallback — replace with a real form endpoint when available
+    // mailto fallback; replace with a real form endpoint when available
     const subject = encodeURIComponent(`SparkPilot inquiry from ${form.name} at ${form.company}`);
     const body = encodeURIComponent(
       `Name: ${form.name}\nEmail: ${form.email}\nCompany: ${form.company}\nUse case: ${form.useCase}\n\n${form.message}`
@@ -47,7 +47,7 @@ export default function ContactPage() {
           <span className="landing-hero-accent">your Spark setup</span>
         </h2>
         <p className="landing-hero-sub">
-          Whether you're evaluating SparkPilot, have a technical question, or want to discuss a custom deployment — we're happy to help.
+          Whether you are evaluating SparkPilot, have a technical question, or want to discuss a custom deployment, we are happy to help.
         </p>
       </section>
 
@@ -85,7 +85,7 @@ export default function ContactPage() {
             <div className="contact-success">
               <div className="contact-success-icon" aria-hidden="true">✓</div>
               <h3>Thanks, we'll be in touch.</h3>
-              <p>Check your email client — your message was pre-filled. If it didn't open, email us directly at <a href="mailto:hello@sparkpilot.io" className="login-link">hello@sparkpilot.io</a>.</p>
+              <p>Check your email client. Your message was pre-filled. If it did not open, email us directly at <a href="mailto:hello@sparkpilot.io" className="login-link">hello@sparkpilot.io</a>.</p>
               <Link href="/" className="landing-btn landing-btn-secondary" style={{ marginTop: "16px", display: "inline-flex" }}>
                 Back to home
               </Link>
@@ -143,7 +143,7 @@ export default function ContactPage() {
                   value={form.useCase}
                   onChange={handleChange}
                 >
-                  <option value="">Select one…</option>
+                  <option value="">Select one...</option>
                   {USE_CASES.map((uc) => (
                     <option key={uc} value={uc}>{uc}</option>
                   ))}
@@ -156,7 +156,7 @@ export default function ContactPage() {
                   id="message"
                   name="message"
                   className="form-input form-textarea"
-                  placeholder="Describe your current setup, the problem you're trying to solve, or any questions you have…"
+                  placeholder="Describe your current setup, the problem you're trying to solve, or any questions you have..."
                   rows={5}
                   value={form.message}
                   onChange={handleChange}
@@ -168,7 +168,7 @@ export default function ContactPage() {
                 className="landing-btn landing-btn-primary contact-submit"
                 disabled={state === "submitting" || !form.name || !form.email}
               >
-                {state === "submitting" ? "Opening email…" : "Send message"}
+                {state === "submitting" ? "Opening email..." : "Send message"}
               </button>
             </form>
           )}

@@ -6,7 +6,7 @@ import { appHref } from "@/lib/app-url";
 
 export const metadata: Metadata = {
   title: "Getting Started | SparkPilot",
-  description: "Public pre-access guide for SparkPilot onboarding.",
+  description: "Getting started guide for SparkPilot onboarding.",
 };
 
 const FLOW_STEPS = [
@@ -107,16 +107,15 @@ export default function GettingStartedPage() {
           <div className="landing-section-badge">Public Pre-Access Guide</div>
           <h1 className="getting-started-title">Clear path from pre-access to authenticated onboarding</h1>
           <p className="getting-started-sub">
-            This page is public and explains where to start. End users sign in and follow authenticated onboarding.
-            Platform admins handle one-time
-            workspace setup and access mapping.
+            Start here to choose the right path for your role. End users sign in and continue in the app.
+            Platform admins handle one-time workspace setup and access mapping.
           </p>
           <div className="landing-hero-actions">
             <Link href={appHref("/login?next=%2Fonboarding%2Faws")} className="landing-btn landing-btn-primary">Sign in and continue</Link>
             <Link href="/contact" className="landing-btn landing-btn-secondary">Request access</Link>
           </div>
           <div className="getting-started-callout">
-            Public flow ends here. Product operations (Onboarding, Environments, Runs, Costs, Access) require sign-in.
+            This page explains entry points. Onboarding, environments, runs, costs, and access management require sign-in.
           </div>
         </div>
 
@@ -154,8 +153,8 @@ export default function GettingStartedPage() {
           </div>
 
           <div className="getting-started-section-title-row">
-            <h2>Canonical onboarding sequence</h2>
-            <p>Follow these gates in order to reach a successful first run with evidence.</p>
+            <h2>Recommended onboarding sequence</h2>
+            <p>Follow these steps in order to get your first run completed cleanly.</p>
           </div>
           <div className="getting-started-grid">
             {FLOW_STEPS.map((step) => (

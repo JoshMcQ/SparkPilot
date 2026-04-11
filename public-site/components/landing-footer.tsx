@@ -33,15 +33,15 @@ export function LandingFooter() {
           <Link href="https://github.com/JoshMcQ/SparkPilot/issues" target="_blank" rel="noopener noreferrer">
             Changelog
           </Link>
-          <Link href="/contact">Security</Link>
+          <Link href="/contact">Security contact</Link>
           <Link href="/why-not-diy">Why Not DIY?</Link>
           <Link href="/why-not-serverless">Why Not Serverless?</Link>
         </div>
       </div>
       <div className="landing-footer-bottom">
-        <span>© 2026 SparkPilot. All rights reserved.</span>
+        <span>(c) 2026 SparkPilot. All rights reserved.</span>
         <span className="landing-footer-bottom-links">
-          <Link href="/contact">Security</Link>
+          <Link href="/contact">Security contact</Link>
           <Link href="/contact">Contact</Link>
         </span>
       </div>

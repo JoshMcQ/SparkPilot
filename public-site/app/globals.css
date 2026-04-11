@@ -1502,7 +1502,7 @@ details.card > summary:focus-visible {
 .landing-nav-links {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 18px;
 }
 
 .landing-nav-links > a:not(.landing-btn) {
@@ -1523,8 +1523,33 @@ details.card > summary:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .landing-nav {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .landing-nav-links {
+    width: auto;
+    gap: 8px;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+
   .landing-nav-links > a:not(.landing-btn):not(.theme-toggle) {
     display: none;
+  }
+
+  .landing-nav-links > .theme-toggle,
+  .landing-nav-links > .landing-btn-ghost {
+    display: none;
+  }
+
+  .landing-nav-cta {
+    padding: 8px 14px !important;
+    min-height: 34px !important;
+    font-size: 0.82rem !important;
   }
 }
 
@@ -2022,7 +2047,7 @@ details.card > summary:focus-visible {
 
 /* Reveal animation: only active when JS has confirmed it can run.
    Without the js-reveal-ready class (no JS / SSR), elements are
-   visible by default — no content is ever hidden by CSS alone. */
+   visible by default - no content is ever hidden by CSS alone. */
 .js-reveal-ready .reveal {
   opacity: 0;
   transform: translateY(18px);
@@ -2207,6 +2232,12 @@ details.card > summary:focus-visible {
   border: 1px solid color-mix(in srgb, var(--info) 22%, transparent);
 }
 
+.badge-soon {
+  background: color-mix(in srgb, var(--warning, #d97706) 12%, transparent);
+  color: var(--warning, #d97706);
+  border: 1px solid color-mix(in srgb, var(--warning, #d97706) 24%, transparent);
+}
+
 .landing-engines-note {
   text-align: center;
   font-size: 0.8rem;
@@ -2368,6 +2399,20 @@ details.card > summary:focus-visible {
   color: var(--text-muted);
   line-height: 1.5;
   text-align: center;
+}
+
+@media (max-width: 640px) {
+  .landing-compare-table th,
+  .landing-compare-table td {
+    padding: 8px 10px;
+    font-size: 0.76rem;
+  }
+
+  .landing-compare-table th.landing-compare-topic,
+  .landing-compare-table td.landing-compare-topic {
+    min-width: 180px;
+    font-size: 0.74rem;
+  }
 }
 
 /* ── CTA button arrow ──────────────────────────────────── */

@@ -39,9 +39,9 @@ const TIERS = [
       "Unlimited environments",
       "BYOC-Lite provisioning",
       "Full preflight + diagnostics suite",
-      "CUR cost reconciliation",
+      "CUR cost reconciliation (Beta)",
       "Team budget enforcement",
-      "Policy engine (coming soon)",
+      "Policy engine (Coming soon)",
       "Email support with SLA",
       "Deployment assistance",
       "Private Slack channel",
@@ -76,11 +76,11 @@ const FAQ = [
   },
   {
     q: "What does BYOC mean?",
-    a: "Bring Your Own Cloud. You provide the EKS cluster and IAM setup. SparkPilot registers your environment, validates prerequisites, and dispatches jobs — all within your account.",
+    a: "Bring Your Own Cloud. You provide the EKS cluster and IAM setup. SparkPilot registers your environment, validates prerequisites, and dispatches jobs within your account.",
   },
   {
     q: "What AWS services does SparkPilot require?",
-    a: "EMR on EKS (virtual cluster), EKS (your cluster), IAM (cross-account role + IRSA bindings), CloudWatch (log retrieval), and optionally Athena + S3 for CUR cost reconciliation.",
+    a: "EMR on EKS (virtual cluster), EKS (your cluster), IAM (cross-account role + IRSA bindings), CloudWatch (log retrieval), and optionally Athena + S3 for CUR cost reconciliation (Beta).",
   },
   {
     q: "Is there a free trial for the Team plan?",
@@ -140,6 +140,9 @@ export default function PricingPage() {
             </div>
           ))}
         </div>
+        <p className="landing-engines-note" style={{ marginTop: "14px" }}>
+          Available now items are listed without labels. Beta and coming-soon capabilities are explicitly marked in each plan.
+        </p>
       </section>
 
       <section className="landing-section">
