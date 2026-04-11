@@ -12,72 +12,72 @@ export const metadata: Metadata = {
 const FLOW_STEPS = [
   {
     id: "1",
-    title: "Request access",
-    detail: "If your team has not provisioned SparkPilot access yet, request access first.",
-    cta: { label: "Request access", href: "/contact" },
+    title: "Request pilot kickoff",
+    detail: "Share your workload profile and goals so we can scope a focused pilot with clear success criteria.",
+    cta: { label: "Request pilot", href: "/contact" },
   },
   {
     id: "2",
-    title: "Sign in with SSO",
-    detail: "Use your organization identity provider to start an authenticated session.",
-    cta: { label: "Continue to login", href: appHref("/login?next=%2Fonboarding%2Faws") },
+    title: "Confirm architecture and owner roles",
+    detail: "Align environment ownership, identity model, and timeline before setup starts.",
+    cta: { label: "Talk to us", href: "/contact" },
   },
   {
     id: "3",
-    title: "Enter product onboarding",
-    detail: "After sign-in, continue in the authenticated Start Here flow to configure your workspace.",
-    cta: { label: "Go to product onboarding", href: appHref("/login?next=%2Fonboarding%2Faws") },
+    title: "Connect AWS and run onboarding",
+    detail: "Platform admins complete authenticated onboarding to validate IAM, OIDC, namespace, and dispatch prerequisites.",
+    cta: { label: "Open onboarding", href: appHref("/login?next=%2Fonboarding%2Faws") },
   },
   {
     id: "4",
-    title: "Run and verify",
-    detail: "Submit your first run from the UI or CLI, check diagnostics/logs, and verify usage/cost visibility.",
+    title: "Submit first pilot run",
+    detail: "Run one governed workload, review diagnostics and cost visibility, then decide production rollout next steps.",
     cta: { label: "Open Runs after login", href: appHref("/login?next=%2Fruns") },
   },
 ];
 
 const TRACKS = [
   {
-    title: "I am joining an existing SparkPilot workspace",
-    audience: "Most users",
+    title: "I am evaluating SparkPilot as a buyer",
+    audience: "Pilot owner",
     bullets: [
-      "Request access or invitation from your SparkPilot admin.",
-      "Sign in with SSO and open Start Here onboarding.",
-      "Create/select a job template, submit a run, and verify costs.",
-      "You should not need AWS IAM, CloudFormation, or Terraform access.",
+      "Start with a pilot kickoff call to define scope and success criteria.",
+      "Confirm one workload family and one owner from platform engineering.",
+      "Use pilot checkpoints to evaluate operational fit and commercial fit.",
+      "No self-serve contract path. Pilots are sales-led and guided.",
     ],
   },
   {
-    title: "I am the first admin setting up a new workspace",
-    audience: "Platform/Admin owner",
+    title: "I am the platform admin running setup",
+    audience: "Platform owner",
     bullets: [
-      "Set up the workspace once, then your end users follow the normal sign-in flow.",
-      "Configure OIDC and create first admin identity mapping.",
-      "Use assisted BYOC-Lite setup to discover cluster and suggested namespace.",
-      "Run the first successful job, then onboard end users through Access and onboarding.",
+      "Complete authenticated onboarding once, then onboard users with role mapping.",
+      "Validate OIDC trust, execution role bindings, namespace rules, and budget limits.",
+      "Run the first governed job and share pilot outputs with stakeholders.",
+      "After pilot sign-off, expand environments and user access in phases.",
     ],
   },
 ];
 
 const START_OPTIONS = [
   {
-    title: "I am an end user",
-    detail: "I want to sign in and run jobs in an existing SparkPilot workspace.",
+    title: "I am evaluating SparkPilot",
+    detail: "I want a realistic pilot plan and a technical walkthrough for my team.",
+    cta: { label: "Request pilot", href: "/contact" },
+  },
+  {
+    title: "I am an existing customer user",
+    detail: "I already have workspace access and need to continue onboarding or run operations.",
     cta: { label: "Sign in", href: appHref("/login?next=%2Fonboarding%2Faws") },
   },
   {
-    title: "I need access first",
-    detail: "I do not have workspace access yet and need an admin to grant it.",
-    cta: { label: "Request access", href: "/contact" },
-  },
-  {
     title: "I prefer command line workflows",
-    detail: "I want to authenticate once, then submit and inspect runs from terminal automation.",
-    cta: { label: "Sign in then use CLI", href: appHref("/login?next=%2Fruns") },
+    detail: "I want to authenticate once, then submit and inspect runs from terminal automation during pilot.",
+    cta: { label: "Open runs after sign-in", href: appHref("/login?next=%2Fruns") },
   },
   {
     title: "I am the platform admin",
-    detail: "I own first-time workspace setup and need the admin path.",
+    detail: "I own first-time setup and need access to onboarding and access controls.",
     cta: { label: "Open admin access", href: appHref("/login?next=%2Faccess") },
   },
 ];
@@ -104,25 +104,24 @@ export default function GettingStartedPage() {
 
       <section className="getting-started-page">
         <div className="getting-started-hero">
-          <div className="landing-section-badge">Public Pre-Access Guide</div>
-          <h1 className="getting-started-title">Clear path from pre-access to authenticated onboarding</h1>
+          <div className="landing-section-badge">Pilot Start Guide</div>
+          <h1 className="getting-started-title">How to launch a SparkPilot pilot without confusion</h1>
           <p className="getting-started-sub">
-            Start here to choose the right path for your role. End users sign in and continue in the app.
-            Platform admins handle one-time workspace setup and access mapping.
+            SparkPilot is a sales-led enterprise workflow. Start with pilot kickoff, then move into authenticated onboarding for setup and run operations.
           </p>
           <div className="landing-hero-actions">
-            <Link href={appHref("/login?next=%2Fonboarding%2Faws")} className="landing-btn landing-btn-primary">Sign in and continue</Link>
-            <Link href="/contact" className="landing-btn landing-btn-secondary">Request access</Link>
+            <Link href="/contact" className="landing-btn landing-btn-primary">Request pilot</Link>
+            <Link href={appHref("/login?next=%2Fonboarding%2Faws")} className="landing-btn landing-btn-secondary">Customer login</Link>
           </div>
           <div className="getting-started-callout">
-            This page explains entry points. Onboarding, environments, runs, costs, and access management require sign-in.
+            Authenticated setup, runs, costs, and access management stay in the app. This page is the public pilot-entry map.
           </div>
         </div>
 
         <div className="getting-started-sections">
           <div className="getting-started-section-title-row">
             <h2>Pick your starting point</h2>
-            <p>Use the path that matches your role so onboarding stays clean and predictable.</p>
+            <p>Choose the path that matches your role so buyers and operators are not mixing workflows.</p>
           </div>
           <div className="getting-started-grid getting-started-grid-3">
             {START_OPTIONS.map((option) => (
@@ -136,7 +135,7 @@ export default function GettingStartedPage() {
 
           <div className="getting-started-section-title-row">
             <h2>Role-based tracks</h2>
-            <p>End users and admins have different responsibilities during first-time setup.</p>
+            <p>Pilot owners and platform admins have different responsibilities during setup and evaluation.</p>
           </div>
           <div className="getting-started-grid">
             {TRACKS.map((track) => (
@@ -153,8 +152,8 @@ export default function GettingStartedPage() {
           </div>
 
           <div className="getting-started-section-title-row">
-            <h2>Recommended onboarding sequence</h2>
-            <p>Follow these steps in order to get your first run completed cleanly.</p>
+            <h2>Recommended pilot sequence</h2>
+            <p>Follow these steps in order to keep pilot execution clean and measurable.</p>
           </div>
           <div className="getting-started-grid">
             {FLOW_STEPS.map((step) => (
@@ -169,7 +168,7 @@ export default function GettingStartedPage() {
 
           <div className="getting-started-section-title-row">
             <h2>Command line quickstart (after sign-in)</h2>
-            <p>SparkPilot supports terminal-first operations for platform teams and CI workflows.</p>
+            <p>Use these commands after sign-in for operator workflows and CI automation.</p>
           </div>
           <div className="getting-started-grid">
             <article className="getting-started-card">

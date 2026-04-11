@@ -9,64 +9,67 @@ const TIERS = [
     name: "Community",
     price: "Free",
     period: "forever",
-    description: "Self-hosted on your own infrastructure. Everything you need to get started.",
-    cta: "Get started",
+    description: "Open-source self-hosted package for technical teams that want to evaluate on their own.",
+    cta: "View open source",
     ctaHref: "https://github.com/JoshMcQ/SparkPilot",
     ctaStyle: "landing-btn-secondary",
     featured: false,
     features: [
-      "Single tenant",
+      "Single-tenant workspace",
       "Up to 3 environments",
       "BYOC-Lite provisioning",
       "20+ preflight safety checks",
       "Run lifecycle management",
-      "Cost estimation",
-      "Airflow & Dagster providers",
+      "Estimated run cost at submission",
+      "Airflow and Dagster providers",
       "Community support (GitHub)",
     ],
   },
   {
-    name: "Team",
+    name: "Pilot Program",
     price: "Contact us",
     period: "",
-    description: "Supported deployment for growing data platform teams with production SLAs.",
-    cta: "Talk to us",
+    description: "Sales-led 30-day pilot for platform teams that need governed Spark workflows quickly.",
+    cta: "Request pilot",
     ctaHref: "/contact",
     ctaStyle: "landing-btn-primary",
     featured: true,
     features: [
-      "Multi-tenant",
-      "Unlimited environments",
+      "Multi-tenant controls",
+      "Pilot environment setup",
       "BYOC-Lite provisioning",
-      "Full preflight + diagnostics suite",
-      "CUR cost reconciliation (Beta)",
-      "Team budget enforcement",
+      "Preflight and diagnostics suite",
+      "CUR cost reconciliation (In beta)",
+      "Team budget guardrails",
       "Policy engine (Coming soon)",
-      "Email support with SLA",
-      "Deployment assistance",
-      "Private Slack channel",
+      "Guided rollout plan",
+      "Support channel during pilot",
     ],
   },
   {
-    name: "Enterprise",
+    name: "Enterprise Rollout",
     price: "Custom",
     period: "",
-    description: "For organizations with compliance requirements, advanced security, and scale.",
-    cta: "Contact sales",
+    description: "Production rollout for organizations with procurement, security, and operational scale requirements.",
+    cta: "Plan rollout",
     ctaHref: "/contact",
     ctaStyle: "landing-btn-secondary",
     featured: false,
     features: [
-      "Everything in Team",
-      "SSO / SAML integration",
-      "Custom RBAC policies",
-      "Audit log export",
-      "SOC 2 documentation",
-      "Dedicated support engineer",
-      "Custom SLA",
-      "Procurement & legal review",
+      "Everything in Pilot Program",
+      "Production environment expansion",
+      "Security and procurement review",
+      "Support plan and SLA options",
+      "Deployment and operations guidance",
+      "Executive rollout planning",
     ],
   },
+];
+
+const PILOT_PATH = [
+  "Discovery call to scope one workload and success metrics",
+  "Guided setup and first governed run in your AWS account",
+  "Pilot review with rollout recommendation",
 ];
 
 const FAQ = [
@@ -100,11 +103,11 @@ export default function PricingPage() {
       <section className="landing-hero" style={{ paddingBottom: "clamp(28px, 4vw, 48px)" }}>
         <div className="landing-hero-badge">Pricing</div>
         <h2 className="landing-hero-title">
-          Simple, transparent<br />
-          <span className="landing-hero-accent">pricing for every team</span>
+          Pilot-first pricing for<br />
+          <span className="landing-hero-accent">enterprise Spark teams</span>
         </h2>
         <p className="landing-hero-sub">
-          Start free with self-hosted Community. Talk to us when you need production support, SLAs, or enterprise compliance.
+          SparkPilot is sales-led. Most teams start with a guided pilot, prove value quickly, and then decide rollout scope.
         </p>
       </section>
 
@@ -141,8 +144,32 @@ export default function PricingPage() {
           ))}
         </div>
         <p className="landing-engines-note" style={{ marginTop: "14px" }}>
-          Available now items are listed without labels. Beta and coming-soon capabilities are explicitly marked in each plan.
+          Available now capabilities are listed directly. In beta and coming-soon capabilities are labeled in place.
         </p>
+      </section>
+
+      <section className="landing-section" style={{ paddingTop: 0 }}>
+        <div className="landing-section-header">
+          <div className="landing-section-badge">Pilot Path</div>
+          <h2 className="landing-section-title">How commercial evaluation works</h2>
+        </div>
+        <div className="landing-engines-grid">
+          <article className="landing-engine-card">
+            <ol className="guided-steps">
+              {PILOT_PATH.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <div className="landing-hero-actions" style={{ justifyContent: "flex-start", marginTop: "16px" }}>
+              <Link href="/contact" className="landing-btn landing-btn-primary">
+                Request pilot
+              </Link>
+              <Link href="/getting-started" className="landing-btn landing-btn-secondary">
+                View pilot guide
+              </Link>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section className="landing-section">
@@ -161,12 +188,12 @@ export default function PricingPage() {
       </section>
 
       <section className="landing-cta">
-        <h2>Not sure which plan is right for you?</h2>
-        <p>Talk to us. We'll help you figure out the right setup for your team's size and AWS footprint.</p>
+        <h2>Need help choosing the right path?</h2>
+        <p>We will recommend whether to start with open source, a guided pilot, or a production rollout plan.</p>
         <div className="landing-hero-actions">
-          <Link href="/contact" className="landing-btn landing-btn-primary">Talk to us</Link>
+          <Link href="/contact" className="landing-btn landing-btn-primary">Request pilot</Link>
           <Link href="https://github.com/JoshMcQ/SparkPilot" target="_blank" rel="noopener noreferrer" className="landing-btn landing-btn-secondary">
-            View docs
+            View open source
           </Link>
         </div>
       </section>

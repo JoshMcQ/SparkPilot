@@ -52,7 +52,7 @@ export default function AboutPage() {
           <span className="landing-hero-accent">for platform engineers</span>
         </h2>
         <p className="landing-hero-sub">
-          SparkPilot exists because teams running Spark on EKS eventually build the same control-plane layer and then carry the maintenance forever. We built a better third option.
+          SparkPilot exists because teams running Spark on EKS eventually build the same control-plane layer and carry that maintenance forever. We built a faster pilot path and a cleaner rollout path.
         </p>
       </section>
 
@@ -106,12 +106,12 @@ export default function AboutPage() {
       </section>
 
       <section className="landing-cta">
-        <h2>Want to know more?</h2>
+        <h2>Want an architecture walkthrough?</h2>
         <p>
-          We are happy to walk you through architecture details and how SparkPilot fits your team setup.
+          We can walk through architecture details and help you decide if SparkPilot is the right pilot candidate for your team.
         </p>
         <div className="landing-hero-actions">
-          <Link href="/contact" className="landing-btn landing-btn-primary">Talk to us</Link>
+          <Link href="/contact" className="landing-btn landing-btn-primary">Request pilot</Link>
           <Link href="https://github.com/JoshMcQ/SparkPilot" target="_blank" rel="noopener noreferrer" className="landing-btn landing-btn-secondary">
             View on GitHub
           </Link>

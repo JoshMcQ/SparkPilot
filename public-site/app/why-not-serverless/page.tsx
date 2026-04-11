@@ -125,8 +125,7 @@ export default function WhyNotServerlessPage() {
             &ldquo;Why not just use EMR Serverless?&rdquo;
           </h1>
           <p className="objection-hero-sub">
-            EMR Serverless is a legitimate option for some workloads. Here is an honest breakdown
-            of the tradeoffs so you can make the right call for your team&apos;s actual requirements.
+            EMR Serverless is a legitimate option for some workloads. This page outlines the tradeoffs so buyers can choose the right path for real requirements.
           </p>
         </section>
 
@@ -154,6 +153,8 @@ export default function WhyNotServerlessPage() {
             </table>
           </div>
           <p className="objection-compare-note">
+            On mobile, swipe horizontally to view the full table.
+            <br />
             ~ indicates partial support. Spot in Serverless is available but without the
             placement control, diversification validation, or toleration management that
             SparkPilot provides on EKS.
@@ -221,12 +222,11 @@ export default function WhyNotServerlessPage() {
         <section className="objection-cta">
           <h2>Evaluate both in your actual environment</h2>
           <p>
-            We can help you model the latency, cost, and operational tradeoffs for your
-            specific workload profile. No commitment required.
+            We can help model latency, cost, and operational tradeoffs for your workload profile before you commit to a rollout path.
           </p>
           <div className="objection-cta-actions">
             <Link href="/contact" className="landing-btn landing-btn-primary">
-              Talk to an engineer
+              Request pilot comparison
             </Link>
             <Link href="/why-not-diy" className="landing-btn landing-btn-secondary">
               Why not build it yourself?

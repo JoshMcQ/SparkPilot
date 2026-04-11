@@ -12,8 +12,8 @@ export function LandingFooter() {
         <div className="landing-footer-col">
           <h4>Product</h4>
           <Link href="/#features">Capabilities</Link>
-          <Link href="/#engines">Supported Engines</Link>
-          <Link href="/#integrations">Integrations</Link>
+          <Link href="/#engines">Engine support</Link>
+          <Link href="/integrations">Integrations</Link>
           <Link href="/#how-it-works">How It Works</Link>
           <Link href="/#compare">Why SparkPilot</Link>
           <Link href="/pricing">Pricing</Link>
@@ -22,8 +22,8 @@ export function LandingFooter() {
           <h4>Company</h4>
           <Link href="/about">About</Link>
           <Link href="/contact">Contact</Link>
-          <Link href="/contact">Sales</Link>
-          <a href={appHref("/login")}>Log In</a>
+          <Link href="/contact">Request pilot</Link>
+          <a href={appHref("/login")}>Customer login</a>
         </div>
         <div className="landing-footer-col">
           <h4>Resources</h4>
@@ -33,6 +33,7 @@ export function LandingFooter() {
           <Link href="https://github.com/JoshMcQ/SparkPilot/issues" target="_blank" rel="noopener noreferrer">
             Changelog
           </Link>
+          <Link href="/getting-started">Pilot guide</Link>
           <Link href="/contact">Security contact</Link>
           <Link href="/why-not-diy">Why Not DIY?</Link>
           <Link href="/why-not-serverless">Why Not Serverless?</Link>
@@ -41,8 +42,8 @@ export function LandingFooter() {
       <div className="landing-footer-bottom">
         <span>(c) 2026 SparkPilot. All rights reserved.</span>
         <span className="landing-footer-bottom-links">
-          <Link href="/contact">Security contact</Link>
-          <Link href="/contact">Contact</Link>
+          <Link href="/contact">Request pilot</Link>
+          <a href={appHref("/login")}>Customer login</a>
         </span>
       </div>
     </footer>

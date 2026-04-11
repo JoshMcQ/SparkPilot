@@ -39,15 +39,36 @@ const INTEGRATIONS = [
 const PLATFORM_STATUS = [
   {
     title: "Available now",
-    body: "Airflow provider, Dagster package, API, and CLI for production workflow orchestration.",
+    body: "Airflow provider, Dagster package, API, and CLI are ready for production workflow orchestration.",
   },
   {
-    title: "Beta",
+    title: "In beta",
     body: "Additional dispatch targets and expanded policy controls for mixed-runtime teams.",
   },
   {
     title: "Coming soon",
-    body: "Deeper integration templates for enterprise rollout playbooks and environment bootstrapping.",
+    body: "Additional rollout templates for enterprise environment bootstrapping and handoff.",
+  },
+];
+
+const DEMO_ASSETS = [
+  {
+    title: "Live orchestrator demo",
+    badge: "Available now",
+    badgeClass: "badge-proven",
+    body: "Walk through Airflow or Dagster submission, preflight checks, run tracking, and diagnostics with your real workflow shape.",
+  },
+  {
+    title: "Integration screenshot pack",
+    badge: "In beta",
+    badgeClass: "badge-supported",
+    body: "Redacted screenshots for buyer and security reviews are available during guided pilot evaluations.",
+  },
+  {
+    title: "Short integration videos",
+    badge: "Coming soon",
+    badgeClass: "badge-soon",
+    body: "Short recorded clips for operator onboarding and rollout handoffs are being prepared.",
   },
 ];
 
@@ -71,8 +92,7 @@ export default function IntegrationsPage() {
           <span className="landing-hero-accent">existing workflow stack</span>
         </h2>
         <p className="landing-hero-sub">
-          SparkPilot fits into how platform and data teams already operate. Keep Airflow and Dagster in place, then
-          run submission, diagnostics, and cost controls through a single control plane.
+          Keep Airflow and Dagster in place, then run submission, diagnostics, and cost controls through one governed control plane.
         </p>
       </section>
 
@@ -135,14 +155,32 @@ export default function IntegrationsPage() {
               ))}
             </ol>
             <div className="landing-hero-actions" style={{ justifyContent: "flex-start", marginTop: "18px" }}>
-              <Link href={appHref("/runs")} className="landing-btn landing-btn-primary">
-                Open app runs
+              <Link href="/contact" className="landing-btn landing-btn-primary">
+                Request pilot
               </Link>
-              <Link href="/getting-started" className="landing-btn landing-btn-secondary">
-                Getting started
+              <Link href={appHref("/login")} className="landing-btn landing-btn-secondary">
+                Customer login
               </Link>
             </div>
           </article>
+        </div>
+      </section>
+
+      <section className="landing-section landing-section-alt">
+        <div className="landing-section-header">
+          <div className="landing-section-badge">Demo Assets</div>
+          <h2 className="landing-section-title">Assets for technical buyer conversations</h2>
+        </div>
+        <div className="landing-engines-grid">
+          {DEMO_ASSETS.map((asset) => (
+            <article key={asset.title} className="landing-engine-card">
+              <div className="landing-engine-header">
+                <strong>{asset.title}</strong>
+                <span className={`landing-engine-badge ${asset.badgeClass}`}>{asset.badge}</span>
+              </div>
+              <p>{asset.body}</p>
+            </article>
+          ))}
         </div>
       </section>
 

@@ -108,8 +108,7 @@ export default function WhyNotDIYPage() {
             &ldquo;We can build this ourselves.&rdquo;
           </h1>
           <p className="objection-hero-sub">
-            You can. Platform teams have been doing it for years. Here is an honest accounting
-            of what that actually costs, and what your team gives up each month when it is maintained manually.
+            You can. Platform teams have done it for years. This page shows the real effort and ongoing operating cost so buyers can make a clear call.
           </p>
         </section>
 
@@ -178,14 +177,13 @@ export default function WhyNotDIYPage() {
 
         {/* CTA */}
         <section className="objection-cta">
-          <h2>Still want to evaluate?</h2>
+          <h2>Evaluate the build vs buy decision with your team</h2>
           <p>
-            We will walk you through the exact IAM model, preflight checks, and policy configuration
-            that SparkPilot ships. This is a technical walkthrough, not a sales pitch.
+            We will walk through your IAM model, guardrails, and operator workflow so you can compare DIY effort against a pilot path.
           </p>
           <div className="objection-cta-actions">
             <Link href="/contact" className="landing-btn landing-btn-primary">
-              Talk to an engineer
+              Request pilot comparison
             </Link>
             <Link href="/why-not-serverless" className="landing-btn landing-btn-secondary">
               Why not EMR Serverless?

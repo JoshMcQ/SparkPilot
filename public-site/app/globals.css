@@ -1522,6 +1522,29 @@ details.card > summary:focus-visible {
   font-size: 0.88rem !important;
 }
 
+@media (max-width: 980px) and (min-width: 641px) {
+  .landing-nav {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .landing-nav-links {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 12px;
+  }
+
+  .landing-nav-links > a:not(.landing-btn) {
+    font-size: 0.84rem;
+  }
+
+  .landing-nav-cta {
+    padding: 8px 14px !important;
+  }
+}
+
 @media (max-width: 640px) {
   .landing-nav {
     flex-direction: row;
@@ -2323,6 +2346,7 @@ details.card > summary:focus-visible {
 
 .landing-compare-table {
   width: 100%;
+  min-width: 620px;
   border-collapse: collapse;
   font-size: 0.88rem;
   background: var(--surface-1);
@@ -2347,6 +2371,11 @@ details.card > summary:focus-visible {
 .landing-compare-table td.landing-compare-topic {
   text-align: left;
   min-width: 260px;
+}
+
+.landing-compare-table th:not(.landing-compare-topic),
+.landing-compare-table td:not(.landing-compare-topic) {
+  min-width: 110px;
 }
 
 .landing-compare-sp {
@@ -2402,6 +2431,14 @@ details.card > summary:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .landing-compare-wrapper {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .landing-compare-table {
+    min-width: 520px;
+  }
+
   .landing-compare-table th,
   .landing-compare-table td {
     padding: 8px 10px;

@@ -8,11 +8,11 @@ import { LandingFooter } from "@/components/landing-footer";
 type FormState = "idle" | "submitting" | "success" | "error";
 
 const USE_CASES = [
+  "Pilot evaluation",
+  "Production rollout planning",
   "Multi-tenant Spark governance",
-  "Cost attribution & FinOps",
-  "Preflight safety gates",
-  "Airflow / Dagster integration",
-  "Enterprise evaluation",
+  "Cost attribution and FinOps",
+  "Airflow or Dagster integration",
   "Other",
 ];
 
@@ -43,11 +43,11 @@ export default function ContactPage() {
       <section className="landing-hero" style={{ paddingBottom: "clamp(24px, 3vw, 40px)" }}>
         <div className="landing-hero-badge">Contact</div>
         <h2 className="landing-hero-title">
-          Let's talk about<br />
-          <span className="landing-hero-accent">your Spark setup</span>
+          Book a pilot conversation<br />
+          <span className="landing-hero-accent">for your Spark platform</span>
         </h2>
         <p className="landing-hero-sub">
-          Whether you are evaluating SparkPilot, have a technical question, or want to discuss a custom deployment, we are happy to help.
+          We will help you decide quickly whether SparkPilot is a fit, what a pilot should cover, and how to run it with clear ownership.
         </p>
       </section>
 
@@ -57,17 +57,17 @@ export default function ContactPage() {
             <h3>What to expect</h3>
             <ul className="contact-expect-list">
               <li>Response within one business day</li>
-              <li>A 30-minute technical call to understand your setup</li>
-              <li>Honest guidance on whether SparkPilot is the right fit</li>
+              <li>A focused technical call to understand your workload profile</li>
+              <li>Clear pilot recommendation with next steps</li>
             </ul>
           </div>
 
           <div className="contact-info-block">
             <h3>Good conversations to have</h3>
             <ul className="contact-expect-list">
-              <li>You run EMR on EKS and want governed self-service for your data team</li>
+              <li>You run EMR on EKS and need governed self-service for data teams</li>
               <li>You need per-team cost attribution reconciled against CUR</li>
-              <li>You're building a platform on EKS and want to skip the control plane DIY work</li>
+              <li>You want a pilot path before committing to a larger rollout</li>
               <li>You have a specific preflight or policy requirement</li>
             </ul>
           </div>
@@ -168,7 +168,7 @@ export default function ContactPage() {
                 className="landing-btn landing-btn-primary contact-submit"
                 disabled={state === "submitting" || !form.name || !form.email}
               >
-                {state === "submitting" ? "Opening email..." : "Send message"}
+                {state === "submitting" ? "Opening email..." : "Request pilot call"}
               </button>
             </form>
           )}

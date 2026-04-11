@@ -936,10 +936,12 @@
 .objection-compare-wrapper {
   overflow-x: auto;
   margin-bottom: 12px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .objection-compare-table {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
@@ -958,6 +960,11 @@
 
 .objection-compare-table th.objection-compare-cap {
   text-align: left;
+}
+
+.objection-compare-table th:not(.objection-compare-cap),
+.objection-compare-table td:not(.objection-compare-cap) {
+  min-width: 120px;
 }
 
 .objection-compare-table th.objection-compare-sp {
@@ -1015,6 +1022,15 @@
 }
 
 @media (max-width: 640px) {
+  .objection-compare-table {
+    min-width: 520px;
+  }
+
+  .objection-compare-table th:not(.objection-compare-cap),
+  .objection-compare-table td:not(.objection-compare-cap) {
+    min-width: 105px;
+  }
+
   .objection-compare-table th,
   .objection-compare-table td {
     padding: 8px 10px;

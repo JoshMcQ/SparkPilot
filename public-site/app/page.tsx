@@ -150,6 +150,36 @@ const BEFORE_AFTER = [
   },
 ];
 
+const PILOT_ASSETS = [
+  {
+    title: "Live product walkthrough",
+    badge: "Available now",
+    badgeClass: "badge-proven",
+    description:
+      "See a real run move from submission to diagnostics in a guided 30-minute demo with your platform team.",
+    ctaLabel: "Book demo",
+    ctaHref: "/contact",
+  },
+  {
+    title: "Pilot proof pack",
+    badge: "In beta",
+    badgeClass: "badge-supported",
+    description:
+      "Redacted screenshots and run summaries for buyer reviews are available for pilot evaluations.",
+    ctaLabel: "Request pilot assets",
+    ctaHref: "/contact",
+  },
+  {
+    title: "On-demand video library",
+    badge: "Coming soon",
+    badgeClass: "badge-soon",
+    description:
+      "Short videos for onboarding, run operations, and governance workflows are being prepared for customer teams.",
+    ctaLabel: "Join pilot waitlist",
+    ctaHref: "/contact",
+  },
+];
+
 const ENGINES = [
   {
     name: "EMR on EKS",
@@ -228,34 +258,34 @@ const WORKERS = [
 const HOW_IT_WORKS = [
   {
     step: "1",
-    title: "Connect your AWS account",
+    title: "Define pilot scope",
     description:
-      "Create a cross-account IAM role and OIDC association. SparkPilot validates trust relationships, required permissions, and namespace prerequisites automatically, with clear remediation guidance. Supports Cognito, Auth0, Okta, and other standards-based OIDC providers.",
-    docLink: { href: "/getting-started", label: "Start here onboarding guide" },
+      "Align on one workload family, success criteria, and owner roles before setup starts. This keeps pilot scope clear and measurable.",
+    docLink: { href: "/getting-started", label: "Open the pilot guide" },
   },
   {
     step: "2",
-    title: "Choose your deployment model",
+    title: "Connect your AWS account",
     description:
-      "BYOC-Lite connects to an existing EKS cluster and provisions the EMR virtual cluster quickly. Full BYOC runs Terraform to provision VPC, EKS, and EMR from scratch, with checkpoint recovery if any stage fails.",
+      "Create the cross-account IAM role and OIDC association. SparkPilot validates trust, permissions, and namespace prerequisites with clear remediation steps.",
   },
   {
     step: "3",
-    title: "Define job templates",
+    title: "Choose deployment model",
+    description:
+      "BYOC-Lite connects to your existing EKS cluster quickly. Full BYOC provisions VPC, EKS, and EMR from Terraform modules when needed.",
+  },
+  {
+    step: "4",
+    title: "Submit your first governed run",
     description:
       "Encode submission patterns as versioned templates, including Spot configurations, Graviton instance preferences, S3 Express paths, container images, and Spark configuration baselines.",
   },
   {
-    step: "4",
-    title: "Submit through your orchestrator",
-    description:
-      "Push jobs through the SparkPilot API, the SparkPilot CLI, the Airflow operator, or the Dagster asset. Every submission passes preflight gates, gets a cost estimate, and is dispatched with deterministic logging.",
-  },
-  {
     step: "5",
-    title: "Track cost and usage",
+    title: "Review outcomes and decide rollout",
     description:
-      "Estimated costs appear immediately. After the job finishes, SparkPilot reconciles against your AWS Cost and Usage Report in Athena for line-item cost attribution by team and environment.",
+      "Compare pilot results against your success criteria, including reliability, diagnostics, and cost visibility. Then move to production rollout with the same control plane.",
   },
 ];
 
@@ -287,33 +317,74 @@ export default function LandingPage() {
       <section className="landing-hero" id="hero">
         <div className="landing-hero-badge">AWS-native Spark Control Plane</div>
         <h2 className="landing-hero-title">
-          Stop firefighting Spark.<br />
-          <span className="landing-hero-accent">Ship with confidence.</span>
+          Launch governed Spark pilots<br />
+          <span className="landing-hero-accent">without adding platform drag.</span>
         </h2>
         <p className="landing-hero-sub">
-          Data engineers submit a job, and SparkPilot handles the control-plane workflow. Preflight
-          validation, AWS dispatch, real-time run tracking, structured failure diagnostics,
-          and CUR-aligned cost attribution. One control plane for the full Spark lifecycle,
-          inside your AWS account.
+          SparkPilot gives platform teams one control plane for preflight checks, dispatch,
+          run diagnostics, and cost visibility. You keep AWS ownership, your data stays in
+          your perimeter, and buyers get a clear pilot path from day one.
         </p>
         <div className="landing-hero-actions">
           <Link href="/contact" className="landing-btn landing-btn-primary">
-            Request access
+            Request pilot
           </Link>
-          <Link href="/#how-it-works" className="landing-btn landing-btn-secondary">
-            See how it works
+          <Link href="/getting-started" className="landing-btn landing-btn-secondary">
+            See pilot plan
           </Link>
         </div>
         <p className="landing-hero-note">
-          Runs in your AWS account · No data leaves your perimeter · BYOC-Lite or Full BYOC
+          Available now: EMR on EKS. In beta: EMR Serverless and EMR on EC2. Coming soon: Databricks.
         </p>
       </section>
 
       {/* ── Before / After ───────────────────────────── */}
+      <section className="landing-proof" id="status">
+        <div className="landing-proof-inner">
+          <div className="landing-proof-stat">
+            <strong>Available now</strong>
+            <span>Governed EMR on EKS control plane</span>
+          </div>
+          <div className="landing-proof-divider" />
+          <div className="landing-proof-stat">
+            <strong>In beta</strong>
+            <span>EMR Serverless and EMR on EC2 dispatch paths</span>
+          </div>
+          <div className="landing-proof-divider" />
+          <div className="landing-proof-stat">
+            <strong>Coming soon</strong>
+            <span>Databricks routing from the same control plane</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-section landing-section-tight" id="proof-assets">
+        <div className="landing-section-header">
+          <div className="landing-section-badge">Sales Assets</div>
+          <h2 className="landing-section-title">Show the product in buyer conversations</h2>
+          <p className="landing-section-sub">
+            Use live demos and pilot artifacts to show real workflow proof, not just product claims.
+          </p>
+        </div>
+        <div className="landing-engines-grid">
+          {PILOT_ASSETS.map((asset) => (
+            <article key={asset.title} className="landing-engine-card reveal">
+              <div className="landing-engine-header">
+                <strong>{asset.title}</strong>
+                <span className={`landing-engine-badge ${asset.badgeClass}`}>{asset.badge}</span>
+              </div>
+              <p>{asset.description}</p>
+              <Link href={asset.ctaHref} className="landing-btn landing-btn-secondary">
+                {asset.ctaLabel}
+              </Link>
+            </article>
+          ))}
+        </div>
+      </section>
       <section className="landing-section landing-section-tight" id="before-after">
         <div className="landing-section-header">
           <div className="landing-section-badge">The Problem</div>
-          <h2 className="landing-section-title">Before SparkPilot, this was your day</h2>
+          <h2 className="landing-section-title">What teams replace in week one</h2>
           <p className="landing-section-sub">
             Every team with a shared EKS cluster and a Spark workload hits the same walls.
             SparkPilot eliminates them operationally, not just conceptually.
@@ -340,7 +411,7 @@ export default function LandingPage() {
       <section className="landing-section" id="features">
         <div className="landing-section-header">
           <div className="landing-section-badge">Capabilities</div>
-          <h2 className="landing-section-title">Everything your platform team needs</h2>
+          <h2 className="landing-section-title">Control-plane capabilities for production Spark</h2>
           <p className="landing-section-sub">
             Core control-plane capabilities are available now. Beta and coming-soon items are labeled where they affect planning.
           </p>
@@ -433,7 +504,7 @@ export default function LandingPage() {
       <section className="landing-section" id="how-it-works">
         <div className="landing-section-header">
           <div className="landing-section-badge">How It Works</div>
-          <h2 className="landing-section-title">From zero to production in five steps</h2>
+          <h2 className="landing-section-title">From pilot kickoff to rollout in five steps</h2>
         </div>
         <div className="landing-steps landing-steps-5">
           {HOW_IT_WORKS.map((s, i) => (
@@ -474,6 +545,11 @@ export default function LandingPage() {
         </div>
         <div className="landing-integrations-note reveal">
           Airflow and Dagster providers are installable from source today. CLI and API are available now for platform teams and automation.
+        </div>
+        <div className="landing-hero-actions" style={{ marginTop: "20px" }}>
+          <Link href="/integrations" className="landing-btn landing-btn-secondary">
+            Open integration guide
+          </Link>
         </div>
       </section>
 
@@ -522,6 +598,8 @@ export default function LandingPage() {
           </table>
         </div>
         <div className="landing-compare-caveat">
+          On mobile, swipe horizontally to view the full table.
+          <br />
           This comparison reflects capabilities of the SparkPilot control plane, not the
           underlying AWS services. Rows marked as available in DIY reflect platform primitives
           you can build yourself, while SparkPilot ships them configured and enforced.
@@ -539,7 +617,7 @@ export default function LandingPage() {
         </div>
         <div className="landing-learnmore-grid">
           <Link href="/why-not-diy" className="landing-learnmore-card">
-            <div className="landing-learnmore-icon">🔧</div>
+            <div className="landing-learnmore-icon" aria-hidden>DIY</div>
             <h3>Why not build it yourself?</h3>
             <p>
               130 to 250 hours to reach parity. 40 to 80 hours of ongoing maintenance per month.
@@ -548,7 +626,7 @@ export default function LandingPage() {
             <span className="landing-learnmore-link">Read the breakdown {"->"}</span>
           </Link>
           <Link href="/why-not-serverless" className="landing-learnmore-card">
-            <div className="landing-learnmore-icon">☁️</div>
+            <div className="landing-learnmore-icon" aria-hidden>AWS</div>
             <h3>Why not EMR Serverless?</h3>
             <p>
               Cold-start latency, no persistent clusters, no YuniKorn, no BYOC. When
@@ -561,18 +639,18 @@ export default function LandingPage() {
 
       {/* ── CTA ──────────────────────────────────────── */}
       <section className="landing-cta">
-        <h2>Ready to stop firefighting Spark?</h2>
+        <h2>Start with a guided Spark pilot</h2>
         <p>
-          Talk to us about your setup. We&apos;ll tell you honestly whether
-          SparkPilot is the right fit for your team.
+          Share your workload profile and we will map a practical pilot plan with clear
+          success criteria, owner responsibilities, and rollout options.
         </p>
         <div className="landing-hero-actions">
           <Link href="/contact" className="landing-btn landing-btn-primary">
-            <span>Talk to us</span>
+            <span>Request pilot</span>
             <span className="landing-btn-arrow"><IconArrowRight /></span>
           </Link>
-          <Link href="/pricing" className="landing-btn landing-btn-secondary">
-            View pricing
+          <Link href="/getting-started" className="landing-btn landing-btn-secondary">
+            View pilot steps
           </Link>
         </div>
       </section>

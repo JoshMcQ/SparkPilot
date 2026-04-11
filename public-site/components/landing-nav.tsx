@@ -17,8 +17,11 @@ export function LandingNav() {
         <Link href="/#features" className={pathname === "/" ? "landing-nav-active" : ""}>
           Features
         </Link>
-        <Link href="/#integrations" className={pathname === "/" ? "landing-nav-active" : ""}>
+        <Link href="/integrations" className={pathname === "/integrations" ? "landing-nav-active" : ""}>
           Integrations
+        </Link>
+        <Link href="/getting-started" className={pathname === "/getting-started" ? "landing-nav-active" : ""}>
+          Getting Started
         </Link>
         <Link href="/pricing" className={pathname === "/pricing" ? "landing-nav-active" : ""}>
           Pricing
@@ -31,10 +34,10 @@ export function LandingNav() {
         </Link>
         <ThemeToggle />
         <a href={appHref("/login")} className="landing-btn landing-btn-ghost landing-nav-cta">
-          Log in
+          Customer login
         </a>
-        <Link href="/getting-started" className="landing-btn landing-btn-primary landing-nav-cta">
-          Start Here
+        <Link href="/contact" className="landing-btn landing-btn-primary landing-nav-cta">
+          Request pilot
         </Link>
       </div>
     </nav>
