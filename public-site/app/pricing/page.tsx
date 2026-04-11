@@ -1,83 +1,94 @@
+"use client";
+
 import Link from "next/link";
-import { LandingFooter } from "@/components/landing-footer";
 import { LandingNav } from "@/components/landing-nav";
+import { LandingFooter } from "@/components/landing-footer";
 
 const TIERS = [
   {
-    name: "Open Source",
+    name: "Community",
     price: "Free",
-    period: "self-hosted",
-    description: "Code access and local development workflows.",
-    cta: "View repository",
+    period: "forever",
+    description: "Self-hosted on your own infrastructure. Everything you need to get started.",
+    cta: "Get started",
     ctaHref: "https://github.com/JoshMcQ/SparkPilot",
     ctaStyle: "landing-btn-secondary",
     featured: false,
     features: [
-      "Core API and UI codebase",
-      "CLI and provider source packages",
-      "Local and mocked test workflows",
-      "No hosted SLA commitments",
+      "Single tenant",
+      "Up to 3 environments",
+      "BYOC-Lite provisioning",
+      "20+ preflight safety checks",
+      "Run lifecycle management",
+      "Cost estimation",
+      "Airflow & Dagster providers",
+      "Community support (GitHub)",
     ],
   },
   {
-    name: "Staging Pilot",
-    price: "Pilot-ready",
+    name: "Team",
+    price: "Contact us",
     period: "",
-    description: "Batch-first enterprise workflow for pilots, evaluations, and internal rollout.",
-    cta: "Start staging flow",
-    ctaHref: "/getting-started",
+    description: "Supported deployment for growing data platform teams with production SLAs.",
+    cta: "Talk to us",
+    ctaHref: "/contact",
     ctaStyle: "landing-btn-primary",
     featured: true,
     features: [
-      "OIDC sign-in and onboarding",
-      "BYOC-Lite environment connection",
-      "Batch run submit, monitor, logs, diagnostics",
-      "Usage and KPI visibility",
-      "Policy and governance foundation",
-      "Clear roadmap for advanced runtime capabilities",
+      "Multi-tenant",
+      "Unlimited environments",
+      "BYOC-Lite provisioning",
+      "Full preflight + diagnostics suite",
+      "CUR cost reconciliation",
+      "Team budget enforcement",
+      "Policy engine (coming soon)",
+      "Email support with SLA",
+      "Deployment assistance",
+      "Private Slack channel",
     ],
   },
   {
-    name: "Enterprise Expansion",
-    price: "Coming soon",
+    name: "Enterprise",
+    price: "Custom",
     period: "",
-    description: "Expanded runtime coverage and enterprise packaging as the platform roadmap advances.",
-    cta: "Talk to us",
+    description: "For organizations with compliance requirements, advanced security, and scale.",
+    cta: "Contact sales",
     ctaHref: "/contact",
     ctaStyle: "landing-btn-secondary",
     featured: false,
     features: [
-      "Interactive endpoints maturity",
-      "Customer-facing job template workflows",
-      "Security configuration workflows",
-      "Lake Formation and YuniKorn rollout depth",
-      "Broader runtime parity",
-      "Expanded compliance and support packaging",
-      "Co-developed with pilot and customer rollout priorities",
+      "Everything in Team",
+      "SSO / SAML integration",
+      "Custom RBAC policies",
+      "Audit log export",
+      "SOC 2 documentation",
+      "Dedicated support engineer",
+      "Custom SLA",
+      "Procurement & legal review",
     ],
   },
 ];
 
 const FAQ = [
   {
-    q: "Is SparkPilot fully production-wide today?",
-    a: "Today’s launch scope is batch-first on EMR on EKS with BYOC-Lite onboarding, governed runs, and operator workflows.",
+    q: "Does SparkPilot have access to my AWS account?",
+    a: "No. SparkPilot runs inside your AWS account using a cross-account IAM role you provision. Your Spark job data, S3 buckets, and VPC resources never leave your perimeter.",
   },
   {
-    q: "What is the best path to evaluate right now?",
-    a: "Run the full pilot path: sign in, connect BYOC-Lite, submit a run, and review logs, diagnostics, and usage.",
+    q: "What does BYOC mean?",
+    a: "Bring Your Own Cloud. You provide the EKS cluster and IAM setup. SparkPilot registers your environment, validates prerequisites, and dispatches jobs — all within your account.",
   },
   {
-    q: "Are all backend features customer-ready?",
-    a: "No. Some backend capabilities are still maturing into full customer workflows and are listed under Planned next.",
+    q: "What AWS services does SparkPilot require?",
+    a: "EMR on EKS (virtual cluster), EKS (your cluster), IAM (cross-account role + IRSA bindings), CloudWatch (log retrieval), and optionally Athena + S3 for CUR cost reconciliation.",
   },
   {
-    q: "What is planned next?",
-    a: "Interactive endpoints, richer template/security workflows, Lake Formation depth, YuniKorn controls, and broader orchestration rollout.",
+    q: "Is there a free trial for the Team plan?",
+    a: "Yes. We offer a 30-day evaluation for qualifying teams. Get in touch and we'll set you up.",
   },
   {
-    q: "Does SparkPilot run in our AWS account?",
-    a: "Yes. SparkPilot is BYOC-oriented and keeps workload execution and data inside your AWS account boundary.",
+    q: "Can I self-host the Team or Enterprise version?",
+    a: "Yes. SparkPilot deploys on ECS Fargate in your AWS account. We provide the Terraform modules and deployment support.",
   },
 ];
 
@@ -87,13 +98,13 @@ export default function PricingPage() {
       <LandingNav />
 
       <section className="landing-hero" style={{ paddingBottom: "clamp(28px, 4vw, 48px)" }}>
-        <div className="landing-hero-badge">Plans and Scope</div>
+        <div className="landing-hero-badge">Pricing</div>
         <h2 className="landing-hero-title">
-          Packaging for pilot rollout <br />
-          <span className="landing-hero-accent">and enterprise expansion</span>
+          Simple, transparent<br />
+          <span className="landing-hero-accent">pricing for every team</span>
         </h2>
         <p className="landing-hero-sub">
-          Start with the pilot-ready path today, then expand into broader enterprise capabilities as your rollout grows.
+          Start free with self-hosted Community. Talk to us when you need production support, SLAs, or enterprise compliance.
         </p>
       </section>
 
@@ -101,7 +112,7 @@ export default function PricingPage() {
         <div className="pricing-grid">
           {TIERS.map((tier) => (
             <div key={tier.name} className={`pricing-card${tier.featured ? " pricing-card-featured" : ""}`}>
-              {tier.featured && <div className="pricing-badge">Current Recommended Path</div>}
+              {tier.featured && <div className="pricing-badge">Most Popular</div>}
               <div className="pricing-header">
                 <h3 className="pricing-name">{tier.name}</h3>
                 <div className="pricing-price">
@@ -119,10 +130,10 @@ export default function PricingPage() {
                 {tier.cta}
               </Link>
               <ul className="pricing-features">
-                {tier.features.map((feature) => (
-                  <li key={feature} className="pricing-feature">
-                    <span className="pricing-check" aria-hidden="true">+</span>
-                    {feature}
+                {tier.features.map((f) => (
+                  <li key={f} className="pricing-feature">
+                    <span className="pricing-check" aria-hidden="true">✓</span>
+                    {f}
                   </li>
                 ))}
               </ul>
@@ -134,7 +145,7 @@ export default function PricingPage() {
       <section className="landing-section">
         <div className="landing-section-header">
           <div className="landing-section-badge">FAQ</div>
-          <h2 className="landing-section-title">Plan clarity</h2>
+          <h2 className="landing-section-title">Common questions</h2>
         </div>
         <div className="faq-list">
           {FAQ.map((item) => (
@@ -147,11 +158,13 @@ export default function PricingPage() {
       </section>
 
       <section className="landing-cta">
-        <h2>Need a rollout plan for your team?</h2>
-        <p>Start with the pilot workflow, then expand scope in line with your production timeline.</p>
+        <h2>Not sure which plan is right for you?</h2>
+        <p>Talk to us. We'll help you figure out the right setup for your team's size and AWS footprint.</p>
         <div className="landing-hero-actions">
-          <Link href="/getting-started" className="landing-btn landing-btn-primary">Open getting started</Link>
-          <Link href="/contact" className="landing-btn landing-btn-secondary">Talk to us</Link>
+          <Link href="/contact" className="landing-btn landing-btn-primary">Talk to us</Link>
+          <Link href="https://github.com/JoshMcQ/SparkPilot" target="_blank" rel="noopener noreferrer" className="landing-btn landing-btn-secondary">
+            View docs
+          </Link>
         </div>
       </section>
 
@@ -159,4 +172,3 @@ export default function PricingPage() {
     </div>
   );
 }
-

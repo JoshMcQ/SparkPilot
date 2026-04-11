@@ -23,17 +23,17 @@ export default function IntegrationsPage() {
     <section className="stack">
       <div className="card">
         <div className="eyebrow">WORKFLOW INTEGRATIONS</div>
-        <h3>SparkPilot integration surfaces</h3>
+        <h3>SparkPilot in enterprise workflow operations</h3>
         <p className="subtle" style={{ marginTop: 8 }}>
-          The web app, API, and CLI are the primary operating surfaces today.
-          Airflow and Dagster packages are available in-source for team evaluation and rollout planning.
+          This is the in-product integration surface for orchestrator-led operations. Teams submit through Airflow or
+          Dagster, SparkPilot enforces preflight and governance, and operators monitor runs, diagnostics, and costs.
         </p>
       </div>
 
       <div className="card-grid">
         <article className="card">
           <h3>Airflow Provider</h3>
-          <p className="subtle">Hook/operator/sensor/trigger package for integrating SparkPilot run operations into Airflow DAGs.</p>
+          <p className="subtle">First-class hook/operator/sensor/trigger provider with deferrable waiting support.</p>
           <div className="button-row">
             <a
               href="https://github.com/JoshMcQ/SparkPilot/tree/main/providers/airflow"
@@ -49,7 +49,7 @@ export default function IntegrationsPage() {
 
         <article className="card">
           <h3>Dagster Package</h3>
-          <p className="subtle">Resource + ops + assets package for Dagster-first teams standardizing run submission and monitoring.</p>
+          <p className="subtle">Resource + ops + assets for submit/wait/cancel lifecycle with OIDC-authenticated API calls.</p>
           <div className="button-row">
             <a
               href="https://github.com/JoshMcQ/SparkPilot/tree/main/providers/dagster"
@@ -65,16 +65,13 @@ export default function IntegrationsPage() {
       </div>
 
       <div className="card">
-        <h3>Current workflow fit</h3>
+        <h3>Operational Workflow Fit</h3>
         <ol className="guided-steps">
-          <li>Platform admin configures identity/team scope and validates onboarding gates.</li>
-          <li>Teams submit batch runs through UI, API, or CLI.</li>
-          <li>SparkPilot preflight gates and dispatches runs; Runs UI surfaces state, logs, and diagnostics.</li>
-          <li>Usage and KPI views provide operational evidence while broader cost reconciliation remains environment-dependent.</li>
+          <li>Platform admin configures identity/team/scope and budget guardrails in Access + Policies.</li>
+          <li>Workflow orchestrator submits SparkPilot runs from Airflow DAGs or Dagster jobs/assets.</li>
+          <li>SparkPilot preflight gates and dispatches; Runs UI is used for state, logs, and diagnostics.</li>
+          <li>Costs UI reconciles team showback from estimated and CUR-backed actual usage.</li>
         </ol>
-        <p className="subtle" style={{ marginTop: 10 }}>
-          Planned next: interactive endpoint operations, richer template/security workflows, and broader multi-engine rollout.
-        </p>
         <div className="button-row" style={{ marginTop: 12 }}>
           <a href={appHref("/access")} className="button button-secondary">Access</a>
           <a href={appHref("/policies")} className="button button-secondary">Policies</a>
@@ -85,3 +82,4 @@ export default function IntegrationsPage() {
     </section>
   );
 }
+
