@@ -6,21 +6,21 @@ import { LandingFooter } from "@/components/landing-footer";
 
 const TIERS = [
   {
-    name: "Community",
+    name: "Open Source Evaluation",
     price: "Free",
-    period: "forever",
-    description: "Open-source self-hosted package for technical teams that want to evaluate on their own.",
+    period: "",
+    description: "Self-guided path for technical teams that want to evaluate core workflow behavior on their own.",
     cta: "View open source",
     ctaHref: "https://github.com/JoshMcQ/SparkPilot",
     ctaStyle: "landing-btn-secondary",
     featured: false,
     features: [
-      "Single-tenant workspace",
-      "Up to 3 environments",
-      "BYOC-Lite provisioning",
+      "Single-team workspace",
+      "Core preflight checks",
+      "Manual environment setup",
       "20+ preflight safety checks",
-      "Run lifecycle management",
-      "Estimated run cost at submission",
+      "Run lifecycle tracking",
+      "Estimated run cost",
       "Airflow and Dagster providers",
       "Community support (GitHub)",
     ],
@@ -29,7 +29,7 @@ const TIERS = [
     name: "Pilot Program",
     price: "Contact us",
     period: "",
-    description: "Sales-led 30-day pilot for platform teams that need governed Spark workflows quickly.",
+    description: "Sales-led pilot for platform teams that need a governed Spark path with clear success criteria.",
     cta: "Request pilot",
     ctaHref: "/contact",
     ctaStyle: "landing-btn-primary",
@@ -41,7 +41,7 @@ const TIERS = [
       "Preflight and diagnostics suite",
       "CUR cost reconciliation (In beta)",
       "Team budget guardrails",
-      "Policy engine (Coming soon)",
+      "Policy controls (Coming soon)",
       "Guided rollout plan",
       "Support channel during pilot",
     ],
@@ -50,8 +50,8 @@ const TIERS = [
     name: "Enterprise Rollout",
     price: "Custom",
     period: "",
-    description: "Production rollout for organizations with procurement, security, and operational scale requirements.",
-    cta: "Plan rollout",
+    description: "Post-pilot rollout path for organizations with procurement, security, and multi-team operations.",
+    cta: "Plan rollout path",
     ctaHref: "/contact",
     ctaStyle: "landing-btn-secondary",
     featured: false,
@@ -69,13 +69,13 @@ const TIERS = [
 const PILOT_PATH = [
   "Discovery call to scope one workload and success metrics",
   "Guided setup and first governed run in your AWS account",
-  "Pilot review with rollout recommendation",
+  "Pilot review and rollout recommendation",
 ];
 
 const FAQ = [
   {
     q: "Does SparkPilot have access to my AWS account?",
-    a: "No. SparkPilot runs inside your AWS account using a cross-account IAM role you provision. Your Spark job data, S3 buckets, and VPC resources never leave your perimeter.",
+    a: "SparkPilot runs inside your AWS account using a cross-account IAM role you provision. Spark job data and storage remain in your AWS environment.",
   },
   {
     q: "What does BYOC mean?",
@@ -86,12 +86,12 @@ const FAQ = [
     a: "EMR on EKS (virtual cluster), EKS (your cluster), IAM (cross-account role + IRSA bindings), CloudWatch (log retrieval), and optionally Athena + S3 for CUR cost reconciliation (Beta).",
   },
   {
-    q: "Is there a free trial for the Team plan?",
-    a: "Yes. We offer a 30-day evaluation for qualifying teams. Get in touch and we'll set you up.",
+    q: "How does a pilot start?",
+    a: "Most teams begin with a scoped pilot call, then run one governed workload in their AWS account before deciding rollout scope.",
   },
   {
-    q: "Can I self-host the Team or Enterprise version?",
-    a: "Yes. SparkPilot deploys on ECS Fargate in your AWS account. We provide the Terraform modules and deployment support.",
+    q: "Is customer login the right first step for new buyers?",
+    a: "No. New buyers should request a pilot conversation. Login is for existing customer users with workspace access.",
   },
 ];
 
@@ -102,12 +102,12 @@ export default function PricingPage() {
 
       <section className="landing-hero" style={{ paddingBottom: "clamp(28px, 4vw, 48px)" }}>
         <div className="landing-hero-badge">Pricing</div>
-        <h2 className="landing-hero-title">
-          Pilot-first pricing for<br />
+        <h1 className="landing-hero-title">
+          Pilot-first commercial path for<br />
           <span className="landing-hero-accent">enterprise Spark teams</span>
-        </h2>
+        </h1>
         <p className="landing-hero-sub">
-          SparkPilot is sales-led. Most teams start with a guided pilot, prove value quickly, and then decide rollout scope.
+          SparkPilot is sales-led. Most teams start with a guided pilot, prove value quickly, and then choose a rollout path.
         </p>
       </section>
 
@@ -115,7 +115,7 @@ export default function PricingPage() {
         <div className="pricing-grid">
           {TIERS.map((tier) => (
             <div key={tier.name} className={`pricing-card${tier.featured ? " pricing-card-featured" : ""}`}>
-              {tier.featured && <div className="pricing-badge">Most Popular</div>}
+              {tier.featured && <div className="pricing-badge">Recommended</div>}
               <div className="pricing-header">
                 <h3 className="pricing-name">{tier.name}</h3>
                 <div className="pricing-price">
@@ -135,7 +135,7 @@ export default function PricingPage() {
               <ul className="pricing-features">
                 {tier.features.map((f) => (
                   <li key={f} className="pricing-feature">
-                    <span className="pricing-check" aria-hidden="true">✓</span>
+                    <span className="pricing-check" aria-hidden="true">+</span>
                     {f}
                   </li>
                 ))}
@@ -144,7 +144,7 @@ export default function PricingPage() {
           ))}
         </div>
         <p className="landing-engines-note" style={{ marginTop: "14px" }}>
-          Available now capabilities are listed directly. In beta and coming-soon capabilities are labeled in place.
+          Capabilities are labeled by availability: Available now, In beta, or Coming soon.
         </p>
       </section>
 
@@ -188,8 +188,8 @@ export default function PricingPage() {
       </section>
 
       <section className="landing-cta">
-        <h2>Need help choosing the right path?</h2>
-        <p>We will recommend whether to start with open source, a guided pilot, or a production rollout plan.</p>
+        <h2>Need a realistic pilot plan?</h2>
+        <p>We will recommend whether to start with open source evaluation or a guided pilot based on your workload and team model.</p>
         <div className="landing-hero-actions">
           <Link href="/contact" className="landing-btn landing-btn-primary">Request pilot</Link>
           <Link href="https://github.com/JoshMcQ/SparkPilot" target="_blank" rel="noopener noreferrer" className="landing-btn landing-btn-secondary">

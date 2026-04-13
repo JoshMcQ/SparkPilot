@@ -8,29 +8,6 @@
   color: var(--text-strong) !important;
 }
 
-.landing-footer-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.landing-footer-bottom-links {
-  display: flex;
-  gap: 20px;
-}
-
-.landing-footer-bottom-links a {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  transition: color var(--duration-fast) var(--easing-standard);
-}
-
-.landing-footer-bottom-links a:hover {
-  color: var(--accent-strong);
-}
-
 /* ── Pricing grid ──────────────────────────────────── */
 
 .pricing-grid {
@@ -456,7 +433,7 @@
 }
 
 .contact-expect-list li::before {
-  content: "->";
+  content: "+";
   position: absolute;
   left: 0;
   color: var(--accent);
@@ -493,7 +470,7 @@
   gap: 16px;
 }
 
-@media (max-width: 500px) {
+@media (max-width: 768px) {
   .contact-form-row {
     grid-template-columns: 1fr;
   }
@@ -556,7 +533,8 @@
   border-radius: 50%;
   background: var(--accent-soft);
   color: var(--accent-strong);
-  font-size: 1.4rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -685,6 +663,22 @@
   font-size: 0.9rem;
   color: var(--text-soft);
   line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .about-timeline-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .about-timeline-date {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .about-timeline-dot {
+    display: none;
+  }
 }
 
 /* ── Dark mode overrides ───────────────────────────── */

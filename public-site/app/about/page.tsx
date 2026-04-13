@@ -47,10 +47,10 @@ export default function AboutPage() {
 
       <section className="landing-hero" style={{ paddingBottom: "clamp(24px, 3vw, 40px)" }}>
         <div className="landing-hero-badge">About</div>
-        <h2 className="landing-hero-title">
+        <h1 className="landing-hero-title">
           Built by platform engineers<br />
           <span className="landing-hero-accent">for platform engineers</span>
-        </h2>
+        </h1>
         <p className="landing-hero-sub">
           SparkPilot exists because teams running Spark on EKS eventually build the same control-plane layer and carry that maintenance forever. We built a faster pilot path and a cleaner rollout path.
         </p>
@@ -68,7 +68,7 @@ export default function AboutPage() {
               None of them sit at <strong>pre-dispatch</strong>, the moment before a job starts when you can still stop it. Before IAM misconfigurations waste startup cost. Before a team blows its monthly budget at 2 AM. Before a bad EMR release label causes a silent failure.
             </p>
             <p>
-              That's where SparkPilot sits. We call it the workload contract: an enforceable declaration evaluated at submission time that a job is allowed to run, is likely to succeed, and will stay within defined cost and governance bounds.
+              That's where SparkPilot sits. We call it the workload contract: an enforceable declaration evaluated at submission time that a job is allowed to run and checked against defined cost and governance bounds before dispatch.
             </p>
           </div>
         </div>

@@ -20,19 +20,19 @@ const FLOW_STEPS = [
     id: "2",
     title: "Confirm architecture and owner roles",
     detail: "Align environment ownership, identity model, and timeline before setup starts.",
-    cta: { label: "Talk to us", href: "/contact" },
+    cta: { label: "Request pilot", href: "/contact" },
   },
   {
     id: "3",
     title: "Connect AWS and run onboarding",
     detail: "Platform admins complete authenticated onboarding to validate IAM, OIDC, namespace, and dispatch prerequisites.",
-    cta: { label: "Open onboarding", href: appHref("/login?next=%2Fonboarding%2Faws") },
+    cta: { label: "Customer login", href: appHref("/login?next=%2Fonboarding%2Faws") },
   },
   {
     id: "4",
     title: "Submit first pilot run",
     detail: "Run one governed workload, review diagnostics and cost visibility, then decide production rollout next steps.",
-    cta: { label: "Open Runs after login", href: appHref("/login?next=%2Fruns") },
+    cta: { label: "Open runs", href: appHref("/login?next=%2Fruns") },
   },
 ];
 
@@ -68,12 +68,7 @@ const START_OPTIONS = [
   {
     title: "I am an existing customer user",
     detail: "I already have workspace access and need to continue onboarding or run operations.",
-    cta: { label: "Sign in", href: appHref("/login?next=%2Fonboarding%2Faws") },
-  },
-  {
-    title: "I prefer command line workflows",
-    detail: "I want to authenticate once, then submit and inspect runs from terminal automation during pilot.",
-    cta: { label: "Open runs after sign-in", href: appHref("/login?next=%2Fruns") },
+    cta: { label: "Existing customer sign in", href: appHref("/login?next=%2Fonboarding%2Faws") },
   },
   {
     title: "I am the platform admin",
@@ -89,10 +84,10 @@ const CLI_COMMANDS = [
   "sparkpilot run-logs",
 ];
 
-function ArrowLink({ href, label }: { href: string; label: string }) {
+function TrackLink({ href, label }: { href: string; label: string }) {
   return (
     <Link href={href} className="inline-link">
-      {label} {"->"}
+      {label}
     </Link>
   );
 }
@@ -107,28 +102,28 @@ export default function GettingStartedPage() {
           <div className="landing-section-badge">Pilot Start Guide</div>
           <h1 className="getting-started-title">How to launch a SparkPilot pilot without confusion</h1>
           <p className="getting-started-sub">
-            SparkPilot is a sales-led enterprise workflow. Start with pilot kickoff, then move into authenticated onboarding for setup and run operations.
+            SparkPilot starts with a guided pilot led by our team. Begin with pilot kickoff, then move into authenticated onboarding for setup and run operations.
           </p>
           <div className="landing-hero-actions">
             <Link href="/contact" className="landing-btn landing-btn-primary">Request pilot</Link>
-            <Link href={appHref("/login?next=%2Fonboarding%2Faws")} className="landing-btn landing-btn-secondary">Customer login</Link>
+            <Link href={appHref("/login?next=%2Fonboarding%2Faws")} className="landing-btn landing-btn-secondary">Existing customer sign in</Link>
           </div>
           <div className="getting-started-callout">
-            Authenticated setup, runs, costs, and access management stay in the app. This page is the public pilot-entry map.
+            Authenticated setup, runs, costs, and access management stay in the app. This page shows how to start a pilot.
           </div>
         </div>
 
-        <div className="getting-started-sections">
+          <div className="getting-started-sections">
           <div className="getting-started-section-title-row">
             <h2>Pick your starting point</h2>
-            <p>Choose the path that matches your role so buyers and operators are not mixing workflows.</p>
+            <p>Choose the path that matches your role so buyer and operator workflows stay separate.</p>
           </div>
-          <div className="getting-started-grid getting-started-grid-3">
+          <div className="getting-started-grid">
             {START_OPTIONS.map((option) => (
               <article key={option.title} className="getting-started-card">
                 <h3>{option.title}</h3>
                 <p>{option.detail}</p>
-                <ArrowLink href={option.cta.href} label={option.cta.label} />
+                <TrackLink href={option.cta.href} label={option.cta.label} />
               </article>
             ))}
           </div>
@@ -161,7 +156,7 @@ export default function GettingStartedPage() {
                 <div className="getting-started-step">Step {step.id}</div>
                 <h3>{step.title}</h3>
                 <p>{step.detail}</p>
-                <ArrowLink href={step.cta.href} label={step.cta.label} />
+                <TrackLink href={step.cta.href} label={step.cta.label} />
               </article>
             ))}
           </div>

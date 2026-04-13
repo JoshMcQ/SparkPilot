@@ -23,7 +23,7 @@ export function LandingFooter() {
           <Link href="/about">About</Link>
           <Link href="/contact">Contact</Link>
           <Link href="/contact">Request pilot</Link>
-          <a href={appHref("/login")}>Customer login</a>
+          <a href={appHref("/login")}>Existing customer sign in</a>
         </div>
         <div className="landing-footer-col">
           <h4>Resources</h4>
@@ -31,7 +31,7 @@ export function LandingFooter() {
             Documentation
           </Link>
           <Link href="https://github.com/JoshMcQ/SparkPilot/issues" target="_blank" rel="noopener noreferrer">
-            Changelog
+            Open issues
           </Link>
           <Link href="/getting-started">Pilot guide</Link>
           <Link href="/contact">Security contact</Link>
@@ -43,7 +43,7 @@ export function LandingFooter() {
         <span>(c) 2026 SparkPilot. All rights reserved.</span>
         <span className="landing-footer-bottom-links">
           <Link href="/contact">Request pilot</Link>
-          <a href={appHref("/login")}>Customer login</a>
+          <a href={appHref("/login")}>Existing customer sign in</a>
         </span>
       </div>
     </footer>

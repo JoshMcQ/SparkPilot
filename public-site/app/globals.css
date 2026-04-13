@@ -1547,21 +1547,22 @@ details.card > summary:focus-visible {
 
 @media (max-width: 640px) {
   .landing-nav {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 10px;
   }
 
   .landing-nav-links {
-    width: auto;
+    width: 100%;
     gap: 8px;
-    flex-wrap: nowrap;
-    justify-content: flex-end;
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .landing-nav-links > a:not(.landing-btn):not(.theme-toggle) {
-    display: none;
+    display: inline-flex;
+    font-size: 0.82rem;
   }
 
   .landing-nav-links > .theme-toggle,
@@ -1573,6 +1574,16 @@ details.card > summary:focus-visible {
     padding: 8px 14px !important;
     min-height: 34px !important;
     font-size: 0.82rem !important;
+  }
+
+  .landing-hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .landing-hero-actions .landing-btn {
+    width: 100%;
+    max-width: 320px;
   }
 }
 
@@ -2032,6 +2043,18 @@ details.card > summary:focus-visible {
 /* ── Landing responsive ────────────────────────────── */
 
 @media (max-width: 768px) {
+  .landing-hero {
+    padding: clamp(36px, 10vw, 64px) 0 clamp(28px, 8vw, 46px);
+  }
+
+  .landing-hero-sub {
+    margin-bottom: 22px;
+  }
+
+  .landing-section {
+    padding: clamp(32px, 8vw, 52px) 0;
+  }
+
   .landing-footer-grid {
     grid-template-columns: 1fr 1fr;
     gap: 24px;
@@ -2048,16 +2071,25 @@ details.card > summary:focus-visible {
   .landing-steps {
     grid-template-columns: 1fr;
   }
+
+  .landing-hero .landing-hero-actions,
+  .landing-cta .landing-hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: min(100%, 320px);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .landing-hero .landing-hero-actions .landing-btn,
+  .landing-cta .landing-hero-actions .landing-btn {
+    width: 100%;
+  }
 }
 
 @media (max-width: 480px) {
   .landing-footer-grid {
     grid-template-columns: 1fr;
-  }
-
-  .landing-hero-actions {
-    flex-direction: column;
-    align-items: center;
   }
 
   .landing-btn {
@@ -2145,6 +2177,11 @@ details.card > summary:focus-visible {
   font-size: 1rem;
   color: var(--text-muted);
   font-weight: 600;
+}
+
+.landing-ba-arrow svg {
+  width: 14px;
+  height: 14px;
 }
 
 .landing-ba-icon {
@@ -2483,6 +2520,22 @@ details.card > summary:focus-visible {
 
 .landing-footer-bottom-links a:hover {
   color: var(--accent-strong);
+}
+
+@media (max-width: 640px) {
+  .landing-footer-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .landing-footer-bottom-links {
+    margin-top: 0;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════

@@ -42,12 +42,12 @@ export default function ContactPage() {
 
       <section className="landing-hero" style={{ paddingBottom: "clamp(24px, 3vw, 40px)" }}>
         <div className="landing-hero-badge">Contact</div>
-        <h2 className="landing-hero-title">
+        <h1 className="landing-hero-title">
           Book a pilot conversation<br />
           <span className="landing-hero-accent">for your Spark platform</span>
-        </h2>
+        </h1>
         <p className="landing-hero-sub">
-          We will help you decide quickly whether SparkPilot is a fit, what a pilot should cover, and how to run it with clear ownership.
+          We will quickly assess fit, define pilot scope, and align ownership for execution.
         </p>
       </section>
 
@@ -56,7 +56,7 @@ export default function ContactPage() {
           <div className="contact-info-block">
             <h3>What to expect</h3>
             <ul className="contact-expect-list">
-              <li>Response within one business day</li>
+              <li>Typical response time is within one business day</li>
               <li>A focused technical call to understand your workload profile</li>
               <li>Clear pilot recommendation with next steps</li>
             </ul>
@@ -83,8 +83,8 @@ export default function ContactPage() {
         <div className="contact-form-wrap">
           {state === "success" ? (
             <div className="contact-success">
-              <div className="contact-success-icon" aria-hidden="true">✓</div>
-              <h3>Thanks, we'll be in touch.</h3>
+              <div className="contact-success-icon" aria-hidden="true">OK</div>
+              <h3>Your email draft is ready.</h3>
               <p>Check your email client. Your message was pre-filled. If it did not open, email us directly at <a href="mailto:hello@sparkpilot.io" className="login-link">hello@sparkpilot.io</a>.</p>
               <Link href="/" className="landing-btn landing-btn-secondary" style={{ marginTop: "16px", display: "inline-flex" }}>
                 Back to home
@@ -168,7 +168,7 @@ export default function ContactPage() {
                 className="landing-btn landing-btn-primary contact-submit"
                 disabled={state === "submitting" || !form.name || !form.email}
               >
-                {state === "submitting" ? "Opening email..." : "Request pilot call"}
+                {state === "submitting" ? "Opening email..." : "Open email draft"}
               </button>
             </form>
           )}

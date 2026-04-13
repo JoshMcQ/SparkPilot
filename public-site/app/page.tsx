@@ -57,7 +57,7 @@ const FEATURES = [
     icon: <IconDollar />,
     title: "CUR-Aligned Cost Attribution",
     description:
-      "Every run gets an estimated cost before dispatch. After completion, SparkPilot reconciles against your AWS Cost and Usage Report in Athena so teams can review actual line-item spend.",
+      "SparkPilot provides per-run cost estimates before dispatch and can reconcile against AWS Cost and Usage Report data in Athena when CUR integration is configured.",
   },
   {
     icon: <IconLayers />,
@@ -69,13 +69,13 @@ const FEATURES = [
     icon: <IconLock />,
     title: "Governance and Audit",
     description:
-      "Role-based access (admin, operator, user) enforced on every API endpoint. Team-environment scopes, budget guardrails with warn and block thresholds, and a full audit trail for every action.",
+      "Role-based access is enforced across SparkPilot APIs, with team-environment scopes, budget guardrails, and audit events for key control-plane actions.",
   },
   {
     icon: <IconCloud />,
     title: "Bring Your Own Cloud",
     description:
-      "SparkPilot runs inside your AWS account. Your VPC, your S3 buckets, your IAM policies. BYOC-Lite connects an existing EKS cluster in minutes. Full BYOC provisions the entire stack via Terraform.",
+      "SparkPilot runs inside your AWS account. Your VPC, S3 buckets, and IAM policies stay under your control. BYOC-Lite is designed for fast connection to an existing EKS cluster, depending on IAM and OIDC readiness.",
   },
   {
     icon: <IconActivity />,
@@ -99,13 +99,13 @@ const FEATURES = [
     icon: <IconTrendingDown />,
     title: "Budget Guardrails",
     description:
-      "Set monthly budget limits per team with configurable warn and hard-block thresholds. Submissions that would exceed the block threshold are rejected before any compute runs.",
+      "Set monthly budget limits per team with configurable warn and hard-block thresholds. Runs that breach block thresholds are stopped before dispatch so compute does not start.",
   },
   {
     icon: <IconCpu />,
     title: "Spot Optimization",
     description:
-      "Preflight validates Spot instance availability, instance type diversification, and executor placement before dispatch. No wasted job starts on under-provisioned Spot nodegroups.",
+      "Preflight validates Spot instance availability, instance diversification, and executor placement before dispatch to reduce wasted starts on under-provisioned Spot node groups.",
   },
   {
     icon: <IconGitBranch />,
@@ -118,7 +118,7 @@ const FEATURES = [
 const BEFORE_AFTER = [
   {
     before: "Manually validate IAM trust policy and OIDC association before every job",
-    after: "SparkPilot checks 15+ conditions automatically and fails fast with remediation steps",
+    after: "SparkPilot checks 20+ conditions automatically and fails fast with remediation steps",
   },
   {
     before: "Hunt through 6 different CloudWatch log groups to find your job output",
@@ -126,7 +126,7 @@ const BEFORE_AFTER = [
   },
   {
     before: "Estimate cost in a spreadsheet after the job finishes",
-    after: "CUR-aligned cost is attributed to your team automatically, reconciled against real AWS billing",
+    after: "Estimated cost is recorded per run, and actuals can be reconciled against CUR billing data when configured",
   },
   {
     before: "Engineers share a cluster namespace with no isolation or quota enforcement",
@@ -152,30 +152,30 @@ const BEFORE_AFTER = [
 
 const PILOT_ASSETS = [
   {
-    title: "Live product walkthrough",
+    title: "Live guided demo",
     badge: "Available now",
     badgeClass: "badge-proven",
     description:
-      "See a real run move from submission to diagnostics in a guided 30-minute demo with your platform team.",
-    ctaLabel: "Book demo",
+      "Walk through submission, preflight, run tracking, and diagnostics with your team and workload shape.",
+    ctaLabel: "Request pilot",
     ctaHref: "/contact",
   },
   {
-    title: "Pilot proof pack",
+    title: "Pilot screenshot pack",
     badge: "In beta",
     badgeClass: "badge-supported",
     description:
-      "Redacted screenshots and run summaries for buyer reviews are available for pilot evaluations.",
-    ctaLabel: "Request pilot assets",
+      "Redacted screenshots and run summaries are shared during active pilot evaluations.",
+    ctaLabel: "Request pilot pack",
     ctaHref: "/contact",
   },
   {
-    title: "On-demand video library",
+    title: "Recorded walkthrough clips",
     badge: "Coming soon",
     badgeClass: "badge-soon",
     description:
-      "Short videos for onboarding, run operations, and governance workflows are being prepared for customer teams.",
-    ctaLabel: "Join pilot waitlist",
+      "Short videos for onboarding and run operations are planned for customer enablement.",
+    ctaLabel: "Discuss roadmap in demo",
     ctaHref: "/contact",
   },
 ];
@@ -296,13 +296,8 @@ const COMPARE_ROWS = [
   { topic: "Budget guardrails with hard-block", diy: false, serverless: false, sp: true },
   { topic: "Spot diversification validation at preflight", diy: false, serverless: false, sp: true },
   { topic: "Airflow and Dagster native integrations", diy: false, serverless: false, sp: true },
-  { topic: "Lake Formation FGAC permission validation", diy: false, serverless: false, sp: true },
-  { topic: "Policy engine for submission guardrails", diy: false, serverless: false, sp: true },
   { topic: "Kubernetes-native control plane", diy: true, serverless: false, sp: true },
-  { topic: "Background Reconciler with structured state transitions", diy: false, serverless: false, sp: true },
-  { topic: "Automated failure classification (OOM, Spot, access denied)", diy: false, serverless: false, sp: true },
   { topic: "No infra management required", diy: false, serverless: true, sp: false },
-  { topic: "Sub-minute job start time", diy: false, serverless: true, sp: false },
 ];
 
 /* ── Page ────────────────────────────────────────────── */
@@ -316,14 +311,14 @@ export default function LandingPage() {
       {/* ── Hero ─────────────────────────────────────── */}
       <section className="landing-hero" id="hero">
         <div className="landing-hero-badge">AWS-native Spark Control Plane</div>
-        <h2 className="landing-hero-title">
-          Launch governed Spark pilots<br />
-          <span className="landing-hero-accent">without adding platform drag.</span>
-        </h2>
+        <h1 className="landing-hero-title">
+          Govern Spark runs on AWS<br />
+          <span className="landing-hero-accent">without building a control plane from scratch.</span>
+        </h1>
         <p className="landing-hero-sub">
-          SparkPilot gives platform teams one control plane for preflight checks, dispatch,
-          run diagnostics, and cost visibility. You keep AWS ownership, your data stays in
-          your perimeter, and buyers get a clear pilot path from day one.
+          SparkPilot is built for platform teams running Spark on AWS. You get preflight
+          safety checks, run diagnostics, and cost visibility in one place while keeping
+          infrastructure and data inside your AWS account.
         </p>
         <div className="landing-hero-actions">
           <Link href="/contact" className="landing-btn landing-btn-primary">
@@ -333,9 +328,6 @@ export default function LandingPage() {
             See pilot plan
           </Link>
         </div>
-        <p className="landing-hero-note">
-          Available now: EMR on EKS. In beta: EMR Serverless and EMR on EC2. Coming soon: Databricks.
-        </p>
       </section>
 
       {/* ── Before / After ───────────────────────────── */}
@@ -360,10 +352,10 @@ export default function LandingPage() {
 
       <section className="landing-section landing-section-tight" id="proof-assets">
         <div className="landing-section-header">
-          <div className="landing-section-badge">Sales Assets</div>
-          <h2 className="landing-section-title">Show the product in buyer conversations</h2>
+          <div className="landing-section-badge">Pilot Evaluation</div>
+          <h2 className="landing-section-title">What you can review before rollout</h2>
           <p className="landing-section-sub">
-            Use live demos and pilot artifacts to show real workflow proof, not just product claims.
+            Start with a live demo, then use pilot artifacts to align technical, security, and buyer stakeholders.
           </p>
         </div>
         <div className="landing-engines-grid">
@@ -386,18 +378,18 @@ export default function LandingPage() {
           <div className="landing-section-badge">The Problem</div>
           <h2 className="landing-section-title">What teams replace in week one</h2>
           <p className="landing-section-sub">
-            Every team with a shared EKS cluster and a Spark workload hits the same walls.
-            SparkPilot eliminates them operationally, not just conceptually.
+            Platform teams running Spark on shared EKS clusters hit the same operational bottlenecks.
+            SparkPilot replaces manual run prep with a governed workflow.
           </p>
         </div>
         <div className="landing-before-after-grid">
-          {BEFORE_AFTER.map((row) => (
+          {BEFORE_AFTER.slice(0, 4).map((row) => (
             <div key={row.before} className="landing-ba-row reveal">
               <div className="landing-ba-before">
                 <span className="landing-ba-icon landing-ba-icon-no" aria-hidden><IconX /></span>
                 <span>{row.before}</span>
               </div>
-              <div className="landing-ba-arrow" aria-hidden>{"->"}</div>
+              <div className="landing-ba-arrow" aria-hidden><IconArrowRight /></div>
               <div className="landing-ba-after">
                 <span className="landing-ba-icon landing-ba-icon-yes" aria-hidden><IconCheck /></span>
                 <span>{row.after}</span>
@@ -411,13 +403,13 @@ export default function LandingPage() {
       <section className="landing-section" id="features">
         <div className="landing-section-header">
           <div className="landing-section-badge">Capabilities</div>
-          <h2 className="landing-section-title">Control-plane capabilities for production Spark</h2>
+          <h2 className="landing-section-title">Core capabilities for pilot and rollout</h2>
           <p className="landing-section-sub">
-            Core control-plane capabilities are available now. Beta and coming-soon items are labeled where they affect planning.
+            These are the capabilities teams use first. Availability labels are shown only where they affect adoption decisions.
           </p>
         </div>
         <div className="landing-features-grid">
-          {FEATURES.map((f, i) => (
+          {FEATURES.slice(0, 8).map((f, i) => (
             <article
               key={f.title}
               className="landing-feature-card reveal"
@@ -435,11 +427,10 @@ export default function LandingPage() {
       <section className="landing-section landing-section-alt" id="lifecycle">
         <div className="landing-section-header">
           <div className="landing-section-badge">Run Lifecycle</div>
-          <h2 className="landing-section-title">SparkPilot calls AWS so your team does not have to</h2>
+          <h2 className="landing-section-title">How SparkPilot handles run operations</h2>
           <p className="landing-section-sub">
-            Submit a job through the SparkPilot API, SparkPilot CLI, Airflow, or Dagster. Three background
-            workers handle dispatch, state reconciliation, and environment provisioning.
-            Your data engineers interact with SparkPilot instead of stitching together direct AWS calls.
+            Teams submit through API, CLI, Airflow, or Dagster. SparkPilot manages dispatch,
+            state reconciliation, and diagnostics so operators do not stitch together raw AWS calls.
           </p>
         </div>
 
@@ -450,7 +441,7 @@ export default function LandingPage() {
               <span style={{ fontSize: "0.76rem", fontWeight: 600, letterSpacing: "0.03em", padding: "3px 11px", borderRadius: "999px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", color: "var(--text-soft)" }}>
                 {s.label}
               </span>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{"->"}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}><IconArrowRight /></span>
             </span>
           ))}
           <span style={{ fontSize: "0.76rem", fontWeight: 600, letterSpacing: "0.03em", padding: "3px 11px", borderRadius: "999px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", color: "var(--text-muted)" }}>
@@ -493,11 +484,6 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
-        <p className="landing-engines-note">
-          <strong>Available now</strong> for EMR on EKS production paths.&nbsp;
-          <strong>Beta</strong> for EMR Serverless and EMR on EC2 expansion paths.&nbsp;
-          <strong>Coming soon</strong> for Databricks routing.
-        </p>
       </section>
 
       {/* ── How It Works ─────────────────────────────── */}
@@ -515,7 +501,7 @@ export default function LandingPage() {
                 <p>{s.description}</p>
                 {"docLink" in s && s.docLink ? (
                   <Link href={s.docLink.href} className="landing-step-doc-link">
-                    {s.docLink.label} {"->"}
+                    {s.docLink.label}
                   </Link>
                 ) : null}
               </div>
@@ -612,7 +598,7 @@ export default function LandingPage() {
           <div className="landing-section-badge">Still evaluating?</div>
           <h2 className="landing-section-title">Common questions, honest answers</h2>
           <p className="landing-section-sub">
-            We document the real tradeoffs with direct product language so you can make the right call for your team.
+            We outline tradeoffs so your team can choose the right path.
           </p>
         </div>
         <div className="landing-learnmore-grid">
@@ -623,7 +609,7 @@ export default function LandingPage() {
               130 to 250 hours to reach parity. 40 to 80 hours of ongoing maintenance per month.
               An honest cost accounting of DIY EMR on EKS.
             </p>
-            <span className="landing-learnmore-link">Read the breakdown {"->"}</span>
+            <span className="landing-learnmore-link">Read the breakdown</span>
           </Link>
           <Link href="/why-not-serverless" className="landing-learnmore-card">
             <div className="landing-learnmore-icon" aria-hidden>AWS</div>
@@ -632,7 +618,7 @@ export default function LandingPage() {
               Cold-start latency, no persistent clusters, no YuniKorn, no BYOC. When
               Serverless is the right answer, and when it is not.
             </p>
-            <span className="landing-learnmore-link">Read the tradeoffs {"->"}</span>
+            <span className="landing-learnmore-link">Read the tradeoffs</span>
           </Link>
         </div>
       </section>

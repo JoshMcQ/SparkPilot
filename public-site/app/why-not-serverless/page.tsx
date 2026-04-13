@@ -17,7 +17,7 @@ const TRADEOFFS = [
     description:
       "Serverless cold starts range from 30 seconds to several minutes depending on worker size and availability. Interactive and near-real-time workloads cannot absorb this latency.",
     sparkpilot:
-      "With EKS-backed warm pools and Spot node groups, SparkPilot environments can achieve sub-10-second executor availability for pre-warmed capacity.",
+      "With EKS-backed warm pools and Spot node groups, SparkPilot environments can keep executor startup low for pre-warmed capacity, depending on workload and cluster sizing.",
   },
   {
     title: "No Kubernetes scheduling control",
@@ -47,9 +47,9 @@ const TRADEOFFS = [
     title: "No BYOC model",
     impact: "High",
     description:
-      "EMR Serverless is a fully managed AWS service. Your job artifacts run in AWS-managed infrastructure. There is no way to ensure workers run inside your VPC, your subnets, or your security groups without complex VPC connector configuration.",
+      "EMR Serverless is a fully managed AWS service. Your job artifacts run in AWS-managed infrastructure. VPC placement depends on connector configuration and offers less infrastructure-level placement control than BYOC EKS.",
     sparkpilot:
-      "SparkPilot is BYOC-first. The control plane runs in your account, your VPC, your EKS cluster. Your data never leaves your perimeter. The BYOC-Lite role grants SparkPilot exactly the permissions it needs, and nothing more.",
+      "SparkPilot is BYOC-first. The control plane runs in your account, your VPC, and your EKS cluster. The BYOC-Lite role grants SparkPilot only the permissions required for dispatch and checks.",
   },
   {
     title: "No pre-dispatch policy enforcement",
@@ -190,7 +190,7 @@ export default function WhyNotServerlessPage() {
         <section className="objection-section">
           <h2 className="objection-section-title">When EMR Serverless is the right choice</h2>
           <p className="objection-section-sub">
-            Honest answer: Serverless is better for some use cases. Here is when to choose it.
+            Serverless is the better choice for some use cases. Here is when.
           </p>
           <div className="objection-wins-grid">
             {WHEN_SERVERLESS_WINS.map((item) => (
@@ -213,7 +213,7 @@ export default function WhyNotServerlessPage() {
           </p>
           <p>
             The governance layer, including preflight checks, policies, CUR reconciliation, and audit trail,
-            applies to all engines. You get visibility and control over every job, regardless
+            applies to supported engines. You get visibility and control across jobs, regardless
             of which AWS service runs it.
           </p>
         </section>
@@ -226,7 +226,7 @@ export default function WhyNotServerlessPage() {
           </p>
           <div className="objection-cta-actions">
             <Link href="/contact" className="landing-btn landing-btn-primary">
-              Request pilot comparison
+              Request pilot
             </Link>
             <Link href="/why-not-diy" className="landing-btn landing-btn-secondary">
               Why not build it yourself?

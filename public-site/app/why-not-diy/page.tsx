@@ -8,7 +8,7 @@ const COSTS = [
     hours: "40 to 80 hrs initial setup",
     recurring: "10 to 20 hrs/month",
     description:
-      "Every team needs its own execution role, IRSA binding, trust policy, and namespace scoping. Wrong IAM -> silent job failures, data leakage risk, or blocked dispatches. SparkPilot ships a validated IAM model (BYOC-Lite role, execution role trust, iam:PassRole) and checks it on every preflight.",
+      "Most multi-tenant teams need execution roles, IRSA bindings, trust policies, and namespace scoping. Wrong IAM can cause silent job failures, data leakage risk, or blocked dispatches. SparkPilot ships a validated IAM model (BYOC-Lite role, execution role trust, iam:PassRole) and checks it on every preflight.",
   },
   {
     category: "Namespace Isolation",
@@ -29,14 +29,14 @@ const COSTS = [
     hours: "4 to 8 hrs initial",
     recurring: "3 to 6 hrs/month",
     description:
-      "EMR releases reach end-of-life without warning. Running a deprecated release means no security patches and no AWS support. SparkPilot syncs 141+ EMR release records, tracks current/deprecated/EOL status, and warns you before dispatch if your label is out of date.",
+      "Release lifecycle changes are easy to miss. Running a deprecated release means no security patches and no AWS support. SparkPilot syncs EMR release metadata, tracks current/deprecated/EOL status, and warns you before dispatch if your label is out of date.",
   },
   {
     category: "Cost Visibility",
     hours: "20 to 40 hrs to set up CUR pipeline",
     recurring: "5 to 10 hrs/month",
     description:
-      "Without per-run cost tagging and CUR reconciliation, you can't answer 'which team spent $12k on Spark last month?' SparkPilot tags every run with a SparkPilot run ID, estimates cost at submission, and reconciles against your CUR via Athena for actual billing data.",
+      "Without per-run cost tagging and CUR reconciliation, you cannot answer 'which team spent $12k on Spark last month?' SparkPilot tags runs with a SparkPilot run ID, estimates cost at submission, and supports CUR reconciliation via Athena for actual billing data.",
   },
   {
     category: "Policy Enforcement",
@@ -143,7 +143,7 @@ export default function WhyNotDIYPage() {
         <section className="objection-section objection-section-alt">
           <h2 className="objection-section-title">What SparkPilot ships today</h2>
           <p className="objection-section-sub">
-            Available now capabilities are listed directly. Beta and coming-soon items are labeled in place.
+            Capabilities are labeled by availability: Available now, In beta, or Coming soon.
           </p>
           <div className="objection-ships-grid">
             {WHAT_SP_SHIPS.map((item) => (
@@ -159,7 +159,7 @@ export default function WhyNotDIYPage() {
         <section className="objection-section">
           <h2 className="objection-section-title">When DIY is the right answer</h2>
           <p className="objection-section-sub">
-            We would rather lose a deal than have a bad-fit customer. Here is when you should
+            If SparkPilot is not a fit, we will say so directly. Here is when you should
             build it yourself:
           </p>
           <ul className="objection-honest-list">
@@ -183,7 +183,7 @@ export default function WhyNotDIYPage() {
           </p>
           <div className="objection-cta-actions">
             <Link href="/contact" className="landing-btn landing-btn-primary">
-              Request pilot comparison
+              Request pilot
             </Link>
             <Link href="/why-not-serverless" className="landing-btn landing-btn-secondary">
               Why not EMR Serverless?

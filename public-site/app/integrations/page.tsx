@@ -31,52 +31,37 @@ const INTEGRATIONS = [
     description:
       "Run SparkPilot through internal portals, CI jobs, or terminal workflows without changing team ownership.",
     detail: "REST API, RBAC, audit trail, run-submit and run-logs commands",
-    ctaLabel: "Open app login",
-    ctaHref: appHref("/login"),
-  },
-];
-
-const PLATFORM_STATUS = [
-  {
-    title: "Available now",
-    body: "Airflow provider, Dagster package, API, and CLI are ready for production workflow orchestration.",
-  },
-  {
-    title: "In beta",
-    body: "Additional dispatch targets and expanded policy controls for mixed-runtime teams.",
-  },
-  {
-    title: "Coming soon",
-    body: "Additional rollout templates for enterprise environment bootstrapping and handoff.",
+    ctaLabel: "Book API and CLI walkthrough",
+    ctaHref: "/contact",
   },
 ];
 
 const DEMO_ASSETS = [
   {
-    title: "Live orchestrator demo",
+    title: "Live integration walkthrough",
     badge: "Available now",
     badgeClass: "badge-proven",
-    body: "Walk through Airflow or Dagster submission, preflight checks, run tracking, and diagnostics with your real workflow shape.",
+    body: "Walk through Airflow or Dagster submission, preflight checks, run tracking, and diagnostics with your workflow shape.",
   },
   {
     title: "Integration screenshot pack",
     badge: "In beta",
     badgeClass: "badge-supported",
-    body: "Redacted screenshots for buyer and security reviews are available during guided pilot evaluations.",
+    body: "Redacted screenshots for buyer and security reviews are shared during active pilot evaluations.",
   },
   {
-    title: "Short integration videos",
+    title: "Short onboarding clips",
     badge: "Coming soon",
     badgeClass: "badge-soon",
-    body: "Short recorded clips for operator onboarding and rollout handoffs are being prepared.",
+    body: "Planned short onboarding and handoff clips.",
   },
 ];
 
 const WORKFLOW_STEPS = [
   "Admin configures identity, team scopes, and budget guardrails in the app.",
-  "Orchestrator submits jobs through Airflow, Dagster, API, or CLI.",
-  "SparkPilot runs preflight checks, dispatches, and tracks lifecycle events.",
-  "Operators review runs, diagnostics, and cost attribution in one place.",
+  "Orchestrators submit jobs through Airflow, Dagster, API, or CLI.",
+  "SparkPilot runs preflight checks, dispatches jobs, and tracks lifecycle events.",
+  "Operators review runs, diagnostics, and cost visibility in one place.",
 ];
 
 export default function IntegrationsPage() {
@@ -86,31 +71,14 @@ export default function IntegrationsPage() {
 
       <section className="landing-hero" style={{ paddingBottom: "clamp(28px, 4vw, 48px)" }}>
         <div className="landing-hero-badge">Integrations</div>
-        <h2 className="landing-hero-title">
+        <h1 className="landing-hero-title">
           Connect SparkPilot to your
           <br />
           <span className="landing-hero-accent">existing workflow stack</span>
-        </h2>
+        </h1>
         <p className="landing-hero-sub">
           Keep Airflow and Dagster in place, then run submission, diagnostics, and cost controls through one governed control plane.
         </p>
-      </section>
-
-      <section className="landing-section" style={{ paddingTop: 0 }}>
-        <div className="landing-section-header">
-          <div className="landing-section-badge">Availability</div>
-          <h2 className="landing-section-title">What you can use today</h2>
-        </div>
-        <div className="landing-engines-grid">
-          {PLATFORM_STATUS.map((item) => (
-            <article key={item.title} className="landing-engine-card">
-              <div className="landing-engine-header">
-                <strong>{item.title}</strong>
-              </div>
-              <p>{item.body}</p>
-            </article>
-          ))}
-        </div>
       </section>
 
       <section className="landing-section landing-section-alt">
@@ -159,7 +127,7 @@ export default function IntegrationsPage() {
                 Request pilot
               </Link>
               <Link href={appHref("/login")} className="landing-btn landing-btn-secondary">
-                Customer login
+                Existing customer sign in
               </Link>
             </div>
           </article>
@@ -169,7 +137,7 @@ export default function IntegrationsPage() {
       <section className="landing-section landing-section-alt">
         <div className="landing-section-header">
           <div className="landing-section-badge">Demo Assets</div>
-          <h2 className="landing-section-title">Assets for technical buyer conversations</h2>
+          <h2 className="landing-section-title">What you can review during evaluation</h2>
         </div>
         <div className="landing-engines-grid">
           {DEMO_ASSETS.map((asset) => (
