@@ -34,7 +34,7 @@ export function LandingNav() {
         </Link>
         <ThemeToggle />
         <a href={appHref("/login")} className="landing-btn landing-btn-ghost landing-nav-cta">
-          Existing customer sign in
+          Existing customers only: Sign in
         </a>
         <Link href="/contact" className="landing-btn landing-btn-primary landing-nav-cta">
           Request pilot

@@ -33,7 +33,7 @@ const TRADEOFFS = [
     description:
       "YuniKorn provides queue-based fair scheduling, guaranteed vCPU allocations per team, and preemption policies. None of these exist in Serverless, so every application competes for capacity without SLA guarantees.",
     sparkpilot:
-      "SparkPilot exposes YuniKorn queue configuration per environment, validates queue utilization at preflight, and enforces guaranteed vs max vCPU bounds per team.",
+      "Planned support for operator-installed YuniKorn environments is coming soon. Full fairness enforcement will depend on cluster-level YuniKorn deployment and policy.",
   },
   {
     title: "No cost allocation per team",
@@ -57,7 +57,7 @@ const TRADEOFFS = [
     description:
       "Serverless will accept and start any job you submit. Resource limits, release label policies, and team budget caps are not enforced at submission time. You discover overages in the bill.",
     sparkpilot:
-      "SparkPilot's policy engine enforces max_vcpu, max_memory_gb, max_run_seconds, and allowed_release_labels before a single executor starts. Hard-block policies return HTTP 422 with the policy name in the error.",
+      "Policy controls are coming soon for max_vcpu, max_memory_gb, max_run_seconds, and allowed_release_labels checks before dispatch.",
   },
   {
     title: "Limited Spark configuration surface",
@@ -65,7 +65,7 @@ const TRADEOFFS = [
     description:
       "Serverless constrains the Spark configuration you can set. Properties that affect cluster topology, shuffle behavior on persistent disk, or advanced JVM tuning are either unavailable or have no effect.",
     sparkpilot:
-      "Full Spark configuration is passed through to the EMR on EKS job run, including executor node selectors, toleration hints, shuffle storage, and YuniKorn scheduling properties.",
+      "Full Spark configuration is passed through to the EMR on EKS job run, including executor node selectors, toleration hints, and shuffle storage for supported environments.",
   },
 ];
 
@@ -83,7 +83,7 @@ const WHEN_SERVERLESS_WINS = [
   {
     scenario: "Very small teams",
     detail:
-      "Teams of 1 to 2 data engineers where the multi-tenant isolation, policy engine, and cost allocation overhead is not worth the setup.",
+      "Teams of 1 to 2 data engineers where multi-tenant isolation, policy controls, and cost allocation overhead is not worth the setup.",
   },
   {
     scenario: "AWS Glue replacement",
@@ -94,9 +94,9 @@ const WHEN_SERVERLESS_WINS = [
 
 const COMPARE_ROWS = [
   { capability: "Persistent warm capacity", serverless: false, sp: true },
-  { capability: "Sub-10s executor availability", serverless: false, sp: true },
+  { capability: "Lower executor startup with warm capacity (workload-dependent)", serverless: false, sp: true },
   { capability: "Kubernetes scheduling control", serverless: false, sp: true },
-  { capability: "YuniKorn fair scheduling", serverless: false, sp: true },
+  { capability: "YuniKorn fair scheduling (coming soon)", serverless: false, sp: false },
   { capability: "Per-run cost attribution", serverless: false, sp: true },
   { capability: "BYOC model (your VPC, your EKS)", serverless: false, sp: true },
   { capability: "Pre-dispatch policy enforcement", serverless: false, sp: true },
@@ -125,7 +125,7 @@ export default function WhyNotServerlessPage() {
             &ldquo;Why not just use EMR Serverless?&rdquo;
           </h1>
           <p className="objection-hero-sub">
-            EMR Serverless is a legitimate option for some workloads. This page outlines the tradeoffs so buyers can choose the right path for real requirements.
+            EMR Serverless is a strong fit for some workloads. Here are the practical tradeoffs so teams can choose the right path for real requirements.
           </p>
         </section>
 
@@ -155,7 +155,7 @@ export default function WhyNotServerlessPage() {
           <p className="objection-compare-note">
             On mobile, swipe horizontally to view the full table.
             <br />
-            ~ indicates partial support. Spot in Serverless is available but without the
+            Partial indicates limited support. Spot in Serverless is available but without the
             placement control, diversification validation, or toleration management that
             SparkPilot provides on EKS.
           </p>
@@ -206,13 +206,13 @@ export default function WhyNotServerlessPage() {
         <section className="objection-section objection-section-highlight">
           <h2 className="objection-section-title">SparkPilot also dispatches to EMR Serverless</h2>
           <p>
-            SparkPilot is not an either/or choice. The same preflight pipeline, policy engine,
+            SparkPilot is not an either/or choice. The same preflight pipeline,
             and cost tagging runs regardless of which execution engine you use. You can route
             production batch workloads to EMR on EKS for latency and cost control, and route
             ad-hoc or dev workloads to Serverless from the same control plane. EMR on EKS is available now; Serverless routing is in beta.
           </p>
           <p>
-            The governance layer, including preflight checks, policies, CUR reconciliation, and audit trail,
+            The governance layer, including preflight checks, CUR reconciliation, and audit trail,
             applies to supported engines. You get visibility and control across jobs, regardless
             of which AWS service runs it.
           </p>

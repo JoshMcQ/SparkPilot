@@ -43,7 +43,7 @@ const COSTS = [
     hours: "15 to 30 hrs to build",
     recurring: "5 to 10 hrs/month",
     description:
-      "Resource guards (max vCPU, max memory, max runtime, allowed release labels) need to be enforced at submission time, not discovered in a bill. SparkPilot ships a policy engine with hard-block (HTTP 422) and soft-warn enforcement, without a custom admission webhook.",
+      "Resource guards (max vCPU, max memory, max runtime, allowed release labels) need to be enforced at submission time, not discovered in a bill. SparkPilot policy controls are coming soon for these checks without requiring a custom admission webhook.",
   },
   {
     category: "Upgrade Lifecycle",
@@ -91,8 +91,8 @@ const WHAT_SP_SHIPS = [
     body: "CloudWatch log analysis with pattern matching for spot interruptions, OOM, executor failures, and configuration errors.",
   },
   {
-    title: "YuniKorn queue management",
-    body: "Queue utilization checks and guaranteed vs max vCPU tracking for multi-tenant fair scheduling.",
+    title: "YuniKorn queue management (Coming soon)",
+    body: "Planned support for operator-installed YuniKorn environments on EKS. Full fairness enforcement depends on cluster-level YuniKorn deployment and policy.",
   },
 ];
 
@@ -170,8 +170,8 @@ export default function WhyNotDIYPage() {
           </ul>
           <p className="objection-honest-note">
             If none of those apply, you are paying engineering salary to solve a problem that is
-            already solved. Every hour your platform team spends on IAM plumbing is an hour they
-            are not spending on the problems that are actually specific to your business.
+            a guided pilot can reduce engineering overhead. Every hour your platform team spends on IAM plumbing is an hour
+            they are not spending on the problems that are specific to your business.
           </p>
         </section>
 

@@ -10,7 +10,7 @@ const INTEGRATIONS = [
     badgeClass: "badge-proven",
     description:
       "Submit SparkPilot runs, wait for terminal states, and manage retries from your existing DAGs.",
-    detail: "Hook, operator, sensor, and deferrable trigger support",
+    detail: "Installable from source: hook, operator, sensor, and deferrable trigger support",
     ctaLabel: "View Airflow provider",
     ctaHref: "https://github.com/JoshMcQ/SparkPilot/tree/main/providers/airflow",
   },
@@ -20,7 +20,7 @@ const INTEGRATIONS = [
     badgeClass: "badge-proven",
     description:
       "Use resources, ops, and assets to submit and monitor Spark workloads in Dagster Cloud or OSS.",
-    detail: "Resource + ops + assets for submit, wait, cancel",
+    detail: "Installable from source: resource + ops + assets for submit, wait, cancel",
     ctaLabel: "View Dagster package",
     ctaHref: "https://github.com/JoshMcQ/SparkPilot/tree/main/providers/dagster",
   },
@@ -31,7 +31,7 @@ const INTEGRATIONS = [
     description:
       "Run SparkPilot through internal portals, CI jobs, or terminal workflows without changing team ownership.",
     detail: "REST API, RBAC, audit trail, run-submit and run-logs commands",
-    ctaLabel: "Book API and CLI walkthrough",
+    ctaLabel: "Request pilot integration walkthrough",
     ctaHref: "/contact",
   },
 ];
@@ -53,7 +53,7 @@ const DEMO_ASSETS = [
     title: "Short onboarding clips",
     badge: "Coming soon",
     badgeClass: "badge-soon",
-    body: "Planned short onboarding and handoff clips.",
+    body: "Short onboarding clips are coming soon, alongside planned workflow extensions such as Apache Iceberg governance.",
   },
 ];
 

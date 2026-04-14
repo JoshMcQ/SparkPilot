@@ -10,7 +10,7 @@ const TIERS = [
     price: "Free",
     period: "",
     description: "Self-guided path for technical teams that want to evaluate core workflow behavior on their own.",
-    cta: "View open source",
+    cta: "Technical evaluators: Review open-source docs",
     ctaHref: "https://github.com/JoshMcQ/SparkPilot",
     ctaStyle: "landing-btn-secondary",
     featured: false,
@@ -51,7 +51,7 @@ const TIERS = [
     price: "Custom",
     period: "",
     description: "Post-pilot rollout path for organizations with procurement, security, and multi-team operations.",
-    cta: "Plan rollout path",
+    cta: "Discuss rollout after pilot",
     ctaHref: "/contact",
     ctaStyle: "landing-btn-secondary",
     featured: false,
@@ -59,7 +59,7 @@ const TIERS = [
       "Everything in Pilot Program",
       "Production environment expansion",
       "Security and procurement review",
-      "Support plan and SLA options",
+      "Support channels and escalation guidance",
       "Deployment and operations guidance",
       "Executive rollout planning",
     ],
@@ -144,7 +144,7 @@ export default function PricingPage() {
           ))}
         </div>
         <p className="landing-engines-note" style={{ marginTop: "14px" }}>
-          Capabilities are labeled by availability: Available now, In beta, or Coming soon.
+          Capability labels show current maturity: Available now, In beta, or Coming soon.
         </p>
       </section>
 
@@ -189,11 +189,11 @@ export default function PricingPage() {
 
       <section className="landing-cta">
         <h2>Need a realistic pilot plan?</h2>
-        <p>We will recommend whether to start with open source evaluation or a guided pilot based on your workload and team model.</p>
+        <p>We start by scoping your pilot, then recommend the right rollout path based on pilot results.</p>
         <div className="landing-hero-actions">
           <Link href="/contact" className="landing-btn landing-btn-primary">Request pilot</Link>
           <Link href="https://github.com/JoshMcQ/SparkPilot" target="_blank" rel="noopener noreferrer" className="landing-btn landing-btn-secondary">
-            View open source
+            Technical evaluators: Review open-source docs
           </Link>
         </div>
       </section>

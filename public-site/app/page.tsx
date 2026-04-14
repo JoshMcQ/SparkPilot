@@ -51,7 +51,7 @@ const FEATURES = [
     icon: <IconShield />,
     title: "Preflight Safety Gates",
     description:
-      "IAM, IRSA, OIDC, resource quota, Spot capacity, and Lake Formation permission checks run before a single byte moves. Bad configs are blocked with clear remediation steps so teams can fix issues before dispatch.",
+      "IAM, IRSA, OIDC, resource quota, and Spot capacity checks run before a single byte moves. Lake Formation permission checks are in beta when enabled. Bad configs are blocked with clear remediation steps so teams can fix issues before dispatch.",
   },
   {
     icon: <IconDollar />,
@@ -81,7 +81,7 @@ const FEATURES = [
     icon: <IconActivity />,
     title: "Runtime Management",
     description:
-      "Three background workers, Scheduler, Reconciler, and Provisioner, manage the run lifecycle. SparkPilot dispatches queued jobs to AWS, polls EMR for state transitions, and surfaces deterministic log pointers. You track runs in a dashboard, not a CloudWatch stream.",
+      "Three background workers, Scheduler, Reconciler, and Provisioner, manage the run lifecycle. SparkPilot dispatches queued jobs to AWS, tracks state transitions, and links each run to its exact logs. You track runs in a dashboard, not a CloudWatch stream.",
   },
   {
     icon: <IconAlertTriangle />,
@@ -109,9 +109,9 @@ const FEATURES = [
   },
   {
     icon: <IconGitBranch />,
-    title: "Policy Engine",
+    title: "Policy Controls (Coming soon)",
     description:
-      "Define submission guardrails as policy rules, including allowed instance types, required cost tags, release labels, and vCPU limits. Policies are checked during preflight before dispatch.",
+      "Define submission guardrails as policy rules, including allowed instance types, required cost tags, release labels, and vCPU limits. These controls are planned as a coming-soon extension.",
   },
 ];
 
@@ -122,7 +122,7 @@ const BEFORE_AFTER = [
   },
   {
     before: "Hunt through 6 different CloudWatch log groups to find your job output",
-    after: "Every run has a deterministic log pointer. One click to the right stream",
+    after: "Each run links directly to the correct log stream",
   },
   {
     before: "Estimate cost in a spreadsheet after the job finishes",
@@ -166,7 +166,7 @@ const PILOT_ASSETS = [
     badgeClass: "badge-supported",
     description:
       "Redacted screenshots and run summaries are shared during active pilot evaluations.",
-    ctaLabel: "Request pilot pack",
+    ctaLabel: "Request pilot evidence pack",
     ctaHref: "/contact",
   },
   {
@@ -174,8 +174,8 @@ const PILOT_ASSETS = [
     badge: "Coming soon",
     badgeClass: "badge-soon",
     description:
-      "Short videos for onboarding and run operations are planned for customer enablement.",
-    ctaLabel: "Discuss roadmap in demo",
+      "Short onboarding and run-operations clips are coming soon.",
+    ctaLabel: "See upcoming features in your pilot call",
     ctaHref: "/contact",
   },
 ];
@@ -189,13 +189,13 @@ const ENGINES = [
   },
   {
     name: "EMR Serverless",
-    badge: "Beta",
+    badge: "In beta",
     badgeClass: "badge-supported",
     desc: "Submit to an EMR Serverless application for fully managed capacity. No EKS cluster required.",
   },
   {
     name: "EMR on EC2",
-    badge: "Beta",
+    badge: "In beta",
     badgeClass: "badge-supported",
     desc: "Dispatch to existing EMR on EC2 clusters via step submission. Integrates with your current EC2-based Spark estate.",
   },
@@ -241,7 +241,7 @@ const WORKERS = [
   {
     name: "Scheduler",
     icon: <IconCpu />,
-    desc: "Polls for queued runs and dispatches them to AWS EMR, EMR Serverless, EMR on EC2, or Databricks. Manages concurrency limits and environment-level queueing.",
+    desc: "Polls for queued runs and dispatches them to AWS EMR, EMR Serverless, or EMR on EC2. Manages concurrency limits and environment-level queueing.",
   },
   {
     name: "Reconciler",
@@ -251,7 +251,7 @@ const WORKERS = [
   {
     name: "Provisioner",
     icon: <IconLayers />,
-    desc: "Manages environment lifecycle, including BYOC-Lite and Full BYOC provisioning, checkpoint recovery across Terraform stages, and environment teardown.",
+    desc: "Manages environment lifecycle, including BYOC-Lite and Full BYOC (in beta) provisioning, checkpoint recovery across Terraform stages, and environment teardown.",
   },
 ];
 
@@ -273,7 +273,7 @@ const HOW_IT_WORKS = [
     step: "3",
     title: "Choose deployment model",
     description:
-      "BYOC-Lite connects to your existing EKS cluster quickly. Full BYOC provisions VPC, EKS, and EMR from Terraform modules when needed.",
+      "BYOC-Lite connects to your existing EKS cluster quickly. Full BYOC is in beta for teams that need VPC, EKS, and EMR provisioning from Terraform modules.",
   },
   {
     step: "4",
@@ -325,7 +325,7 @@ export default function LandingPage() {
             Request pilot
           </Link>
           <Link href="/getting-started" className="landing-btn landing-btn-secondary">
-            See pilot plan
+            See 5-step pilot plan
           </Link>
         </div>
       </section>
@@ -345,7 +345,7 @@ export default function LandingPage() {
           <div className="landing-proof-divider" />
           <div className="landing-proof-stat">
             <strong>Coming soon</strong>
-            <span>Databricks routing from the same control plane</span>
+            <span>Databricks routing and Apache Iceberg governance extensions</span>
           </div>
         </div>
       </section>
@@ -405,7 +405,7 @@ export default function LandingPage() {
           <div className="landing-section-badge">Capabilities</div>
           <h2 className="landing-section-title">Core capabilities for pilot and rollout</h2>
           <p className="landing-section-sub">
-            These are the capabilities teams use first. Availability labels are shown only where they affect adoption decisions.
+            These are the capabilities teams use first. Each capability includes an availability label so teams can plan rollout clearly.
           </p>
         </div>
         <div className="landing-features-grid">
@@ -469,8 +469,8 @@ export default function LandingPage() {
           <div className="landing-section-badge">Supported Engines</div>
           <h2 className="landing-section-title">One control plane, four Spark runtimes</h2>
           <p className="landing-section-sub">
-            SparkPilot routes submissions to EMR on EKS, EMR Serverless, EMR on EC2, or
-            Databricks from the same API and preflight pipeline.
+            SparkPilot routes submissions to EMR on EKS today, with beta coverage for EMR Serverless and
+            EMR on EC2. Databricks routing is planned as a coming-soon extension.
           </p>
         </div>
         <div className="landing-engines-grid">
@@ -530,7 +530,7 @@ export default function LandingPage() {
           ))}
         </div>
         <div className="landing-integrations-note reveal">
-          Airflow and Dagster providers are installable from source today. CLI and API are available now for platform teams and automation.
+          Airflow and Dagster providers are installable from source today. API and CLI interfaces are provided for active pilot workflows and automation.
         </div>
         <div className="landing-hero-actions" style={{ marginTop: "20px" }}>
           <Link href="/integrations" className="landing-btn landing-btn-secondary">
@@ -586,9 +586,8 @@ export default function LandingPage() {
         <div className="landing-compare-caveat">
           On mobile, swipe horizontally to view the full table.
           <br />
-          This comparison reflects capabilities of the SparkPilot control plane, not the
-          underlying AWS services. Rows marked as available in DIY reflect platform primitives
-          you can build yourself, while SparkPilot ships them configured and enforced.
+          This table shows what SparkPilot adds beyond base AWS primitives.
+          DIY rows reflect capabilities you can build yourself, while SparkPilot ships them configured and enforced.
         </div>
       </section>
 

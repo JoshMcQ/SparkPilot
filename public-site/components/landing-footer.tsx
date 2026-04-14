@@ -22,8 +22,8 @@ export function LandingFooter() {
           <h4>Company</h4>
           <Link href="/about">About</Link>
           <Link href="/contact">Contact</Link>
-          <Link href="/contact">Request pilot</Link>
-          <a href={appHref("/login")}>Existing customer sign in</a>
+          <Link href="/contact">Start pilot evaluation</Link>
+          <a href={appHref("/login")}>Existing customers only: Sign in</a>
         </div>
         <div className="landing-footer-col">
           <h4>Resources</h4>
@@ -40,10 +40,10 @@ export function LandingFooter() {
         </div>
       </div>
       <div className="landing-footer-bottom">
-        <span>(c) 2026 SparkPilot. All rights reserved.</span>
+        <span>&copy; 2026 SparkPilot. All rights reserved.</span>
         <span className="landing-footer-bottom-links">
-          <Link href="/contact">Request pilot</Link>
-          <a href={appHref("/login")}>Existing customer sign in</a>
+          <Link href="/contact">Start pilot evaluation</Link>
+          <a href={appHref("/login")}>Existing customers only: Sign in</a>
         </span>
       </div>
     </footer>

@@ -26,13 +26,13 @@ const FLOW_STEPS = [
     id: "3",
     title: "Connect AWS and run onboarding",
     detail: "Platform admins complete authenticated onboarding to validate IAM, OIDC, namespace, and dispatch prerequisites.",
-    cta: { label: "Customer login", href: appHref("/login?next=%2Fonboarding%2Faws") },
+    cta: { label: "Existing customer: Sign in for onboarding", href: appHref("/login?next=%2Fonboarding%2Faws") },
   },
   {
     id: "4",
     title: "Submit first pilot run",
     detail: "Run one governed workload, review diagnostics and cost visibility, then decide production rollout next steps.",
-    cta: { label: "Open runs", href: appHref("/login?next=%2Fruns") },
+    cta: { label: "Existing customer: Sign in to view runs", href: appHref("/login?next=%2Fruns") },
   },
 ];
 
@@ -44,7 +44,7 @@ const TRACKS = [
       "Start with a pilot kickoff call to define scope and success criteria.",
       "Confirm one workload family and one owner from platform engineering.",
       "Use pilot checkpoints to evaluate operational fit and commercial fit.",
-      "No self-serve contract path. Pilots are sales-led and guided.",
+      "Pilots are guided so teams can evaluate quickly with clear success criteria.",
     ],
   },
   {
@@ -61,19 +61,19 @@ const TRACKS = [
 
 const START_OPTIONS = [
   {
-    title: "I am evaluating SparkPilot",
+    title: "New evaluator",
     detail: "I want a realistic pilot plan and a technical walkthrough for my team.",
     cta: { label: "Request pilot", href: "/contact" },
   },
   {
-    title: "I am an existing customer user",
+    title: "Existing customer user",
     detail: "I already have workspace access and need to continue onboarding or run operations.",
     cta: { label: "Existing customer sign in", href: appHref("/login?next=%2Fonboarding%2Faws") },
   },
   {
-    title: "I am the platform admin",
+    title: "Existing customer admin",
     detail: "I own first-time setup and need access to onboarding and access controls.",
-    cta: { label: "Open admin access", href: appHref("/login?next=%2Faccess") },
+    cta: { label: "Existing customer admin: Sign in to manage access", href: appHref("/login?next=%2Faccess") },
   },
 ];
 

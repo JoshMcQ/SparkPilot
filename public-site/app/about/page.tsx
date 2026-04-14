@@ -28,15 +28,15 @@ const TIMELINE = [
   },
   {
     date: "Mar 3, 2026",
-    event: "First real Spark job dispatched through SparkPilot on a live EKS cluster. EMR run ID 0000000375sa67p4h2n.",
+    event: "First production Spark job ran through SparkPilot on a live EKS cluster.",
   },
   {
     date: "Mar 18, 2026",
-    event: "Second-operator validation completed end-to-end BYOC-Lite setup and first run execution.",
+    event: "A second platform team completed BYOC-Lite setup and first run end-to-end.",
   },
   {
     date: "Mar 2026",
-    event: "Open-sourced core preflight and provider integrations. Airflow and Dagster providers published.",
+    event: "Open-sourced core preflight and provider integrations. Airflow and Dagster providers are available from source.",
   },
 ];
 
@@ -68,7 +68,7 @@ export default function AboutPage() {
               None of them sit at <strong>pre-dispatch</strong>, the moment before a job starts when you can still stop it. Before IAM misconfigurations waste startup cost. Before a team blows its monthly budget at 2 AM. Before a bad EMR release label causes a silent failure.
             </p>
             <p>
-              That's where SparkPilot sits. We call it the workload contract: an enforceable declaration evaluated at submission time that a job is allowed to run and checked against defined cost and governance bounds before dispatch.
+              That is where SparkPilot sits. SparkPilot checks each submission against governance and cost rules before dispatch.
             </p>
           </div>
         </div>
@@ -106,9 +106,9 @@ export default function AboutPage() {
       </section>
 
       <section className="landing-cta">
-        <h2>Want an architecture walkthrough?</h2>
+        <h2>Want to scope your pilot architecture?</h2>
         <p>
-          We can walk through architecture details and help you decide if SparkPilot is the right pilot candidate for your team.
+          We can walk through architecture details, scope your pilot, and confirm technical fit in one call.
         </p>
         <div className="landing-hero-actions">
           <Link href="/contact" className="landing-btn landing-btn-primary">Request pilot</Link>
