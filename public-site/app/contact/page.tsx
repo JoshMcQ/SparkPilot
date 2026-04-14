@@ -40,7 +40,7 @@ export default function ContactPage() {
     <div className="landing">
       <LandingNav />
 
-      <section className="landing-hero" style={{ paddingBottom: "clamp(24px, 3vw, 40px)" }}>
+      <section className="landing-hero landing-hero-compact">
         <div className="landing-hero-badge">Contact</div>
         <h1 className="landing-hero-title">
           Book a pilot conversation<br />
@@ -86,7 +86,7 @@ export default function ContactPage() {
               <div className="contact-success-icon" aria-hidden="true">OK</div>
               <h3>Your email draft is ready.</h3>
               <p>Check your email client. Your message was pre-filled. If it did not open, email us directly at <a href="mailto:hello@sparkpilot.io" className="login-link">hello@sparkpilot.io</a>.</p>
-              <Link href="/" className="landing-btn landing-btn-secondary" style={{ marginTop: "16px", display: "inline-flex" }}>
+              <Link href="/" className="landing-btn landing-btn-secondary contact-success-back">
                 Back to home
               </Link>
             </div>

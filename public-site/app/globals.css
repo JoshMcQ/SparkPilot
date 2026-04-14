@@ -2143,6 +2143,96 @@ details.card > summary:focus-visible {
   }
 }
 
+/* ── Interior page hero (less vertical padding than homepage hero) ── */
+
+.landing-hero-compact {
+  padding-bottom: clamp(28px, 4vw, 48px);
+}
+
+/* ── Section with no top padding (directly below hero) ── */
+
+.landing-section-flush {
+  padding-top: 0;
+}
+
+/* ── Spaced action row below a section grid ── */
+
+.landing-actions-spaced {
+  margin-top: 20px;
+}
+
+/* ── Left-aligned action row inside cards ── */
+
+.landing-actions-start {
+  justify-content: flex-start;
+  margin-top: 18px;
+}
+
+/* ── Left-aligned engine note (inside cards) ── */
+
+.landing-engines-note-left {
+  text-align: left;
+  margin-top: 6px;
+  margin-bottom: 12px;
+}
+
+/* ── Engine note with top spacing (below a grid) ── */
+
+.landing-engines-note-top {
+  margin-top: 14px;
+}
+
+/* ── Run lifecycle state machine ──────────────────────── */
+
+.run-state-machine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px 24px;
+  background: var(--surface-1);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-lg);
+  max-width: 760px;
+  margin: 0 auto 32px;
+}
+
+.run-state-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.run-state-chip {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  color: var(--text-soft);
+}
+
+.run-state-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.run-state-terminal {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  color: var(--text-muted);
+}
+
 /* ── Before / After section ────────────────────────────── */
 
 .landing-section-tight {

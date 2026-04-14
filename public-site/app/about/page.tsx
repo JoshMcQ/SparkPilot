@@ -45,7 +45,7 @@ export default function AboutPage() {
     <div className="landing">
       <LandingNav />
 
-      <section className="landing-hero" style={{ paddingBottom: "clamp(24px, 3vw, 40px)" }}>
+      <section className="landing-hero landing-hero-compact">
         <div className="landing-hero-badge">About</div>
         <h1 className="landing-hero-title">
           Built by platform engineers<br />
@@ -74,7 +74,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="landing-section" style={{ paddingTop: 0 }}>
+      <section className="landing-section landing-section-flush">
         <div className="landing-section-header">
           <div className="landing-section-badge">Values</div>
           <h2 className="landing-section-title">How we work</h2>
@@ -89,7 +89,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="landing-section" style={{ paddingTop: 0 }}>
+      <section className="landing-section landing-section-flush">
         <div className="landing-section-header">
           <div className="landing-section-badge">Timeline</div>
           <h2 className="landing-section-title">How we got here</h2>

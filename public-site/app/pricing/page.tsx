@@ -90,8 +90,8 @@ const FAQ = [
     a: "Most teams begin with a scoped pilot call, then run one governed workload in their AWS account before deciding rollout scope.",
   },
   {
-    q: "Is customer login the right first step for new buyers?",
-    a: "No. New buyers should request a pilot conversation. Login is for existing customer users with workspace access.",
+    q: "Can we evaluate SparkPilot without changing our current infrastructure?",
+    a: "Yes. BYOC-Lite connects SparkPilot to an existing EKS cluster without replacing your IAM model or S3 setup. The pilot scopes one workload to a test environment before any production changes.",
   },
 ];
 
@@ -100,7 +100,7 @@ export default function PricingPage() {
     <div className="landing">
       <LandingNav />
 
-      <section className="landing-hero" style={{ paddingBottom: "clamp(28px, 4vw, 48px)" }}>
+      <section className="landing-hero landing-hero-compact">
         <div className="landing-hero-badge">Pricing</div>
         <h1 className="landing-hero-title">
           Pilot-first commercial path for<br />
@@ -111,7 +111,7 @@ export default function PricingPage() {
         </p>
       </section>
 
-      <section className="landing-section" style={{ paddingTop: 0 }}>
+      <section className="landing-section landing-section-flush">
         <div className="pricing-grid">
           {TIERS.map((tier) => (
             <div key={tier.name} className={`pricing-card${tier.featured ? " pricing-card-featured" : ""}`}>
@@ -143,12 +143,12 @@ export default function PricingPage() {
             </div>
           ))}
         </div>
-        <p className="landing-engines-note" style={{ marginTop: "14px" }}>
+        <p className="landing-engines-note landing-engines-note-top">
           Capability labels show current maturity: Available now, In beta, or Coming soon.
         </p>
       </section>
 
-      <section className="landing-section" style={{ paddingTop: 0 }}>
+      <section className="landing-section landing-section-flush">
         <div className="landing-section-header">
           <div className="landing-section-badge">Pilot Path</div>
           <h2 className="landing-section-title">How commercial evaluation works</h2>
@@ -160,7 +160,7 @@ export default function PricingPage() {
                 <li key={step}>{step}</li>
               ))}
             </ol>
-            <div className="landing-hero-actions" style={{ justifyContent: "flex-start", marginTop: "16px" }}>
+            <div className="landing-hero-actions landing-actions-start">
               <Link href="/contact" className="landing-btn landing-btn-primary">
                 Request pilot
               </Link>

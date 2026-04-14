@@ -169,9 +169,9 @@ export default function WhyNotDIYPage() {
             <li>You have a compliance requirement that prohibits any third-party software in your data plane, even if it never sees your data.</li>
           </ul>
           <p className="objection-honest-note">
-            If none of those apply, you are paying engineering salary to solve a problem that is
-            a guided pilot can reduce engineering overhead. Every hour your platform team spends on IAM plumbing is an hour
-            they are not spending on the problems that are specific to your business.
+            If none of those apply, a guided pilot can reduce engineering overhead significantly.
+            Every hour your platform team spends on IAM plumbing is an hour they are not spending
+            on the problems specific to your business.
           </p>
         </section>
 

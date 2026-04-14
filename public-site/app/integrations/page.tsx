@@ -69,7 +69,7 @@ export default function IntegrationsPage() {
     <div className="landing">
       <LandingNav />
 
-      <section className="landing-hero" style={{ paddingBottom: "clamp(28px, 4vw, 48px)" }}>
+      <section className="landing-hero landing-hero-compact">
         <div className="landing-hero-badge">Integrations</div>
         <h1 className="landing-hero-title">
           Connect SparkPilot to your
@@ -94,7 +94,7 @@ export default function IntegrationsPage() {
                 <span className={`landing-engine-badge ${integration.badgeClass}`}>{integration.status}</span>
               </div>
               <p>{integration.description}</p>
-              <p className="landing-engines-note" style={{ textAlign: "left", marginTop: "6px", marginBottom: "12px" }}>
+              <p className="landing-engines-note landing-engines-note-left">
                 {integration.detail}
               </p>
               <Link
@@ -122,7 +122,7 @@ export default function IntegrationsPage() {
                 <li key={step}>{step}</li>
               ))}
             </ol>
-            <div className="landing-hero-actions" style={{ justifyContent: "flex-start", marginTop: "18px" }}>
+            <div className="landing-hero-actions landing-actions-start">
               <Link href="/contact" className="landing-btn landing-btn-primary">
                 Request pilot
               </Link>
@@ -149,6 +149,22 @@ export default function IntegrationsPage() {
               <p>{asset.body}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="landing-cta">
+        <h2>Connect your orchestrator in a pilot call</h2>
+        <p>
+          We will walk through your Airflow or Dagster setup, scope one workload, and confirm
+          integration fit before you commit to a rollout.
+        </p>
+        <div className="landing-hero-actions">
+          <Link href="/contact" className="landing-btn landing-btn-primary">
+            Request pilot
+          </Link>
+          <Link href="/getting-started" className="landing-btn landing-btn-secondary">
+            View pilot guide
+          </Link>
         </div>
       </section>
 

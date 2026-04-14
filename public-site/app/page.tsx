@@ -334,18 +334,18 @@ export default function LandingPage() {
       <section className="landing-proof" id="status">
         <div className="landing-proof-inner">
           <div className="landing-proof-stat">
-            <strong>Available now</strong>
-            <span>Governed EMR on EKS control plane</span>
+            <strong>20+</strong>
+            <span>Preflight checks before every dispatch</span>
           </div>
           <div className="landing-proof-divider" />
           <div className="landing-proof-stat">
-            <strong>In beta</strong>
-            <span>EMR Serverless and EMR on EC2 dispatch paths</span>
+            <strong>3</strong>
+            <span>Spark runtimes in one control plane</span>
           </div>
           <div className="landing-proof-divider" />
           <div className="landing-proof-stat">
-            <strong>Coming soon</strong>
-            <span>Databricks routing and Apache Iceberg governance extensions</span>
+            <strong>5-step</strong>
+            <span>Guided pilot to production</span>
           </div>
         </div>
       </section>
@@ -435,18 +435,14 @@ export default function LandingPage() {
         </div>
 
         {/* State machine */}
-        <div className="reveal" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "6px", padding: "18px 24px", background: "var(--surface-1)", border: "1px solid var(--line-soft)", borderRadius: "var(--radius-lg)", marginBottom: "32px", maxWidth: "760px", margin: "0 auto 32px" } as React.CSSProperties}>
+        <div className="run-state-machine reveal">
           {RUN_STATES.map((s) => (
-            <span key={s.label} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "0.76rem", fontWeight: 600, letterSpacing: "0.03em", padding: "3px 11px", borderRadius: "999px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", color: "var(--text-soft)" }}>
-                {s.label}
-              </span>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}><IconArrowRight /></span>
+            <span key={s.label} className="run-state-step">
+              <span className="run-state-chip">{s.label}</span>
+              <span className="run-state-arrow"><IconArrowRight /></span>
             </span>
           ))}
-          <span style={{ fontSize: "0.76rem", fontWeight: 600, letterSpacing: "0.03em", padding: "3px 11px", borderRadius: "999px", background: "var(--surface-2)", border: "1px solid var(--line-soft)", color: "var(--text-muted)" }}>
-            {RUN_TERMINAL_STATES.join(" · ")}
-          </span>
+          <span className="run-state-terminal">{RUN_TERMINAL_STATES.join(" · ")}</span>
         </div>
 
         {/* Workers */}
@@ -532,7 +528,7 @@ export default function LandingPage() {
         <div className="landing-integrations-note reveal">
           Airflow and Dagster providers are installable from source today. API and CLI interfaces are provided for active pilot workflows and automation.
         </div>
-        <div className="landing-hero-actions" style={{ marginTop: "20px" }}>
+        <div className="landing-hero-actions landing-actions-spaced">
           <Link href="/integrations" className="landing-btn landing-btn-secondary">
             Open integration guide
           </Link>

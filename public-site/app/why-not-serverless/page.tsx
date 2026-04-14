@@ -206,10 +206,11 @@ export default function WhyNotServerlessPage() {
         <section className="objection-section objection-section-highlight">
           <h2 className="objection-section-title">SparkPilot also dispatches to EMR Serverless</h2>
           <p>
-            SparkPilot is not an either/or choice. The same preflight pipeline,
-            and cost tagging runs regardless of which execution engine you use. You can route
-            production batch workloads to EMR on EKS for latency and cost control, and route
-            ad-hoc or dev workloads to Serverless from the same control plane. EMR on EKS is available now; Serverless routing is in beta.
+            SparkPilot is not an either/or choice. The same preflight pipeline and cost tagging
+            applies regardless of which execution engine you use. You can route production batch
+            workloads to EMR on EKS for latency and cost control, and route ad-hoc or dev
+            workloads to Serverless from the same control plane. EMR on EKS is available now;
+            Serverless routing is in beta.
           </p>
           <p>
             The governance layer, including preflight checks, CUR reconciliation, and audit trail,

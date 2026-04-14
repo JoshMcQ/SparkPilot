@@ -571,6 +571,10 @@
   margin: 0;
 }
 
+.contact-success-back {
+  margin-top: 16px;
+}
+
 /* ── About page ────────────────────────────────────── */
 
 .about-mission {
