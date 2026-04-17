@@ -101,10 +101,10 @@ Spec: one command upserts IdP and app-client supported providers idempotently.
 
 ## 3. Prepare First Admin Bootstrap Package
 1. Confirm customer admin email: `{{CUSTOMER_ADMIN_EMAIL}}`.
-2. Prepare onboarding package:
-   - app URL: `{{SPARKPILOT_APP_URL}}`
-   - login URL: `https://{{COGNITO_DOMAIN_PREFIX}}.auth.{{AWS_REGION}}.amazoncognito.com/login?client_id={{SPARKPILOT_UI_CLIENT_ID}}&response_type=code&scope=openid+profile+email&redirect_uri={{SPARKPILOT_APP_URL}}/auth/callback&identity_provider={{CUSTOMER_IDP_NAME}}`
-   - support contact and office hours
+2. Prepare onboarding package.
+App URL: `{{SPARKPILOT_APP_URL}}`
+Login URL: `https://{{COGNITO_DOMAIN_PREFIX}}.auth.{{AWS_REGION}}.amazoncognito.com/login?client_id={{SPARKPILOT_UI_CLIENT_ID}}&response_type=code&scope=openid+profile+email&redirect_uri={{SPARKPILOT_APP_URL}}/auth/callback&identity_provider={{CUSTOMER_IDP_NAME}}`
+Support contact and office hours: include in the same message as app URL.
 3. Deliver bootstrap secret `{{SPARKPILOT_BOOTSTRAP_SECRET}}` in a separate channel.
 
 Required delivery split:
@@ -179,4 +179,3 @@ Future path:
 
 TODO: build SCIM 2.0 `/Users` and `/Groups` support.
 Spec: map SCIM users/groups to `user_identities` and team scopes with idempotent upsert semantics.
-
