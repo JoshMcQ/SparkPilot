@@ -3,11 +3,23 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 import hmac
+import logging
+import os
 import re
 from typing import Any, TypeVar
 
 import boto3
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
+import httpx
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
@@ -15,16 +27,30 @@ from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session
 
 from sparkpilot.aws_clients import parse_role_account_id_from_arn
-from sparkpilot.config import get_settings, validate_runtime_settings
+from sparkpilot.config import (
+    MIN_BOOTSTRAP_SECRET_LENGTH,
+    get_settings,
+    validate_runtime_settings,
+)
 from sparkpilot.db import get_db, init_db
 from sparkpilot.exceptions import SparkPilotError
 from sparkpilot.idempotency import with_idempotency
-from sparkpilot.models import AuditEvent, Environment, InteractiveEndpoint, Job, JobTemplate, Run, TeamEnvironmentScope, UserIdentity
+from sparkpilot.models import (
+    AuditEvent,
+    Environment,
+    InteractiveEndpoint,
+    Job,
+    JobTemplate,
+    Run,
+    TeamEnvironmentScope,
+    UserIdentity,
+)
 from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
 from sparkpilot.schemas import (
     AwsByocLiteDiscoveryResponse,
     AwsByocLiteClusterDiscoveryItem,
     AuthMeResponse,
+    BootstrapStatusResponse,
     CostShowbackResponse,
     DiagnosticItem,
     DiagnosticsResponse,
@@ -99,10 +125,150 @@ from sparkpilot.services import (
 
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+_PRODUCTION_ENV_VALUES = {"production", "prod"}
+_TRUE_VALUES = {"1", "true", "yes", "y", "on"}
+_FALSE_VALUES = {"0", "false", "no", "n", "off", ""}
+
+
+def _env_value(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None:
+            return value.strip()
+    return default.strip()
+
+
+def _parse_bool(value: str) -> bool | None:
+    normalized = value.strip().lower()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    return None
+
+
+def _log_startup_check(name: str, passed: bool, detail: str) -> None:
+    status = "PASS" if passed else "FAIL"
+    level = logging.INFO if passed else logging.ERROR
+    logger.log(level, "Production startup check [%s] %s: %s", status, name, detail)
+
+
+def _fetch_jwks_json(jwks_uri: str, timeout_seconds: float = 5.0) -> dict[str, Any]:
+    response = httpx.get(jwks_uri, timeout=timeout_seconds)
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("JWKS response must be a JSON object.")
+    return payload
+
+
+def _validate_production_startup() -> None:
+    active_env = _env_value(
+        "SPARKPILOT_ENV", "SPARKPILOT_ENVIRONMENT", default="dev"
+    ).lower()
+    if active_env not in _PRODUCTION_ENV_VALUES:
+        return
+
+    failures: list[str] = []
+
+    def _record(name: str, passed: bool, detail: str) -> None:
+        _log_startup_check(name, passed, detail)
+        if not passed:
+            failures.append(f"{name}: {detail}")
+
+    auth_mode = _env_value("SPARKPILOT_AUTH_MODE", "AUTH_MODE", default="oidc").lower()
+    _record(
+        "auth_mode_oidc",
+        auth_mode == "oidc",
+        "SPARKPILOT_AUTH_MODE must be 'oidc'.",
+    )
+
+    oidc_issuer = _env_value("SPARKPILOT_OIDC_ISSUER", "OIDC_ISSUER")
+    _record(
+        "oidc_issuer_present",
+        bool(oidc_issuer),
+        "SPARKPILOT_OIDC_ISSUER must be set.",
+    )
+
+    oidc_audience = _env_value("SPARKPILOT_OIDC_AUDIENCE", "OIDC_AUDIENCE")
+    _record(
+        "oidc_audience_present",
+        bool(oidc_audience),
+        "SPARKPILOT_OIDC_AUDIENCE must be set.",
+    )
+
+    oidc_jwks_uri = _env_value("SPARKPILOT_OIDC_JWKS_URI", "OIDC_JWKS_URI")
+    _record(
+        "oidc_jwks_uri_present",
+        bool(oidc_jwks_uri),
+        "SPARKPILOT_OIDC_JWKS_URI must be set.",
+    )
+
+    jwks_check_ok = False
+    jwks_detail = "JWKS endpoint must be reachable and return JSON."
+    if oidc_jwks_uri:
+        try:
+            _fetch_jwks_json(oidc_jwks_uri)
+            jwks_check_ok = True
+            jwks_detail = "JWKS endpoint reachable and JSON parsed."
+        except (httpx.HTTPError, ValueError) as exc:
+            jwks_detail = f"JWKS check failed: {exc}"
+    _record(
+        "oidc_jwks_reachable_json",
+        jwks_check_ok,
+        jwks_detail,
+    )
+
+    bootstrap_secret = _env_value("SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET")
+    _record(
+        "bootstrap_secret_min_length",
+        len(bootstrap_secret) >= MIN_BOOTSTRAP_SECRET_LENGTH,
+        f"BOOTSTRAP_SECRET must be at least {MIN_BOOTSTRAP_SECRET_LENGTH} characters.",
+    )
+
+    cors_raw = _env_value(
+        "SPARKPILOT_CORS_ORIGINS",
+        default="http://localhost:3000,http://127.0.0.1:3000",
+    )
+    cors_entries = [entry.strip() for entry in cors_raw.split(",") if entry.strip()]
+    local_origins = [
+        entry
+        for entry in cors_entries
+        if "localhost" in entry.lower() or "127.0.0.1" in entry.lower()
+    ]
+    _record(
+        "cors_no_localhost",
+        not local_origins,
+        "SPARKPILOT_CORS_ORIGINS must not contain localhost or 127.0.0.1.",
+    )
+
+    dry_run_raw = _env_value("SPARKPILOT_DRY_RUN_MODE", default="false")
+    dry_run_value = _parse_bool(dry_run_raw)
+    _record(
+        "dry_run_disabled",
+        dry_run_value is False,
+        "SPARKPILOT_DRY_RUN_MODE must be false in production.",
+    )
+
+    full_byoc_raw = _env_value("SPARKPILOT_ENABLE_FULL_BYOC_MODE", default="false")
+    full_byoc_value = _parse_bool(full_byoc_raw)
+    _record(
+        "full_byoc_disabled",
+        full_byoc_value is False,
+        "SPARKPILOT_ENABLE_FULL_BYOC_MODE must be false in production for this cut.",
+    )
+
+    if failures:
+        raise RuntimeError(
+            "Production startup validation failed: " + "; ".join(failures)
+        )
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _validate_production_startup()
     validate_runtime_settings(get_settings())
     init_db()
     yield
@@ -141,7 +307,16 @@ def _custom_openapi() -> dict[str, Any]:
         if not isinstance(operations, dict):
             continue
         for method, operation in operations.items():
-            if method.lower() not in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}:
+            if method.lower() not in {
+                "get",
+                "post",
+                "put",
+                "patch",
+                "delete",
+                "head",
+                "options",
+                "trace",
+            }:
                 continue
             if isinstance(operation, dict):
                 operation.setdefault("security", [{"bearerAuth": []}])
@@ -153,7 +328,9 @@ app.openapi = _custom_openapi
 
 
 @app.exception_handler(SparkPilotError)
-async def _sparkpilot_error_handler(_request: Request, exc: SparkPilotError) -> Response:
+async def _sparkpilot_error_handler(
+    _request: Request, exc: SparkPilotError
+) -> Response:
     """Map domain exceptions to JSON HTTP responses."""
     from fastapi.responses import JSONResponse
 
@@ -168,7 +345,12 @@ app.add_middleware(
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Bootstrap-Secret"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Idempotency-Key",
+        "X-Bootstrap-Secret",
+    ],
 )
 
 
@@ -236,20 +418,26 @@ def _has_any_identities(db: Session) -> bool:
 
 def _resolve_access_context(db: Session, actor: str) -> AccessContext:
     identity = db.execute(
-        select(UserIdentity).where(UserIdentity.actor == actor, UserIdentity.active.is_(True))
+        select(UserIdentity).where(
+            UserIdentity.actor == actor, UserIdentity.active.is_(True)
+        )
     ).scalar_one_or_none()
     if identity is None:
         raise _forbidden("Unknown or inactive actor.")
     if identity.role not in {"admin", "operator", "user"}:
         raise _forbidden("Actor role is invalid.")
-    if identity.role in {"operator", "user"} and (not identity.tenant_id or not identity.team_id):
+    if identity.role in {"operator", "user"} and (
+        not identity.tenant_id or not identity.team_id
+    ):
         raise _forbidden("Actor is missing tenant/team assignment.")
     scoped_environment_ids: set[str] = set()
     if identity.team_id:
         scoped_environment_ids = {
             row[0]
             for row in db.execute(
-                select(TeamEnvironmentScope.environment_id).where(TeamEnvironmentScope.team_id == identity.team_id)
+                select(TeamEnvironmentScope.environment_id).where(
+                    TeamEnvironmentScope.team_id == identity.team_id
+                )
             ).all()
         }
     return AccessContext(
@@ -319,6 +507,29 @@ def _require_bootstrap_secret(bootstrap_secret: str | None) -> None:
         )
 
 
+def _create_bootstrap_admin_identity(
+    db: Session,
+    *,
+    actor: str,
+    source_ip: str | None,
+    bootstrap_secret: str | None,
+    req: UserIdentityCreateRequest | None = None,
+) -> UserIdentity:
+    _require_bootstrap_secret(bootstrap_secret)
+    bootstrap_req = req or UserIdentityCreateRequest(
+        actor=actor, role="admin", active=True
+    )
+    if bootstrap_req.actor != actor:
+        raise _forbidden("Bootstrap identity actor must match authenticated subject.")
+    if bootstrap_req.role != "admin" or not bootstrap_req.active:
+        raise _forbidden("First identity must be an active admin.")
+    if bootstrap_req.tenant_id is not None or bootstrap_req.team_id is not None:
+        raise _forbidden("First admin identity cannot include tenant/team assignments.")
+    return create_or_update_user_identity(
+        db, bootstrap_req, actor=actor, source_ip=source_ip
+    )
+
+
 _NAMESPACE_INVALID_CHARS = re.compile(r"[^a-z0-9-]+")
 _NAMESPACE_MULTI_DASH = re.compile(r"-{2,}")
 
@@ -330,7 +541,9 @@ def _namespace_fragment(raw: str) -> str:
     return value or "sparkpilot"
 
 
-def _suggest_namespace(*, tenant_id: str | None, actor: str, cluster_name: str | None) -> str:
+def _suggest_namespace(
+    *, tenant_id: str | None, actor: str, cluster_name: str | None
+) -> str:
     tenant_part = _namespace_fragment((tenant_id or actor).replace("_", "-"))[:20]
     cluster_part = _namespace_fragment(cluster_name or "cluster")[:20]
     namespace = f"sparkpilot-{tenant_part}-{cluster_part}".strip("-")
@@ -345,9 +558,7 @@ def _recommended_cluster(
     if not clusters:
         return None
     preferred = [
-        item
-        for item in clusters
-        if item.status.upper() == "ACTIVE" and item.has_oidc
+        item for item in clusters if item.status.upper() == "ACTIVE" and item.has_oidc
     ]
     if preferred:
         return preferred[0]
@@ -388,7 +599,13 @@ def _latest_run_preflight_snapshot(db: Session, run_id: str) -> dict[str, Any] |
             and_(
                 AuditEvent.entity_type == "run",
                 AuditEvent.entity_id == run_id,
-                AuditEvent.action.in_(["run.preflight_passed", "run.preflight_failed", "run.preflight_diagnostic"]),
+                AuditEvent.action.in_(
+                    [
+                        "run.preflight_passed",
+                        "run.preflight_failed",
+                        "run.preflight_diagnostic",
+                    ]
+                ),
             )
         )
         .order_by(AuditEvent.created_at.desc())
@@ -430,7 +647,11 @@ def _run_response(
     spark_history_url: str | None = None
     if spark_ui_uri:
         spark_history_url = spark_ui_uri
-    elif env is not None and env.spark_history_server_url and payload.get("emr_job_run_id"):
+    elif (
+        env is not None
+        and env.spark_history_server_url
+        and payload.get("emr_job_run_id")
+    ):
         spark_history_url = f"{env.spark_history_server_url.rstrip('/')}/history/{payload['emr_job_run_id']}"
     return RunResponse(
         id=payload["id"],
@@ -479,7 +700,9 @@ def healthcheck(
         aws_status = {"status": "skipped", "detail": "dry_run_mode=true"}
     else:
         try:
-            caller = boto3.client("sts", region_name=runtime_settings.aws_region).get_caller_identity()
+            caller = boto3.client(
+                "sts", region_name=runtime_settings.aws_region
+            ).get_caller_identity()
             aws_status = {
                 "status": "ok",
                 "account_id": caller.get("Account"),
@@ -488,7 +711,9 @@ def healthcheck(
         except (ClientError, BotoCoreError, ValueError) as exc:
             aws_status = {"status": "error", "detail": f"{type(exc).__name__}: {exc}"}
 
-    is_healthy = database_status.get("status") == "ok" and aws_status.get("status") != "error"
+    is_healthy = (
+        database_status.get("status") == "ok" and aws_status.get("status") != "error"
+    )
     if not is_healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {
@@ -500,7 +725,9 @@ def healthcheck(
     }
 
 
-@app.post("/v1/tenants", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/v1/tenants", response_model=TenantResponse, status_code=status.HTTP_201_CREATED
+)
 def post_tenant(
     req: TenantCreateRequest,
     request: Request,
@@ -558,6 +785,60 @@ def post_team(
     return _response(model_to_dict(row), TeamResponse)
 
 
+@app.get("/v1/bootstrap/status", response_model=BootstrapStatusResponse)
+def get_bootstrap_status(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> BootstrapStatusResponse:
+    actor, _ = _actor_and_ip(request)
+    has_identities = _has_any_identities(db)
+    active_identity = db.execute(
+        select(UserIdentity).where(
+            UserIdentity.actor == actor, UserIdentity.active.is_(True)
+        )
+    ).scalar_one_or_none()
+    return BootstrapStatusResponse(
+        actor=actor,
+        bootstrap_required=not has_identities,
+        actor_has_identity=active_identity is not None,
+        actor_is_admin=bool(active_identity and active_identity.role == "admin"),
+    )
+
+
+@app.post(
+    "/v1/bootstrap/user-identities",
+    response_model=UserIdentityResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_bootstrap_user_identity(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    bootstrap_secret: str | None = Header(default=None, alias="X-Bootstrap-Secret"),
+) -> UserIdentityResponse:
+    actor, source_ip = _actor_and_ip(request)
+    if _has_any_identities(db):
+        active_identity = db.execute(
+            select(UserIdentity).where(
+                UserIdentity.actor == actor, UserIdentity.active.is_(True)
+            )
+        ).scalar_one_or_none()
+        if active_identity and active_identity.role == "admin":
+            response.status_code = status.HTTP_200_OK
+            return _response(model_to_dict(active_identity), UserIdentityResponse)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bootstrap already completed. Sign in with an invited admin identity.",
+        )
+    row = _create_bootstrap_admin_identity(
+        db,
+        actor=actor,
+        source_ip=source_ip,
+        bootstrap_secret=bootstrap_secret,
+    )
+    return _response(model_to_dict(row), UserIdentityResponse)
+
+
 @app.get("/v1/user-identities", response_model=list[UserIdentityResponse])
 def get_user_identities(
     request: Request,
@@ -572,7 +853,11 @@ def get_user_identities(
     return [_response(model_to_dict(row), UserIdentityResponse) for row in rows]
 
 
-@app.post("/v1/user-identities", response_model=UserIdentityResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/v1/user-identities",
+    response_model=UserIdentityResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def post_user_identity(
     req: UserIdentityCreateRequest,
     request: Request,
@@ -583,15 +868,15 @@ def post_user_identity(
     if _has_any_identities(db):
         access = _resolve_access_context(db, actor)
         _require_admin(access)
+        row = create_or_update_user_identity(db, req, actor=actor, source_ip=source_ip)
     else:
-        _require_bootstrap_secret(bootstrap_secret)
-        if req.actor != actor:
-            raise _forbidden("Bootstrap identity actor must match authenticated subject.")
-        if req.role != "admin" or not req.active:
-            raise _forbidden("First identity must be an active admin.")
-        if req.tenant_id is not None or req.team_id is not None:
-            raise _forbidden("First admin identity cannot include tenant/team assignments.")
-    row = create_or_update_user_identity(db, req, actor=actor, source_ip=source_ip)
+        row = _create_bootstrap_admin_identity(
+            db,
+            actor=actor,
+            source_ip=source_ip,
+            bootstrap_secret=bootstrap_secret,
+            req=req,
+        )
     return _response(model_to_dict(row), UserIdentityResponse)
 
 
@@ -631,7 +916,9 @@ def post_team_environment_scope(
     actor, source_ip = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
     _require_admin(access)
-    row = add_team_environment_scope(db, team_id, environment_id, actor=actor, source_ip=source_ip)
+    row = add_team_environment_scope(
+        db, team_id, environment_id, actor=actor, source_ip=source_ip
+    )
     return _response(model_to_dict(row), TeamEnvironmentScopeResponse)
 
 
@@ -648,11 +935,16 @@ def delete_team_environment_scope(
     actor, source_ip = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
     _require_admin(access)
-    remove_team_environment_scope(db, team_id, environment_id, actor=actor, source_ip=source_ip)
+    remove_team_environment_scope(
+        db, team_id, environment_id, actor=actor, source_ip=source_ip
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.get("/v1/teams/{team_id}/environments", response_model=list[TeamEnvironmentScopeResponse])
+@app.get(
+    "/v1/teams/{team_id}/environments",
+    response_model=list[TeamEnvironmentScopeResponse],
+)
 def get_team_environment_scope(
     team_id: str,
     request: Request,
@@ -681,7 +973,11 @@ def get_environments(
         if tenant_id and tenant_id != access.tenant_id:
             raise _forbidden("Actor cannot access a different tenant.")
         tenant_id = access.tenant_id
-    rows = [env for env in list_environments(db, tenant_id, limit=limit, offset=offset) if _can_access_environment(access, env)]
+    rows = [
+        env
+        for env in list_environments(db, tenant_id, limit=limit, offset=offset)
+        if _can_access_environment(access, env)
+    ]
     return [_response(model_to_dict(env), EnvironmentResponse) for env in rows]
 
 
@@ -714,12 +1010,16 @@ def _authorize_discovery(
             detail="customer_role_arn must be a valid IAM role ARN.",
         )
 
-    tenant_envs = db.execute(
-        select(Environment).where(
-            Environment.tenant_id == access.tenant_id,
-            Environment.status != "deleted",
+    tenant_envs = (
+        db.execute(
+            select(Environment).where(
+                Environment.tenant_id == access.tenant_id,
+                Environment.status != "deleted",
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     if not tenant_envs:
         # First-time setup: no environments yet in this tenant — allow discovery.
@@ -758,7 +1058,10 @@ def get_byoc_lite_discovery(
 
     normalized_region = region.strip() or "us-east-1"
     if not normalized_role_arn:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="customer_role_arn is required.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="customer_role_arn is required.",
+        )
 
     try:
         discovered = discover_eks_clusters_for_role(
@@ -771,7 +1074,9 @@ def get_byoc_lite_discovery(
             detail=f"Invalid BYOC-Lite discovery parameters. {exc}",
         ) from None
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from None
     except ClientError as exc:
         error = exc.response.get("Error", {})
         code = str(error.get("Code") or "ClientError")
@@ -848,7 +1153,12 @@ def post_environment(
             idempotency_key=key,
             commit=False,
         )
-        return status.HTTP_201_CREATED, model_to_dict(op), "provisioning_operation", op.id
+        return (
+            status.HTTP_201_CREATED,
+            model_to_dict(op),
+            "provisioning_operation",
+            op.id,
+        )
 
     result = with_idempotency(
         db,
@@ -876,7 +1186,10 @@ def get_environment_by_id(
     return _response(model_to_dict(env), EnvironmentResponse)
 
 
-@app.post("/v1/environments/{environment_id}/retry", response_model=ProvisioningOperationResponse)
+@app.post(
+    "/v1/environments/{environment_id}/retry",
+    response_model=ProvisioningOperationResponse,
+)
 def post_environment_retry(
     environment_id: str,
     request: Request,
@@ -886,7 +1199,9 @@ def post_environment_retry(
     key = _require_idempotency_key(idempotency_key)
     actor, source_ip = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can retry provisioning.")
+    _require_role(
+        access, {"admin", "operator"}, "Only admin/operator can retry provisioning."
+    )
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
     op = retry_environment_provisioning(
@@ -907,14 +1222,18 @@ def delete_environment_by_id(
 ) -> EnvironmentResponse:
     actor, source_ip = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can delete environments.")
+    _require_role(
+        access, {"admin", "operator"}, "Only admin/operator can delete environments."
+    )
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
     deleted = delete_environment(db, environment_id, actor=actor, source_ip=source_ip)
     return _response(model_to_dict(deleted), EnvironmentResponse)
 
 
-@app.get("/v1/environments/{environment_id}/preflight", response_model=PreflightResponse)
+@app.get(
+    "/v1/environments/{environment_id}/preflight", response_model=PreflightResponse
+)
 def get_environment_preflight_by_id(
     environment_id: str,
     request: Request,
@@ -933,7 +1252,10 @@ def get_environment_preflight_by_id(
     return PreflightResponse(**payload)
 
 
-@app.get("/v1/provisioning-operations/{operation_id}", response_model=ProvisioningOperationResponse)
+@app.get(
+    "/v1/provisioning-operations/{operation_id}",
+    response_model=ProvisioningOperationResponse,
+)
 def get_provisioning_operation_by_id(
     operation_id: str,
     request: Request,
@@ -985,7 +1307,9 @@ def get_jobs(
 ) -> list[JobResponse]:
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator", "user"}, "Only admin/operator/user can list jobs.")
+    _require_role(
+        access, {"admin", "operator", "user"}, "Only admin/operator/user can list jobs."
+    )
     if environment_id:
         env = get_environment(db, environment_id)
         _require_environment_access(access, env)
@@ -1015,12 +1339,23 @@ def get_golden_paths(
         _require_environment_access(access, env)
     allowed_env_ids = None if access.role == "admin" else access.scoped_environment_ids
     rows = list_golden_paths(
-        db, environment_id=environment_id, limit=limit, offset=offset, allowed_environment_ids=allowed_env_ids
+        db,
+        environment_id=environment_id,
+        limit=limit,
+        offset=offset,
+        allowed_environment_ids=allowed_env_ids,
     )
-    return [_response(_golden_path_to_response_payload(row), GoldenPathResponse) for row in rows]
+    return [
+        _response(_golden_path_to_response_payload(row), GoldenPathResponse)
+        for row in rows
+    ]
 
 
-@app.post("/v1/golden-paths", response_model=GoldenPathResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/v1/golden-paths",
+    response_model=GoldenPathResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def post_golden_path(
     req: GoldenPathCreate,
     request: Request,
@@ -1069,8 +1404,13 @@ def get_runs(
     actor_filter = access.actor if access.role == "user" else None
     env_ids_filter = None if access.role == "admin" else access.scoped_environment_ids
     run_rows = list_runs(
-        db, tenant_id, state, limit=limit, offset=offset,
-        actor=actor_filter, environment_ids=env_ids_filter,
+        db,
+        tenant_id,
+        state,
+        limit=limit,
+        offset=offset,
+        actor=actor_filter,
+        environment_ids=env_ids_filter,
     )
     return [_run_response(model_to_dict(run)) for run in run_rows]
 
@@ -1088,7 +1428,11 @@ def get_emr_releases(
     return [_response(model_to_dict(item), EmrReleaseResponse) for item in rows]
 
 
-@app.post("/v1/jobs/{job_id}/runs", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/v1/jobs/{job_id}/runs",
+    response_model=RunResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def post_run(
     job_id: str,
     req: RunCreateRequest,
@@ -1100,10 +1444,16 @@ def post_run(
     key = _require_idempotency_key(idempotency_key)
     actor, source_ip = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator", "user"}, "Only admin/operator/user can submit runs.")
+    _require_role(
+        access,
+        {"admin", "operator", "user"},
+        "Only admin/operator/user can submit runs.",
+    )
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
     env = get_environment(db, job.environment_id)
     # Jobs are environment-scoped resources. Users can submit runs against any job
     # within environments they are explicitly authorized to access.
@@ -1114,12 +1464,18 @@ def post_run(
         scope=f"POST:/v1/jobs/{job_id}/runs",
         key=key,
         payload=req.model_dump(),
-        execute=lambda: _create_run_result_with_preflight(db, job_id, req, actor, source_ip, key),
+        execute=lambda: _create_run_result_with_preflight(
+            db, job_id, req, actor, source_ip, key
+        ),
     )
     response.status_code = result.status_code
     if result.replayed:
         response.headers["X-Idempotent-Replay"] = "true"
-    preflight = result.body.get("preflight") if isinstance(result.body.get("preflight"), dict) else None
+    preflight = (
+        result.body.get("preflight")
+        if isinstance(result.body.get("preflight"), dict)
+        else None
+    )
     return _run_response(result.body, preflight=preflight)
 
 
@@ -1162,7 +1518,11 @@ def post_cancel_run(
     response.status_code = result.status_code
     if result.replayed:
         response.headers["X-Idempotent-Replay"] = "true"
-    preflight = result.body.get("preflight") if isinstance(result.body.get("preflight"), dict) else None
+    preflight = (
+        result.body.get("preflight")
+        if isinstance(result.body.get("preflight"), dict)
+        else None
+    )
     return _run_response(result.body, preflight=preflight)
 
 
@@ -1225,7 +1585,9 @@ def get_usage_for_tenant(
     now = datetime.now(UTC)
     effective_to = to_ts or now
     effective_from = from_ts or (effective_to - timedelta(days=30))
-    items = get_usage(db, tenant_id, effective_from, effective_to, limit=limit, offset=offset)
+    items = get_usage(
+        db, tenant_id, effective_from, effective_to, limit=limit, offset=offset
+    )
     return UsageResponse(
         tenant_id=tenant_id,
         from_ts=effective_from,
@@ -1243,7 +1605,11 @@ def get_usage_for_tenant(
     )
 
 
-@app.post("/v1/team-budgets", response_model=TeamBudgetResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/v1/team-budgets",
+    response_model=TeamBudgetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def post_team_budget(
     req: TeamBudgetCreateRequest,
     request: Request,
@@ -1264,7 +1630,9 @@ def get_team_budget_by_team(
 ) -> TeamBudgetResponse:
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can view team budgets.")
+    _require_role(
+        access, {"admin", "operator"}, "Only admin/operator can view team budgets."
+    )
     if access.role != "admin" and access.tenant_id != team:
         raise _forbidden("Operator can only view budget for assigned tenant key.")
     item = get_team_budget(db, team)
@@ -1282,7 +1650,9 @@ def get_costs_showback(
 ) -> CostShowbackResponse:
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can view showback costs.")
+    _require_role(
+        access, {"admin", "operator"}, "Only admin/operator can view showback costs."
+    )
     if access.role != "admin" and access.tenant_id != team:
         raise _forbidden("Operator can only view showback for assigned tenant key.")
     return get_cost_showback(db, team=team, period=period, limit=limit, offset=offset)
@@ -1303,7 +1673,9 @@ def post_job_template(
 
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can create job templates.")
+    _require_role(
+        access, {"admin", "operator"}, "Only admin/operator can create job templates."
+    )
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
     emr_client = EmrEksClient()
@@ -1332,7 +1704,10 @@ def post_job_template(
     return _job_template_response(template)
 
 
-@app.get("/v1/environments/{environment_id}/job-templates", response_model=list[JobTemplateResponse])
+@app.get(
+    "/v1/environments/{environment_id}/job-templates",
+    response_model=list[JobTemplateResponse],
+)
 def get_job_templates(
     environment_id: str,
     request: Request,
@@ -1344,13 +1719,17 @@ def get_job_templates(
     access = _resolve_access_context(db, actor)
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
-    rows = db.execute(
-        select(JobTemplate)
-        .where(JobTemplate.environment_id == environment_id)
-        .order_by(JobTemplate.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(JobTemplate)
+            .where(JobTemplate.environment_id == environment_id)
+            .order_by(JobTemplate.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        .scalars()
+        .all()
+    )
     return [_job_template_response(t) for t in rows]
 
 
@@ -1370,7 +1749,9 @@ def get_job_template_by_id(
     _require_environment_access(access, env)
     template = db.get(JobTemplate, template_id)
     if template is None or template.environment_id != environment_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job template not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job template not found."
+        )
     return _job_template_response(template)
 
 
@@ -1388,12 +1769,16 @@ def delete_job_template(
 
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can delete job templates.")
+    _require_role(
+        access, {"admin", "operator"}, "Only admin/operator can delete job templates."
+    )
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
     template = db.get(JobTemplate, template_id)
     if template is None or template.environment_id != environment_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job template not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job template not found."
+        )
     _emr_del = EmrEksClient()
     if template.emr_template_id and not _emr_del.settings.dry_run_mode:
         _emr_del.delete_job_template(env, template.emr_template_id)
@@ -1416,12 +1801,16 @@ def get_queue_utilization(
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
     active_states = {"queued", "dispatching", "accepted", "running"}
-    active_runs = db.execute(
-        select(Run).where(
-            Run.environment_id == environment_id,
-            Run.state.in_(active_states),
+    active_runs = (
+        db.execute(
+            select(Run).where(
+                Run.environment_id == environment_id,
+                Run.state.in_(active_states),
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     used_vcpu = _compute_active_vcpu(list(active_runs))
     utilization_pct: float | None = None
     if env.yunikorn_queue_max_vcpu:
@@ -1452,7 +1841,9 @@ def post_interactive_endpoint(
 
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can create endpoints.")
+    _require_role(
+        access, {"admin", "operator"}, "Only admin/operator can create endpoints."
+    )
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
     _emr_ep = EmrEksClient()
@@ -1498,13 +1889,17 @@ def get_interactive_endpoints(
     access = _resolve_access_context(db, actor)
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
-    rows = db.execute(
-        select(InteractiveEndpoint)
-        .where(InteractiveEndpoint.environment_id == environment_id)
-        .order_by(InteractiveEndpoint.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(InteractiveEndpoint)
+            .where(InteractiveEndpoint.environment_id == environment_id)
+            .order_by(InteractiveEndpoint.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        .scalars()
+        .all()
+    )
     return [_interactive_endpoint_response(ep) for ep in rows]
 
 
@@ -1524,7 +1919,10 @@ def get_interactive_endpoint_by_id(
     _require_environment_access(access, env)
     endpoint = db.get(InteractiveEndpoint, endpoint_id)
     if endpoint is None or endpoint.environment_id != environment_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interactive endpoint not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interactive endpoint not found.",
+        )
     return _interactive_endpoint_response(endpoint)
 
 
@@ -1542,12 +1940,17 @@ def delete_interactive_endpoint(
 
     actor, _ = _actor_and_ip(request)
     access = _resolve_access_context(db, actor)
-    _require_role(access, {"admin", "operator"}, "Only admin/operator can delete endpoints.")
+    _require_role(
+        access, {"admin", "operator"}, "Only admin/operator can delete endpoints."
+    )
     env = get_environment(db, environment_id)
     _require_environment_access(access, env)
     endpoint = db.get(InteractiveEndpoint, endpoint_id)
     if endpoint is None or endpoint.environment_id != environment_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interactive endpoint not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interactive endpoint not found.",
+        )
     _emr_ep_del = EmrEksClient()
     if endpoint.emr_endpoint_id and not _emr_ep_del.settings.dry_run_mode:
         _emr_ep_del.delete_managed_endpoint(env, endpoint.emr_endpoint_id)
@@ -1633,7 +2036,9 @@ def _cancel_run_result_with_preflight(
     actor: str,
     source_ip: str | None,
 ) -> tuple[int, dict[str, Any], str | None, str | None]:
-    status_code, body, entity_type, entity_id = _cancel_run_result(db, run_id, actor, source_ip)
+    status_code, body, entity_type, entity_id = _cancel_run_result(
+        db, run_id, actor, source_ip
+    )
     body_with_preflight = dict(body)
     body_with_preflight["preflight"] = _latest_run_preflight_snapshot(db, body["id"])
     return status_code, body_with_preflight, entity_type, entity_id
@@ -1655,7 +2060,9 @@ def _job_template_response(t: JobTemplate) -> JobTemplateResponse:
     )
 
 
-def _interactive_endpoint_response(ep: InteractiveEndpoint) -> InteractiveEndpointResponse:
+def _interactive_endpoint_response(
+    ep: InteractiveEndpoint,
+) -> InteractiveEndpointResponse:
     return InteractiveEndpointResponse(
         id=ep.id,
         environment_id=ep.environment_id,
@@ -1678,7 +2085,9 @@ def _compute_active_vcpu(runs: list[Run]) -> int:
     total = 0
     for run in runs:
         resources = run.requested_resources_json or {}
-        total += resources.get("driver_vcpu", 0) + resources.get("executor_vcpu", 0) * resources.get("executor_instances", 0)
+        total += resources.get("driver_vcpu", 0) + resources.get(
+            "executor_vcpu", 0
+        ) * resources.get("executor_instances", 0)
     return total
 
 
@@ -1692,6 +2101,7 @@ def get_kpi_metrics(
     access = _resolve_access_context(db, actor)
     _require_admin(access)
     from sparkpilot.metrics import collect_all_kpis
+
     return collect_all_kpis(db)
 
 
@@ -1700,7 +2110,9 @@ def get_kpi_metrics(
 # ---------------------------------------------------------------------------
 
 
-@app.post("/v1/policies", response_model=PolicyResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/v1/policies", response_model=PolicyResponse, status_code=status.HTTP_201_CREATED
+)
 def post_policy(
     req: PolicyCreateRequest,
     request: Request,
@@ -1710,6 +2122,7 @@ def post_policy(
     access = _resolve_access_context(db, actor)
     _require_admin(access)
     from sparkpilot.policy_engine import create_policy, policy_to_dict
+
     policy = create_policy(
         db,
         name=req.name,
@@ -1739,7 +2152,15 @@ def get_policies(
     access = _resolve_access_context(db, actor)
     _require_admin(access)
     from sparkpilot.policy_engine import list_policies, policy_to_dict
-    rows = list_policies(db, scope=scope, scope_id=scope_id, active_only=active_only, limit=limit, offset=offset)
+
+    rows = list_policies(
+        db,
+        scope=scope,
+        scope_id=scope_id,
+        active_only=active_only,
+        limit=limit,
+        offset=offset,
+    )
     return [_response(policy_to_dict(p), PolicyResponse) for p in rows]
 
 
@@ -1753,9 +2174,12 @@ def get_policy_by_id(
     access = _resolve_access_context(db, actor)
     _require_admin(access)
     from sparkpilot.policy_engine import get_policy, policy_to_dict
+
     policy = get_policy(db, policy_id)
     if policy is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found."
+        )
     return _response(policy_to_dict(policy), PolicyResponse)
 
 
@@ -1769,8 +2193,11 @@ def delete_policy_endpoint(
     access = _resolve_access_context(db, actor)
     _require_admin(access)
     from sparkpilot.policy_engine import delete_policy
+
     if not delete_policy(db, policy_id, actor=actor, source_ip=source_ip):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found."
+        )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1798,6 +2225,7 @@ def create_security_configuration_endpoint(
         raise HTTPException(status_code=404, detail="Environment not found.")
     from sparkpilot.aws_clients import EmrEksClient
     from sparkpilot.audit import write_audit_event
+
     emr = EmrEksClient()
     result = emr.create_security_configuration(
         env,
@@ -1848,6 +2276,7 @@ def list_security_configurations_endpoint(
     if env is None:
         raise HTTPException(status_code=404, detail="Environment not found.")
     from sparkpilot.aws_clients import EmrEksClient
+
     emr = EmrEksClient()
     configs = emr.list_security_configurations(env)
     return [
@@ -1856,8 +2285,12 @@ def list_security_configurations_endpoint(
                 "id": c.get("id", ""),
                 "name": c.get("name", ""),
                 "virtual_cluster_id": env.emr_virtual_cluster_id or "",
-                "encryption_config": c.get("securityConfigurationData", {}).get("encryptionConfiguration"),
-                "authorization_config": c.get("securityConfigurationData", {}).get("authorizationConfiguration"),
+                "encryption_config": c.get("securityConfigurationData", {}).get(
+                    "encryptionConfiguration"
+                ),
+                "authorization_config": c.get("securityConfigurationData", {}).get(
+                    "authorizationConfiguration"
+                ),
                 "created_at": str(c.get("createdAt", "")),
             },
             SecurityConfigurationResponse,
@@ -1883,6 +2316,7 @@ def describe_security_configuration_endpoint(
     if env is None:
         raise HTTPException(status_code=404, detail="Environment not found.")
     from sparkpilot.aws_clients import EmrEksClient
+
     emr = EmrEksClient()
     try:
         result = emr.describe_security_configuration(env, config_id)
@@ -1920,6 +2354,7 @@ def validate_iam_credential_chain(
     if env is None:
         raise HTTPException(status_code=404, detail="Environment not found.")
     from sparkpilot.services.iam_validation import validate_full_credential_chain
+
     result = validate_full_credential_chain(
         customer_role_arn=env.customer_role_arn,
         region=env.region,
@@ -1938,4 +2373,5 @@ def validate_runtime_iam_identity(
     access = _resolve_access_context(db, actor)
     _require_admin(access)
     from sparkpilot.services.iam_validation import validate_full_credential_chain
+
     return validate_full_credential_chain()

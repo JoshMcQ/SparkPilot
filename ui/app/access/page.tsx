@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
+  type AuthMe,
+  type BootstrapStatus,
   type UserIdentity,
   type UserIdentityCreateRequest,
   type Team,
@@ -11,7 +13,10 @@ import {
   type TeamBudget,
   type TeamBudgetCreateRequest,
   type Environment,
+  fetchAuthMe,
+  fetchBootstrapStatus,
   fetchUserIdentities,
+  claimBootstrapAdminIdentity,
   createUserIdentity,
   fetchTeams,
   createTeam,
@@ -68,6 +73,71 @@ function ErrorState({ message, onRetry }: { message: string; onRetry?: () => voi
 
 function accessError(err: unknown, fallback: string): string {
   return mapAccessErrorMessage(friendlyError(err, fallback));
+}
+
+function BootstrapClaimCard({
+  actor,
+  onClaimed,
+}: {
+  actor: string;
+  onClaimed: () => void;
+}) {
+  const [bootstrapSecret, setBootstrapSecret] = useState("");
+  const [claiming, setClaiming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  async function handleClaim(): Promise<void> {
+    const secret = bootstrapSecret.trim();
+    if (!secret) {
+      setError("Bootstrap secret is required.");
+      return;
+    }
+    setClaiming(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await claimBootstrapAdminIdentity(secret);
+      setBootstrapSecret("");
+      setSuccess(`Admin bootstrap completed for "${actor}". Reloading access workflow...`);
+      onClaimed();
+    } catch (err: unknown) {
+      setError(accessError(err, "Bootstrap admin claim failed"));
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3>Claim First Admin</h3>
+      <div className="subtle">
+        No identities exist yet for this workspace. Sign-in succeeded for <code>{actor}</code>, but admin mapping is not created.
+      </div>
+      <div className="subtle" style={{ marginTop: 8 }}>
+        Enter the bootstrap secret once to claim initial admin access. This step does not create tenants or environments.
+      </div>
+      <div className="form-grid" style={{ marginTop: 12 }}>
+        <label>
+          Bootstrap Secret
+          <input
+            type="password"
+            value={bootstrapSecret}
+            onChange={(event) => setBootstrapSecret(event.target.value)}
+            placeholder="Enter bootstrap secret"
+            autoComplete="off"
+          />
+        </label>
+      </div>
+      <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+        <button type="button" className="button" onClick={() => void handleClaim()} disabled={claiming}>
+          {claiming ? "Claiming..." : "Claim Admin Access"}
+        </button>
+      </div>
+      {error ? <div className="error-text" style={{ marginTop: 8 }}>{error}</div> : null}
+      {success ? <div className="success-text" style={{ marginTop: 8 }}>{success}</div> : null}
+    </div>
+  );
 }
 
 // ── User Identities Section ────────────────────────────────────────────────
@@ -755,6 +825,36 @@ function TeamBudgetsSection() {
 // ── Main Access Page ───────────────────────────────────────────────────────
 
 export default function AccessPage() {
+  const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus | null>(null);
+  const [authMe, setAuthMe] = useState<AuthMe | null>(null);
+  const [gateLoading, setGateLoading] = useState(true);
+  const [gateError, setGateError] = useState<string | null>(null);
+
+  const loadGate = useCallback(async () => {
+    setGateLoading(true);
+    setGateError(null);
+    try {
+      const [statusRow, authRow] = await Promise.all([
+        fetchBootstrapStatus(),
+        fetchAuthMe(),
+      ]);
+      setBootstrapStatus(statusRow);
+      setAuthMe(authRow);
+    } catch (err: unknown) {
+      setGateError(accessError(err, "Failed to load access status"));
+    } finally {
+      setGateLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadGate();
+  }, [loadGate]);
+
+  const bootstrapRequired = bootstrapStatus?.bootstrap_required === true;
+  const isAdmin = authMe?.role === "admin";
+  const actorLabel = bootstrapStatus?.actor ?? authMe?.actor ?? "unknown";
+
   return (
     <section className="stack">
       <div className="card">
@@ -768,26 +868,55 @@ export default function AccessPage() {
           <Link href="/contact" className="inline-link">Request access</Link>. This page is for workspace administrators.
         </div>
       </div>
-      <div className="card">
-        <h3>Guided Admin Workflow</h3>
-        <div className="subtle">Follow this sequence to reduce auth/bootstrap errors and enforce least privilege.</div>
-        <ol className="guided-steps">
-          {ACCESS_WORKFLOW_STEPS.map((step) => (
-            <li key={step.id}>
-              <strong>{step.title}:</strong> {step.description}
-            </li>
-          ))}
-        </ol>
-        <div className="subtle">
-          Production target: use real IdP sign-in (Auth0/Okta/Cognito) as the default path and keep manual token input
-          as an explicit dev/bootstrap fallback only.
-        </div>
-      </div>
 
-      <UserIdentitiesSection />
-      <TeamsSection />
-      <TeamScopesSection />
-      <TeamBudgetsSection />
+      {gateLoading ? (
+        <LoadingState message="Checking access status..." />
+      ) : gateError ? (
+        <ErrorState message={gateError} onRetry={() => void loadGate()} />
+      ) : bootstrapRequired ? (
+        <BootstrapClaimCard actor={actorLabel} onClaimed={() => void loadGate()} />
+      ) : isAdmin ? (
+        <>
+          <div className="card">
+            <h3>Guided Admin Workflow</h3>
+            <div className="subtle">Follow this sequence to reduce auth/bootstrap errors and enforce least privilege.</div>
+            <ol className="guided-steps">
+              {ACCESS_WORKFLOW_STEPS.map((step) => (
+                <li key={step.id}>
+                  <strong>{step.title}:</strong> {step.description}
+                </li>
+              ))}
+            </ol>
+            <div className="subtle">
+              Production target: use Cognito sign-in as the default path and keep manual token input
+              as an explicit dev/bootstrap fallback only.
+            </div>
+          </div>
+
+          <UserIdentitiesSection />
+          <TeamsSection />
+          <TeamScopesSection />
+          <TeamBudgetsSection />
+        </>
+      ) : (
+        <div className="card">
+          <h3>Admin Access Required</h3>
+          <div className="subtle">
+            Signed in as <code>{actorLabel}</code>{authMe ? ` with role "${authMe.role}".` : "."}
+          </div>
+          <div className="subtle" style={{ marginTop: 8 }}>
+            {authMe
+              ? "This identity is authenticated but does not have admin privileges for Access & Governance."
+              : "This identity is authenticated but not mapped to an active workspace identity."}
+          </div>
+          <div className="subtle" style={{ marginTop: 8 }}>
+            Ask an existing admin to add your identity in Access, or request onboarding support.
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href="/contact" className="button button-secondary">Request Access Help</Link>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

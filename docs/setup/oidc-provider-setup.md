@@ -1,5 +1,7 @@
 # OIDC Provider Setup Guide
 
+> Current production provider: Cognito. Other providers are documented as alternatives for self-hosted deployments.
+
 SparkPilot uses OIDC (OpenID Connect) for API authentication. Every API request must include a valid JWT access token in the `Authorization: Bearer <token>` header. This guide explains exactly what SparkPilot requires from an OIDC provider and how to configure the three most common ones.
 
 ---
