@@ -18,6 +18,15 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_vpc_endpoint_service" "cognito_idp" {
+  service = "cognito-idp"
+}
+
+data "aws_subnet" "private" {
+  for_each = toset(var.private_subnet_ids)
+  id       = each.value
+}
+
 data "aws_iam_policy_document" "control_plane_kms" {
   statement {
     sid = "AllowAccountRootAdmin"
@@ -108,6 +117,13 @@ locals {
   shared_interface_endpoint_security_group_ids = var.manage_vpc_endpoints ? [] : distinct(flatten([
     for endpoint in data.aws_vpc_endpoint.shared_interface : endpoint.security_group_ids
   ]))
+  cognito_idp_supported_subnet_ids = [
+    for subnet_id in var.private_subnet_ids : subnet_id
+    if contains(
+      data.aws_vpc_endpoint_service.cognito_idp.availability_zones,
+      data.aws_subnet.private[subnet_id].availability_zone,
+    )
+  ]
 
   api_task_name = substr(replace("${local.name_prefix}-api", "_", "-"), 0, 32)
   api_tg_name   = substr(replace("${local.name_prefix}-api-tg", "_", "-"), 0, 32)
@@ -261,6 +277,13 @@ check "https_required_for_non_dev" {
   assert {
     condition     = local.is_dev_environment || local.alb_internal || local.https_enabled || var.cloudflare_proxied
     error_message = "For internet-facing staging/prod deployments, either set acm_certificate_arn to enable HTTPS or set cloudflare_proxied=true (Cloudflare terminates TLS at the edge)."
+  }
+}
+
+check "cognito_idp_endpoint_has_supported_subnet" {
+  assert {
+    condition     = !var.manage_vpc_endpoints || length(local.cognito_idp_supported_subnet_ids) > 0
+    error_message = "No private subnet is in an AZ that supports the cognito-idp VPC endpoint service for this region."
   }
 }
 
@@ -515,7 +538,7 @@ resource "aws_vpc_endpoint" "cognito_idp" {
   service_name        = "com.amazonaws.${var.region}.cognito-idp"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
-  subnet_ids          = var.private_subnet_ids
+  subnet_ids          = local.cognito_idp_supported_subnet_ids
   security_group_ids  = [aws_security_group.aws_api_endpoints[0].id]
   tags                = local.tags
 }
