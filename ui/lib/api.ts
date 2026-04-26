@@ -322,6 +322,13 @@ export type AuthMe = {
   scoped_environment_ids: string[];
 };
 
+export type BootstrapStatus = {
+  actor: string;
+  bootstrap_required: boolean;
+  actor_has_identity: boolean;
+  actor_is_admin: boolean;
+};
+
 /**
  * Fetch the authenticated user's identity context.
  * Returns null if not authenticated or identity not yet provisioned.
@@ -338,6 +345,18 @@ export async function fetchAuthMe(): Promise<AuthMe | null> {
   } catch {
     return null;
   }
+}
+
+export async function fetchBootstrapStatus(): Promise<BootstrapStatus> {
+  const response = await fetch(`${API_PREFIX}/v1/bootstrap/status`, {
+    cache: "no-store",
+    headers: _headers(false),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load bootstrap status"));
+  }
+  const body = await response.json();
+  return _asObject(body, "Bootstrap status") as BootstrapStatus;
 }
 
 export async function createEnvironment(payload: EnvironmentCreateRequest): Promise<ProvisioningOperation> {
@@ -680,6 +699,24 @@ export async function createUserIdentity(req: UserIdentityCreateRequest): Promis
   }
   const body = await response.json();
   return _asObject(body, "User identity create") as UserIdentity;
+}
+
+export async function claimBootstrapAdminIdentity(bootstrapSecret: string): Promise<UserIdentity> {
+  const secret = bootstrapSecret.trim();
+  if (!secret) {
+    throw new Error("Bootstrap secret is required.");
+  }
+  const headers = _headers(false);
+  headers["X-Bootstrap-Secret"] = secret;
+  const response = await fetch(`${API_PREFIX}/v1/bootstrap/user-identities`, {
+    method: "POST",
+    headers,
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Bootstrap admin claim failed"));
+  }
+  const body = await response.json();
+  return _asObject(body, "Bootstrap admin claim") as UserIdentity;
 }
 
 // ---------------------------------------------------------------------------

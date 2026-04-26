@@ -4,7 +4,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-EnvironmentState = Literal["provisioning", "ready", "degraded", "upgrading", "deleting", "deleted", "failed"]
+EnvironmentState = Literal[
+    "provisioning", "ready", "degraded", "upgrading", "deleting", "deleted", "failed"
+]
 ProvisioningState = Literal[
     "queued",
     "validating_bootstrap",
@@ -74,11 +76,21 @@ class UserIdentityResponse(BaseModel):
 
 class AuthMeResponse(BaseModel):
     """Authenticated user context returned by GET /v1/auth/me (#75)."""
+
     actor: str
     role: UserRole
     tenant_id: str | None
     team_id: str | None
     scoped_environment_ids: list[str]
+
+
+class BootstrapStatusResponse(BaseModel):
+    """Bootstrap readiness for the current authenticated subject."""
+
+    actor: str
+    bootstrap_required: bool
+    actor_has_identity: bool
+    actor_is_admin: bool
 
 
 class AwsByocLiteClusterDiscoveryItem(BaseModel):
@@ -146,7 +158,9 @@ class EnvironmentResponse(BaseModel):
     warm_pool_enabled: bool
     lake_formation_enabled: bool
     lf_catalog_id: str | None
-    lf_data_access_scope: dict | None = Field(default=None, validation_alias="lf_data_access_scope_json")
+    lf_data_access_scope: dict | None = Field(
+        default=None, validation_alias="lf_data_access_scope_json"
+    )
     identity_mode: str | None
     security_configuration_id: str | None
     max_concurrent_runs: int
@@ -505,6 +519,7 @@ class PolicyEvaluationResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Security Configuration schemas (#53)
 # ---------------------------------------------------------------------------
+
 
 class SecurityConfigurationCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
