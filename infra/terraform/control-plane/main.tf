@@ -103,6 +103,7 @@ locals {
     "com.amazonaws.${var.region}.logs",
     "com.amazonaws.${var.region}.sqs",
     "com.amazonaws.${var.region}.sts",
+    "com.amazonaws.${var.region}.cognito-idp",
   ])
   shared_interface_endpoint_security_group_ids = var.manage_vpc_endpoints ? [] : distinct(flatten([
     for endpoint in data.aws_vpc_endpoint.shared_interface : endpoint.security_group_ids
@@ -501,6 +502,17 @@ resource "aws_vpc_endpoint" "sts" {
   count               = var.manage_vpc_endpoints ? 1 : 0
   vpc_id              = var.vpc_id
   service_name        = "com.amazonaws.${var.region}.sts"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.aws_api_endpoints[0].id]
+  tags                = local.tags
+}
+
+resource "aws_vpc_endpoint" "cognito_idp" {
+  count               = var.manage_vpc_endpoints ? 1 : 0
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.cognito-idp"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = var.private_subnet_ids
