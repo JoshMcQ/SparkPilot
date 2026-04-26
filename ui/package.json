@@ -1,35 +1,35 @@
 {
-    "name":  "sparkpilot-ui",
-    "version":  "0.1.0",
-    "private":  true,
-    "scripts":  {
-                    "dev":  "next dev",
-                    "build":  "next build",
-                    "start":  "next start",
-                    "verify:prod-env":  "node scripts/verify-prod-env.mjs",
-                    "lint":  "eslint . --ext .js,.jsx,.ts,.tsx",
-                    "test":  "node --import tsx --test \"tests/**/*.test.ts\"",
-                    "test:e2e:onboarding":  "node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts",
-                    "test:e2e:auth":  "node ./node_modules/playwright/cli.js test tests/e2e/auth-route-guards.spec.ts --config=playwright.auth.config.ts",
-                    "test:e2e:theme":  "node ./node_modules/playwright/cli.js test tests/e2e/theme-toggle.spec.ts",
-                    "test:e2e:responsive":  "node ./node_modules/playwright/cli.js test tests/e2e/responsive-onboarding.spec.ts",
-                    "test:e2e:cross-browser":  "node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts tests/e2e/theme-toggle.spec.ts --project=chromium --project=firefox --project=webkit"
-                },
-    "dependencies":  {
-                         "next":  "16.2.0",
-                         "react":  "18.3.1",
-                         "react-dom":  "18.3.1"
-                     },
-    "devDependencies":  {
-                            "@playwright/test":  "^1.58.2",
-                            "@types/node":  "22.15.3",
-                            "@types/react":  "18.3.20",
-                            "@types/react-dom":  "18.3.7",
-                            "eslint":  "9.38.0",
-                            "eslint-config-next":  "16.2.0",
-                            "lighthouse":  "^13.0.3",
-                            "playwright":  "^1.58.2",
-                            "tsx":  "^4.21.0",
-                            "typescript":  "5.8.3"
-                        }
+    "name": "sparkpilot-ui",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "verify:prod-env": "node scripts/verify-prod-env.mjs",
+        "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+        "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+        "test:e2e:onboarding": "node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts",
+        "test:e2e:auth": "node ./node_modules/playwright/cli.js test tests/e2e/auth-route-guards.spec.ts --config=playwright.auth.config.ts",
+        "test:e2e:theme": "node ./node_modules/playwright/cli.js test tests/e2e/theme-toggle.spec.ts",
+        "test:e2e:responsive": "node ./node_modules/playwright/cli.js test tests/e2e/responsive-onboarding.spec.ts",
+        "test:e2e:cross-browser": "node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts tests/e2e/theme-toggle.spec.ts --project=chromium --project=firefox --project=webkit"
+    },
+    "dependencies": {
+        "next": "16.2.3",
+        "react": "18.3.1",
+        "react-dom": "18.3.1"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.58.2",
+        "@types/node": "22.15.3",
+        "@types/react": "18.3.20",
+        "@types/react-dom": "18.3.7",
+        "eslint": "9.38.0",
+        "eslint-config-next": "16.2.0",
+        "lighthouse": "^13.0.3",
+        "playwright": "^1.58.2",
+        "tsx": "^4.21.0",
+        "typescript": "5.8.3"
+    }
 }
