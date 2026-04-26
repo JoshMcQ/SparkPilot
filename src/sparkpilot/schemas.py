@@ -126,6 +126,7 @@ class EnvironmentQuotas(BaseModel):
 
 class EnvironmentCreateRequest(BaseModel):
     tenant_id: str
+    engine: Literal["emr_on_eks", "emr_serverless", "emr_on_ec2"] = "emr_on_eks"
     provisioning_mode: Literal["full", "byoc_lite"] = "full"
     region: str = Field(default="us-east-1")
     instance_architecture: Literal["x86_64", "arm64", "mixed"] = "mixed"

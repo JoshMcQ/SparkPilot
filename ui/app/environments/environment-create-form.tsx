@@ -14,9 +14,11 @@ import {
 import { shortId } from "@/lib/format";
 
 type SetupStatus = "blocked" | "waiting" | "ready";
+type SparkEngine = "emr_on_eks" | "emr_serverless" | "emr_on_ec2";
 
 type CreateValues = {
   tenantIdOverride: string;
+  engine: SparkEngine;
   region: string;
   accountId: string;
   roleName: string;
@@ -43,6 +45,7 @@ const RESERVED_NAMESPACES = new Set(["default", "kube-system", "kube-public", "k
 function defaultValues(): CreateValues {
   return {
     tenantIdOverride: "",
+    engine: "emr_on_eks",
     region: "us-east-1",
     accountId: "",
     roleName: "SparkPilotByocLiteRole",
@@ -111,15 +114,21 @@ function clusterArnFromValues(values: CreateValues): string {
     : values.selectedClusterArn.trim();
 }
 
+function requiresEksConfiguration(engine: SparkEngine): boolean {
+  return engine === "emr_on_eks";
+}
+
 function buildPayloadFromValues(values: CreateValues, tenantId: string): EnvironmentCreateRequest {
+  const includeEksFields = requiresEksConfiguration(values.engine);
   return {
     tenant_id: tenantId,
+    engine: values.engine,
     provisioning_mode: "byoc_lite",
     region: values.region.trim() || "us-east-1",
     instance_architecture: values.instanceArchitecture,
     customer_role_arn: roleArnFromValues(values),
-    eks_cluster_arn: clusterArnFromValues(values),
-    eks_namespace: values.eksNamespace.trim(),
+    eks_cluster_arn: includeEksFields ? clusterArnFromValues(values) : undefined,
+    eks_namespace: includeEksFields ? values.eksNamespace.trim() : undefined,
     warm_pool_enabled: values.warmPoolEnabled,
     quotas: {
       max_concurrent_runs: parsePositiveInt(values.maxConcurrentRuns, "Max concurrent runs"),
@@ -159,6 +168,7 @@ export default function EnvironmentCreateForm({
   const effectiveTenantId = values.tenantIdOverride.trim() || identityTenantId;
   const resolvedRoleArn = roleArnFromValues(values);
   const resolvedClusterArn = clusterArnFromValues(values);
+  const selectedEngineRequiresEks = requiresEksConfiguration(values.engine);
   const discoveryContext = `${resolvedRoleArn}|${(values.region.trim() || "us-east-1").toLowerCase()}`;
   const valuesRef = useRef(values);
   const identityTenantIdRef = useRef(identityTenantId);
@@ -240,6 +250,9 @@ export default function EnvironmentCreateForm({
   }, [discoveryContext, namespaceSource]);
 
   useEffect(() => {
+    if (!selectedEngineRequiresEks) {
+      return;
+    }
     if (!values.selectedClusterArn) {
       return;
     }
@@ -259,7 +272,7 @@ export default function EnvironmentCreateForm({
     ));
     setNamespaceSource("suggested");
     setDiscoveredNamespaceHint(nextNamespace);
-  }, [clusters, effectiveTenantId, namespaceSource, values.eksNamespace, values.selectedClusterArn]);
+  }, [clusters, effectiveTenantId, namespaceSource, selectedEngineRequiresEks, values.eksNamespace, values.selectedClusterArn]);
 
   const setupReadiness = useMemo((): { status: SetupStatus; detail: string; remediation?: string } => {
     if (identityLoading) {
@@ -272,10 +285,10 @@ export default function EnvironmentCreateForm({
         remediation: identityError || "Map the identity to a tenant in Access before setup.",
       };
     }
-    if (discoveryLoading) {
+    if (selectedEngineRequiresEks && discoveryLoading) {
       return { status: "waiting", detail: "Discovering clusters from AWS..." };
     }
-    if (discoveryError && !values.manualClusterArnEnabled) {
+    if (selectedEngineRequiresEks && discoveryError && !values.manualClusterArnEnabled) {
       return {
         status: "blocked",
         detail: "AWS discovery failed.",
@@ -289,19 +302,21 @@ export default function EnvironmentCreateForm({
         remediation: "Provide AWS account + role name (or manual role ARN in Advanced).",
       };
     }
-    if (!resolvedClusterArn) {
-      return {
-        status: "blocked",
-        detail: "No EKS cluster is selected yet.",
-        remediation: "Run discovery and select a cluster, or set manual cluster ARN in Advanced.",
-      };
-    }
-    if (!values.eksNamespace.trim()) {
-      return {
-        status: "blocked",
-        detail: "Namespace is missing.",
-        remediation: "Use the generated namespace or provide a namespace value.",
-      };
+    if (selectedEngineRequiresEks) {
+      if (!resolvedClusterArn) {
+        return {
+          status: "blocked",
+          detail: "No EKS cluster is selected yet.",
+          remediation: "Run discovery and select a cluster, or set manual cluster ARN in Advanced.",
+        };
+      }
+      if (!values.eksNamespace.trim()) {
+        return {
+          status: "blocked",
+          detail: "Namespace is missing.",
+          remediation: "Use the generated namespace or provide a namespace value.",
+        };
+      }
     }
     return { status: "ready", detail: "Inputs are valid and ready for environment creation." };
   }, [
@@ -312,6 +327,7 @@ export default function EnvironmentCreateForm({
     identityLoading,
     resolvedClusterArn,
     resolvedRoleArn,
+    selectedEngineRequiresEks,
     values.manualClusterArnEnabled,
     values.eksNamespace,
   ]);
@@ -340,19 +356,21 @@ export default function EnvironmentCreateForm({
       }
     }
 
-    if (!resolvedClusterArn) {
-      nextErrors.push("Select a discovered EKS cluster or provide a manual cluster ARN.");
-    } else if (!EKS_CLUSTER_ARN_PATTERN.test(resolvedClusterArn)) {
-      nextErrors.push("EKS cluster ARN must match arn:aws:eks:<region>:<12-digit-account-id>:cluster/<cluster-name>.");
-    }
+    if (selectedEngineRequiresEks) {
+      if (!resolvedClusterArn) {
+        nextErrors.push("Select a discovered EKS cluster or provide a manual cluster ARN.");
+      } else if (!EKS_CLUSTER_ARN_PATTERN.test(resolvedClusterArn)) {
+        nextErrors.push("EKS cluster ARN must match arn:aws:eks:<region>:<12-digit-account-id>:cluster/<cluster-name>.");
+      }
 
-    const namespace = values.eksNamespace.trim();
-    if (!namespace) {
-      nextErrors.push("EKS namespace is required in BYOC-Lite mode.");
-    } else if (!EKS_NAMESPACE_PATTERN.test(namespace)) {
-      nextErrors.push("EKS namespace must be lowercase alphanumeric with optional '-' separators.");
-    } else if (RESERVED_NAMESPACES.has(namespace)) {
-      nextErrors.push(`EKS namespace '${namespace}' is reserved. Choose a tenant-specific namespace.`);
+      const namespace = values.eksNamespace.trim();
+      if (!namespace) {
+        nextErrors.push("EKS namespace is required in BYOC-Lite mode.");
+      } else if (!EKS_NAMESPACE_PATTERN.test(namespace)) {
+        nextErrors.push("EKS namespace must be lowercase alphanumeric with optional '-' separators.");
+      } else if (RESERVED_NAMESPACES.has(namespace)) {
+        nextErrors.push(`EKS namespace '${namespace}' is reserved. Choose a tenant-specific namespace.`);
+      }
     }
 
     const maxConcurrentRuns = Number.parseInt(values.maxConcurrentRuns, 10);
@@ -371,6 +389,10 @@ export default function EnvironmentCreateForm({
   }
 
   async function runDiscovery() {
+    if (!selectedEngineRequiresEks) {
+      setDiscoveryError("Cluster discovery is only used for EMR on EKS environments.");
+      return;
+    }
     const requestRoleArn = resolvedRoleArn;
     const requestRegion = values.region.trim() || "us-east-1";
     const requestTenantId = effectiveTenantId;
@@ -535,9 +557,11 @@ export default function EnvironmentCreateForm({
 
   return (
     <div className="card" id="assisted-environment-setup" data-testid="assisted-environment-setup">
-      <h3>Assisted BYOC-Lite Environment Setup</h3>
+      <h3>Assisted Environment Setup</h3>
       <div className="subtle">
-        Cluster ARN entry is now assisted. Discover clusters first, then select one and use the generated namespace.
+        {selectedEngineRequiresEks
+          ? "Cluster ARN entry is assisted. Discover clusters first, then select one and use the generated namespace."
+          : "Dry-run environment setup for this runtime only needs role, region, and quotas."}
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
@@ -561,6 +585,33 @@ export default function EnvironmentCreateForm({
       </div>
 
       <div className="form-grid">
+        <label>
+          Spark Runtime
+          <select
+            value={values.engine}
+            onChange={(event) => {
+              const nextEngine = event.target.value as SparkEngine;
+              setDiscoveryError("");
+              setDiscoveryHint("");
+              setDiscoveredNamespaceHint("");
+              setClusters([]);
+              setNamespaceSource("manual");
+              setValues((prev) => ({
+                ...prev,
+                engine: nextEngine,
+                selectedClusterArn: nextEngine === "emr_on_eks" ? prev.selectedClusterArn : "",
+                manualClusterArnEnabled: nextEngine === "emr_on_eks" ? prev.manualClusterArnEnabled : false,
+                manualClusterArn: nextEngine === "emr_on_eks" ? prev.manualClusterArn : "",
+                eksNamespace: nextEngine === "emr_on_eks" ? prev.eksNamespace : "",
+              }));
+            }}
+            data-testid="runtime-engine-select"
+          >
+            <option value="emr_on_eks">EMR on EKS</option>
+            <option value="emr_serverless">EMR Serverless</option>
+            <option value="emr_on_ec2">EMR on EC2</option>
+          </select>
+        </label>
         <label>
           Region
           <input
@@ -608,65 +659,73 @@ export default function EnvironmentCreateForm({
         )}
       </div>
 
-      <div className="button-row">
-        <button
-          type="button"
-          className="button button-secondary"
-          onClick={() => void runDiscovery()}
-          disabled={discoveryLoading}
-          data-testid="discover-clusters-button"
-        >
-          {discoveryLoading ? "Discovering..." : "Discover EKS Clusters"}
-        </button>
-      </div>
+      {selectedEngineRequiresEks ? (
+        <div className="button-row">
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => void runDiscovery()}
+            disabled={discoveryLoading}
+            data-testid="discover-clusters-button"
+          >
+            {discoveryLoading ? "Discovering..." : "Discover EKS Clusters"}
+          </button>
+        </div>
+      ) : null}
 
       {discoveryHint ? <div className="success-text">{discoveryHint}</div> : null}
       {discoveryError ? <div className="error-text">{discoveryError}</div> : null}
 
-      <div className="form-grid">
-        {!values.manualClusterArnEnabled ? (
-          <label>
-            Discovered EKS Cluster
-            <select
-              value={values.selectedClusterArn}
-              onChange={(event) => setValues((prev) => ({ ...prev, selectedClusterArn: event.target.value }))}
-              data-testid="discovered-cluster-select"
-            >
-              <option value="">Select a discovered cluster</option>
-              {clusters.map((cluster) => (
-                <option key={cluster.arn} value={cluster.arn}>
-                  {cluster.name} ({cluster.status}{cluster.has_oidc ? ", OIDC" : ", OIDC missing"})
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <label>
-            Manual EKS Cluster ARN
-            <input
-              value={values.manualClusterArn}
-              onChange={(event) => setValues((prev) => ({ ...prev, manualClusterArn: event.target.value }))}
-              placeholder="arn:aws:eks:<region>:<account-id>:cluster/<cluster-name>"
-              data-testid="manual-cluster-arn-input"
-            />
-          </label>
-        )}
+      {selectedEngineRequiresEks ? (
+        <div className="form-grid">
+          {!values.manualClusterArnEnabled ? (
+            <label>
+              Discovered EKS Cluster
+              <select
+                value={values.selectedClusterArn}
+                onChange={(event) => setValues((prev) => ({ ...prev, selectedClusterArn: event.target.value }))}
+                data-testid="discovered-cluster-select"
+              >
+                <option value="">Select a discovered cluster</option>
+                {clusters.map((cluster) => (
+                  <option key={cluster.arn} value={cluster.arn}>
+                    {cluster.name} ({cluster.status}{cluster.has_oidc ? ", OIDC" : ", OIDC missing"})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label>
+              Manual EKS Cluster ARN
+              <input
+                value={values.manualClusterArn}
+                onChange={(event) => setValues((prev) => ({ ...prev, manualClusterArn: event.target.value }))}
+                placeholder="arn:aws:eks:<region>:<account-id>:cluster/<cluster-name>"
+                data-testid="manual-cluster-arn-input"
+              />
+            </label>
+          )}
 
-        <label>
-          EKS Namespace
-          <input
-            value={values.eksNamespace}
-            onChange={(event) => {
-              setNamespaceSource("manual");
-              setValues((prev) => ({ ...prev, eksNamespace: event.target.value }));
-            }}
-            data-testid="assisted-namespace-input"
-          />
-          {discoveredNamespaceHint ? (
-            <span className="subtle">Suggested by discovery: <code>{discoveredNamespaceHint}</code></span>
-          ) : null}
-        </label>
-      </div>
+          <label>
+            EKS Namespace
+            <input
+              value={values.eksNamespace}
+              onChange={(event) => {
+                setNamespaceSource("manual");
+                setValues((prev) => ({ ...prev, eksNamespace: event.target.value }));
+              }}
+              data-testid="assisted-namespace-input"
+            />
+            {discoveredNamespaceHint ? (
+              <span className="subtle">Suggested by discovery: <code>{discoveredNamespaceHint}</code></span>
+            ) : null}
+          </label>
+        </div>
+      ) : (
+        <div className="subtle" style={{ marginTop: 12 }}>
+          EKS cluster discovery and namespace fields are not required for this runtime in dry-run mode.
+        </div>
+      )}
 
       <details className="card" style={{ marginTop: 12 }}>
         <summary className="card-summary">
@@ -697,21 +756,23 @@ export default function EnvironmentCreateForm({
             />
             Manual role ARN override
           </label>
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={values.manualClusterArnEnabled}
-              onChange={(event) => {
-                setDiscoveryError("");
-                setValues((prev) => ({
-                  ...prev,
-                  manualClusterArnEnabled: event.target.checked,
-                  manualClusterArn: event.target.checked ? prev.manualClusterArn : "",
-                }));
-              }}
-            />
-            Manual cluster ARN override
-          </label>
+          {selectedEngineRequiresEks ? (
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={values.manualClusterArnEnabled}
+                onChange={(event) => {
+                  setDiscoveryError("");
+                  setValues((prev) => ({
+                    ...prev,
+                    manualClusterArnEnabled: event.target.checked,
+                    manualClusterArn: event.target.checked ? prev.manualClusterArn : "",
+                  }));
+                }}
+              />
+              Manual cluster ARN override
+            </label>
+          ) : null}
           <label>
             Instance Architecture
             <select

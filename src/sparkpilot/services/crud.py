@@ -8,17 +8,10 @@ from typing import Any
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
-
 from sparkpilot.config import get_settings
-
-
-def _provisioning_log_uri(env_id: str) -> str:
-    return f"s3://{get_settings().ops_s3_bucket}/provisioning/{env_id}/{uuid.uuid4()}.log"
-from sparkpilot.exceptions import ConflictError, EntityNotFoundError, ValidationError
-
 from sparkpilot.audit import write_audit_event
 from sparkpilot.aws_clients import CloudWatchLogsProxy
+from sparkpilot.exceptions import ConflictError, EntityNotFoundError, ValidationError
 from sparkpilot.models import (
     Environment,
     GoldenPath,
@@ -54,6 +47,12 @@ from sparkpilot.services._helpers import (
 )
 from sparkpilot.services.golden_paths import _resolve_golden_path_for_run
 from sparkpilot.services.preflight import _build_preflight
+
+logger = logging.getLogger(__name__)
+
+
+def _provisioning_log_uri(env_id: str) -> str:
+    return f"s3://{get_settings().ops_s3_bucket}/provisioning/{env_id}/{uuid.uuid4()}.log"
 
 
 # ---------------------------------------------------------------------------
@@ -329,26 +328,37 @@ def create_environment(
 ) -> tuple[Environment, ProvisioningOperation]:
     _require_tenant(db, req.tenant_id)
     runtime_settings = get_settings()
-    if req.provisioning_mode == "byoc_lite":
-        if not req.eks_cluster_arn:
-            raise ValidationError("eks_cluster_arn is required for byoc_lite.")
-        if not req.eks_namespace:
-            raise ValidationError("eks_namespace is required for byoc_lite.")
-    if req.provisioning_mode == "full":
-        if not runtime_settings.enable_full_byoc_mode:
+    if req.engine == "emr_on_eks":
+        if req.provisioning_mode == "byoc_lite":
+            if not req.eks_cluster_arn:
+                raise ValidationError("eks_cluster_arn is required for byoc_lite.")
+            if not req.eks_namespace:
+                raise ValidationError("eks_namespace is required for byoc_lite.")
+        if req.provisioning_mode == "full":
+            if not runtime_settings.enable_full_byoc_mode:
+                raise ValidationError(
+                    "Full provisioning mode is disabled for this deployment. "
+                    "Set SPARKPILOT_ENABLE_FULL_BYOC_MODE=true only after full-BYOC infrastructure is deployed."
+                )
+            if not FULL_BYOC_TERRAFORM_ROOT.is_dir():
+                raise ValidationError(
+                    "Full provisioning mode is unavailable for this deployment: "
+                    f"missing Terraform modules at '{FULL_BYOC_TERRAFORM_ROOT}'. "
+                    "Use provisioning_mode=byoc_lite or deploy full-BYOC Terraform modules."
+                )
+    else:
+        if not runtime_settings.dry_run_mode:
             raise ValidationError(
-                "Full provisioning mode is disabled for this deployment. "
-                "Set SPARKPILOT_ENABLE_FULL_BYOC_MODE=true only after full-BYOC infrastructure is deployed."
+                f"Engine '{req.engine}' can only be created when SPARKPILOT_DRY_RUN_MODE=true."
             )
-        if not FULL_BYOC_TERRAFORM_ROOT.is_dir():
+        if req.provisioning_mode != "byoc_lite":
             raise ValidationError(
-                "Full provisioning mode is unavailable for this deployment: "
-                f"missing Terraform modules at '{FULL_BYOC_TERRAFORM_ROOT}'. "
-                "Use provisioning_mode=byoc_lite or deploy full-BYOC Terraform modules."
+                f"Engine '{req.engine}' only supports provisioning_mode=byoc_lite in dry-run mode."
             )
 
     env = Environment(
         tenant_id=req.tenant_id,
+        engine=req.engine,
         region=req.region,
         provisioning_mode=req.provisioning_mode,
         instance_architecture=req.instance_architecture,
@@ -386,6 +396,7 @@ def create_environment(
         entity_id=env.id,
         tenant_id=env.tenant_id,
         details={
+            "engine": env.engine,
             "region": env.region,
             "provisioning_mode": env.provisioning_mode,
             "instance_architecture": env.instance_architecture,
@@ -668,6 +679,7 @@ def create_run(
     idempotency_key: str,
     commit: bool = True,
 ) -> Run:
+    runtime_settings = get_settings()
     job = _require_job(db, job_id)
     env = lock_environment_for_quota(db, job.environment_id)
     if env.status != "ready":

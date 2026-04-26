@@ -861,12 +861,28 @@ def _run_full_byoc_provisioning(
 def process_provisioning_once(db: Session, *, actor: str = "worker:provisioner") -> int:
     emr = EmrEksClient()
     terraform = TerraformOrchestrator()
+    settings = get_settings()
     pending = _claim_provisioning_operations(db, actor=actor, provisioning_steps=PROVISIONING_STEPS)
     processed = 0
     for operation in pending:
         environment = operation.environment
         try:
             _validate_customer_role_arn(environment)
+            if settings.dry_run_mode and environment.engine in {"emr_serverless", "emr_on_ec2"}:
+                _set_provisioning_ready(
+                    db,
+                    actor=actor,
+                    environment=environment,
+                    operation=operation,
+                    action="environment.dry_run_provisioned",
+                    message=f"{environment.engine} dry-run environment ready.",
+                    details={
+                        "engine": environment.engine,
+                        "dry_run_mode": True,
+                        "preflight": "skipped",
+                    },
+                )
+                continue
             if environment.provisioning_mode == "byoc_lite":
                 _run_byoc_lite_provisioning(
                     db,

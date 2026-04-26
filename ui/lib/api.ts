@@ -151,6 +151,7 @@ export type Environment = {
 
 export type EnvironmentCreateRequest = {
   tenant_id: string;
+  engine?: "emr_on_eks" | "emr_serverless" | "emr_on_ec2";
   provisioning_mode: "full" | "byoc_lite";
   region: string;
   instance_architecture?: "x86_64" | "arm64" | "mixed";

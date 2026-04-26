@@ -53,7 +53,7 @@ def test_dry_run_is_blocked_outside_dev_like_environments(monkeypatch) -> None:
         "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot",
     )
     _clear_settings_cache()
-    with pytest.raises(ValueError, match="SPARKPILOT_DRY_RUN_MODE=true is only allowed"):
+    with pytest.raises(ValueError, match="SPARKPILOT_DRY_RUN_MODE=true is not allowed in production"):
         validate_runtime_settings(get_settings())
     _clear_settings_cache()
 

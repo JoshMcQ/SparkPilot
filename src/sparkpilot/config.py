@@ -90,14 +90,15 @@ def is_valid_iam_role_arn(value: str) -> bool:
 def _validate_environment_mode(settings: Settings) -> bool:
     environment_name = settings.environment.strip().lower()
     is_dev_like_environment = environment_name in {"dev", "development", "local", "test"}
+    is_prod_like_environment = environment_name in {"prod", "production"}
     if settings.database_url.startswith("sqlite") and not is_dev_like_environment:
         raise ValueError(
             "SQLite is only supported in development/test environments. "
             "Use PostgreSQL for staging/production deployments."
         )
-    if settings.dry_run_mode and not is_dev_like_environment:
+    if settings.dry_run_mode and is_prod_like_environment:
         raise ValueError(
-            "SPARKPILOT_DRY_RUN_MODE=true is only allowed in development/test environments."
+            "SPARKPILOT_DRY_RUN_MODE=true is not allowed in production environments."
         )
     if not is_dev_like_environment:
         if settings.database_url == _DEFAULT_DATABASE_URL:
