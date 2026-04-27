@@ -112,7 +112,7 @@ class UserIdentity(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
     user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
     actor: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -152,7 +152,7 @@ class MagicLinkToken(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=False
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     tenant_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("tenants.id"), nullable=False
@@ -162,6 +162,9 @@ class MagicLinkToken(Base):
         DateTime(timezone=True), nullable=False
     )
     consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    callback_consumed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -178,7 +181,7 @@ class MagicLinkLog(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
     user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=False
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     tenant_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("tenants.id"), nullable=False

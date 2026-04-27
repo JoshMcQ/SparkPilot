@@ -99,6 +99,7 @@ def upgrade() -> None:
                     "users",
                     ["user_id"],
                     ["id"],
+                    ondelete="RESTRICT",
                 )
 
     inspector = sa.inspect(bind)
@@ -112,6 +113,7 @@ def upgrade() -> None:
             sa.Column("purpose", sa.String(length=32), nullable=False),
             sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("callback_consumed_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("created_by", sa.String(length=255), nullable=False),
             sa.CheckConstraint(
@@ -119,7 +121,7 @@ def upgrade() -> None:
                 name="ck_magic_link_tokens_purpose",
             ),
             sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
-            sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
+            sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT"),
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("token_hash", name="uq_magic_link_tokens_token_hash"),
         )
@@ -128,6 +130,13 @@ def upgrade() -> None:
             "magic_link_tokens",
             ["user_id", "purpose"],
         )
+    else:
+        token_columns = _column_names(inspector, "magic_link_tokens")
+        if "callback_consumed_at" not in token_columns:
+            op.add_column(
+                "magic_link_tokens",
+                sa.Column("callback_consumed_at", sa.DateTime(timezone=True), nullable=True),
+            )
 
     inspector = sa.inspect(bind)
     if not _table_exists(inspector, "magic_link_logs"):
@@ -146,7 +155,7 @@ def upgrade() -> None:
             sa.Column("created_by", sa.String(length=255), nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
-            sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
+            sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT"),
             sa.PrimaryKeyConstraint("id"),
         )
         op.create_index(

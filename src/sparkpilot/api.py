@@ -106,6 +106,7 @@ from sparkpilot.schemas import (
 from sparkpilot.services import (
     add_team_environment_scope,
     apply_invite_identity_mapping,
+    consume_invite_callback_state,
     consume_invite_token,
     remove_team_environment_scope,
     cancel_run,
@@ -446,6 +447,7 @@ class InternalAdminContext:
 class InviteStatePayload:
     tenant_id: str
     user_id: str
+    token_id: str
 
 
 def _forbidden(detail: str) -> HTTPException:
@@ -485,7 +487,7 @@ def require_internal_admin(request: Request) -> InternalAdminContext:
 
 
 def _state_signing_key() -> bytes:
-    return get_settings().bootstrap_secret.encode("utf-8")
+    return get_settings().invite_state_signing_secret.encode("utf-8")
 
 
 def _urlsafe_b64encode(raw: bytes) -> str:
@@ -503,6 +505,7 @@ def _encode_invite_state(payload: InviteStatePayload) -> str:
             "kind": "invite",
             "tenant_id": payload.tenant_id,
             "user_id": payload.user_id,
+            "token_id": payload.token_id,
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -545,9 +548,14 @@ def _decode_invite_state(state: str | None) -> InviteStatePayload | None:
         return None
     tenant_id = str(payload.get("tenant_id") or "").strip()
     user_id = str(payload.get("user_id") or "").strip()
-    if not tenant_id or not user_id:
+    token_id = str(payload.get("token_id") or "").strip()
+    if not tenant_id or not user_id or not token_id:
         return None
-    return InviteStatePayload(tenant_id=tenant_id, user_id=user_id)
+    return InviteStatePayload(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        token_id=token_id,
+    )
 
 
 def _append_query_params(url: str, params: dict[str, str]) -> str:
@@ -1104,6 +1112,7 @@ def accept_invite(
         InviteStatePayload(
             tenant_id=consumed.user.tenant_id,
             user_id=consumed.user.id,
+            token_id=consumed.token.id,
         )
     )
     redirect_url = _cognito_invite_redirect_url(state)
@@ -1121,12 +1130,24 @@ def get_auth_callback(
     identity = _require_api_identity(request)
     invite_payload = _decode_invite_state(state)
     if invite_payload is None:
+        if state and state.partition(".")[0] == _INVITE_STATE_PREFIX:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid invite state.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         return AuthCallbackResponse(
             status="ok",
             actor=identity.subject,
             invite_applied=False,
         )
 
+    consume_invite_callback_state(
+        db,
+        token_id=invite_payload.token_id,
+        tenant_id=invite_payload.tenant_id,
+        user_id=invite_payload.user_id,
+    )
     source_ip = request.client.host if request.client else None
     apply_invite_identity_mapping(
         db,
@@ -1134,7 +1155,9 @@ def get_auth_callback(
         user_id=invite_payload.user_id,
         actor=identity.subject,
         source_ip=source_ip,
+        commit=False,
     )
+    db.commit()
     return AuthCallbackResponse(
         status="ok",
         actor=identity.subject,

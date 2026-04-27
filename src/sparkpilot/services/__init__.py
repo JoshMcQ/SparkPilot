@@ -62,6 +62,7 @@ from sparkpilot.services.crud import (  # noqa: F401
 from sparkpilot.services.internal_admin import (  # noqa: F401
     INVITE_ACCEPT_PURPOSE,
     apply_invite_identity_mapping,
+    consume_invite_callback_state,
     consume_invite_token,
     create_tenant_with_admin_invite,
     get_internal_tenant_detail,

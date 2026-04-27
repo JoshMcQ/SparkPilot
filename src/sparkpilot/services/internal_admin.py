@@ -305,6 +305,37 @@ class ConsumedInvite:
     user: User
 
 
+def consume_invite_callback_state(
+    db: Session,
+    *,
+    token_id: str,
+    tenant_id: str,
+    user_id: str,
+) -> MagicLinkToken:
+    row = db.get(MagicLinkToken, token_id)
+    if row is None:
+        raise EntityNotFoundError("Invite token not found.")
+    if row.purpose != INVITE_ACCEPT_PURPOSE:
+        raise EntityNotFoundError("Invite token not found.")
+    if row.tenant_id != tenant_id or row.user_id != user_id:
+        raise EntityNotFoundError("Invite token does not match invite context.")
+    if row.consumed_at is None:
+        raise GoneError("Invite token has not been accepted.")
+
+    now = _utc_now()
+    expires_at = row.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at <= now:
+        raise GoneError("Invite token has expired.")
+    if row.callback_consumed_at is not None:
+        raise GoneError("Invite state has already been consumed.")
+
+    row.callback_consumed_at = now
+    db.flush()
+    return row
+
+
 def consume_invite_token(db: Session, *, token: str) -> ConsumedInvite:
     token_hash = hash_magic_link_token(token)
     row = db.execute(
@@ -346,6 +377,7 @@ def apply_invite_identity_mapping(
     user_id: str,
     actor: str,
     source_ip: str | None,
+    commit: bool = True,
 ) -> UserIdentity:
     user = db.get(User, user_id)
     if user is None or user.tenant_id != tenant_id:
@@ -417,6 +449,9 @@ def apply_invite_identity_mapping(
         tenant_id=user.tenant_id,
         details={"user_id": user.id},
     )
-    db.commit()
-    db.refresh(row)
+    if commit:
+        db.commit()
+        db.refresh(row)
+    else:
+        db.flush()
     return row

@@ -25,6 +25,10 @@ def _set_internal_admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "SPARKPILOT_COGNITO_HOSTED_UI_URL", "https://auth.example.com/oauth2/authorize"
     )
     monkeypatch.setenv("SPARKPILOT_MAGIC_LINK_TTL_HOURS", "24")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_STATE_SECRET",
+        "sparkpilot-invite-state-secret-for-tests",
+    )
     get_settings.cache_clear()
     _oidc_verifier.cache_clear()
 
@@ -271,6 +275,131 @@ def test_regenerate_invite_after_consumption_invalidates_old_token_and_issues_ne
             follow_redirects=False,
         )
         assert new_accept.status_code == 307
+
+
+def test_invite_callback_rejects_reused_state_for_consumed_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+    internal_headers = _auth_headers("ops-subject", "ops@sparkpilot.cloud")
+
+    with _BaseTestClient(app) as client:
+        create = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Replay Tenant",
+                "admin_email": "replay@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        accept = client.get(
+            "/v1/invite/accept",
+            params={"token": token},
+            follow_redirects=False,
+        )
+        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        invited_headers = _auth_headers("invite-user-sub", "replay@tenant.example")
+
+        first_callback = client.get(
+            "/auth/callback",
+            params={"state": state},
+            headers=invited_headers,
+        )
+        assert first_callback.status_code == 200
+
+        replayed = client.get(
+            "/auth/callback",
+            params={"state": state},
+            headers=invited_headers,
+        )
+        assert replayed.status_code == 410
+        assert "consumed" in replayed.json()["detail"].lower()
+
+
+def test_invite_callback_rejects_tampered_state_signature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+    internal_headers = _auth_headers("ops-subject", "ops@sparkpilot.cloud")
+
+    with _BaseTestClient(app) as client:
+        create = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Tamper Tenant",
+                "admin_email": "tamper@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        accept = client.get(
+            "/v1/invite/accept",
+            params={"token": token},
+            follow_redirects=False,
+        )
+        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        prefix, body, _ = state.split(".")
+        tampered_state = f"{prefix}.{body}.tampered-signature"
+        invited_headers = _auth_headers("invite-user-sub", "tamper@tenant.example")
+
+        callback = client.get(
+            "/auth/callback",
+            params={"state": tampered_state},
+            headers=invited_headers,
+        )
+        assert callback.status_code == 401
+        assert "invalid invite state" in callback.json()["detail"].lower()
+
+
+def test_invite_callback_rejects_valid_signed_state_when_token_expired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+    internal_headers = _auth_headers("ops-subject", "ops@sparkpilot.cloud")
+
+    with _BaseTestClient(app) as client:
+        create = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Expired Callback Tenant",
+                "admin_email": "expired-callback@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        accept = client.get(
+            "/v1/invite/accept",
+            params={"token": token},
+            follow_redirects=False,
+        )
+        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+
+        with SessionLocal() as db:
+            row = db.execute(
+                select(MagicLinkToken).where(MagicLinkToken.token_hash == token_hash)
+            ).scalar_one()
+            row.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+            db.commit()
+
+        invited_headers = _auth_headers(
+            "invite-user-sub",
+            "expired-callback@tenant.example",
+        )
+        callback = client.get(
+            "/auth/callback",
+            params={"state": state},
+            headers=invited_headers,
+        )
+        assert callback.status_code == 410
+        assert "expired" in callback.json()["detail"].lower()
 
 
 def test_bootstrap_flow_returns_410_when_disabled(

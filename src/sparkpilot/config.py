@@ -49,6 +49,12 @@ class Settings(BaseSettings):
             "SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET"
         ),
     )
+    invite_state_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_INVITE_STATE_SECRET", "INVITE_STATE_SECRET"
+        ),
+    )
     bootstrap_flow: str = Field(
         default="",
         validation_alias=AliasChoices(
@@ -131,6 +137,13 @@ class Settings(BaseSettings):
             for email in self.internal_admins.split(",")
             if email.strip()
         }
+
+    @property
+    def invite_state_signing_secret(self) -> str:
+        explicit_secret = self.invite_state_secret.strip()
+        if explicit_secret:
+            return explicit_secret
+        return self.bootstrap_secret.strip()
 
 
 def is_valid_iam_role_arn(value: str) -> bool:
@@ -228,6 +241,12 @@ def _validate_security_runtime_settings(settings: Settings) -> None:
     if len(bootstrap_secret) < MIN_BOOTSTRAP_SECRET_LENGTH:
         raise ValueError(
             f"BOOTSTRAP_SECRET must be set and at least {MIN_BOOTSTRAP_SECRET_LENGTH} characters."
+        )
+    invite_state_secret = settings.invite_state_secret.strip()
+    if invite_state_secret and len(invite_state_secret) < MIN_BOOTSTRAP_SECRET_LENGTH:
+        raise ValueError(
+            "SPARKPILOT_INVITE_STATE_SECRET must be at least "
+            f"{MIN_BOOTSTRAP_SECRET_LENGTH} characters when provided."
         )
     if not settings.cors_origin_list:
         raise ValueError("SPARKPILOT_CORS_ORIGINS must contain at least one origin.")
