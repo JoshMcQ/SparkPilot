@@ -9,9 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from sparkpilot.api import _oidc_verifier, app
-from sparkpilot.config import get_settings
+from sparkpilot.config import get_settings, validate_runtime_settings
 from sparkpilot.db import Base, SessionLocal, engine
-from sparkpilot.models import MagicLinkLog, MagicLinkToken, User, UserIdentity
+from sparkpilot.models import MagicLinkLog, MagicLinkToken, Team, User, UserIdentity
 from tests.conftest import _BaseTestClient, issue_test_token
 from tests.db_test_utils import reset_sqlite_test_db
 
@@ -42,6 +42,20 @@ def _auth_headers(subject: str, email: str) -> dict[str, str]:
 def test_issue_test_token_rejects_reserved_claim_overrides() -> None:
     with pytest.raises(ValueError):
         issue_test_token("subject", extra_claims={"sub": "override"})
+
+
+def test_validate_runtime_settings_rejects_invalid_cognito_hosted_ui_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_COGNITO_HOSTED_UI_URL", "not-a-valid-url")
+    get_settings.cache_clear()
+    _oidc_verifier.cache_clear()
+
+    with pytest.raises(
+        ValueError,
+        match="SPARKPILOT_COGNITO_HOSTED_UI_URL must be a valid http\\(s\\) URL",
+    ):
+        validate_runtime_settings(get_settings())
 
 
 def test_require_internal_admin_dependency_enforces_authn_and_email_membership(
@@ -554,6 +568,88 @@ def test_user_identity_user_id_is_unique(
             with pytest.raises(IntegrityError):
                 db.commit()
             db.rollback()
+
+
+def test_invite_callback_preserves_existing_team_assignment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+    internal_headers = _auth_headers("ops-subject", "ops@sparkpilot.cloud")
+
+    with _BaseTestClient(app) as client:
+        create = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Team Preserve Tenant",
+                "admin_email": "team-preserve@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        create_payload = create.json()
+        tenant_id = create_payload["tenant_id"]
+        user_id = create_payload["user_id"]
+        first_token = parse_qs(urlsplit(create_payload["magic_link_url"]).query)[
+            "token"
+        ][0]
+
+        first_accept = client.get(
+            "/v1/invite/accept",
+            params={"token": first_token},
+            follow_redirects=False,
+        )
+        first_state = parse_qs(urlsplit(first_accept.headers["location"]).query)[
+            "state"
+        ][0]
+        invited_headers = _auth_headers(
+            "team-preserve-subject", "team-preserve@tenant.example"
+        )
+        first_callback = client.get(
+            "/auth/callback",
+            params={"state": first_state},
+            headers=invited_headers,
+        )
+        assert first_callback.status_code == 200
+
+        with SessionLocal() as db:
+            team = Team(tenant_id=tenant_id, name="Ops Team")
+            db.add(team)
+            db.flush()
+            identity = db.execute(
+                select(UserIdentity).where(UserIdentity.user_id == user_id)
+            ).scalar_one()
+            identity.team_id = team.id
+            db.commit()
+
+        regenerate = client.post(
+            f"/v1/internal/tenants/{tenant_id}/users/{user_id}/regenerate-invite",
+            headers=internal_headers,
+        )
+        second_token = parse_qs(urlsplit(regenerate.json()["magic_link_url"]).query)[
+            "token"
+        ][0]
+
+        second_accept = client.get(
+            "/v1/invite/accept",
+            params={"token": second_token},
+            follow_redirects=False,
+        )
+        second_state = parse_qs(urlsplit(second_accept.headers["location"]).query)[
+            "state"
+        ][0]
+        second_callback = client.get(
+            "/auth/callback",
+            params={"state": second_state},
+            headers=invited_headers,
+        )
+        assert second_callback.status_code == 200
+
+        with SessionLocal() as db:
+            identity = db.execute(
+                select(UserIdentity).where(UserIdentity.user_id == user_id)
+            ).scalar_one()
+            assert identity.team_id is not None
 
 
 def test_bootstrap_flow_returns_410_when_disabled(
