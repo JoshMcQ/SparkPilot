@@ -40,6 +40,13 @@ class ConflictError(SparkPilotError):
         super().__init__(detail, status_code=409)
 
 
+class GoneError(SparkPilotError):
+    """Requested resource existed but is no longer usable."""
+
+    def __init__(self, detail: str = "Gone.") -> None:
+        super().__init__(detail, status_code=410)
+
+
 class ValidationError(SparkPilotError):
     """Request payload or state failed validation."""
 
