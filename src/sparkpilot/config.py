@@ -1,6 +1,6 @@
 from functools import lru_cache
 import re
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import urlparse
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -120,11 +120,11 @@ class Settings(BaseSettings):
     def bootstrap_flow_mode(self) -> Literal["enabled", "disabled"]:
         raw = self.bootstrap_flow.strip().lower()
         if raw in {"enabled", "disabled"}:
-            return raw
+            return cast(Literal["enabled", "disabled"], raw)
         environment_name = self.environment.strip().lower()
-        if environment_name in {"prod", "production"}:
-            return "disabled"
-        return "enabled"
+        if environment_name in {"dev", "development", "local", "test"}:
+            return "enabled"
+        return "disabled"
 
     @property
     def bootstrap_flow_enabled(self) -> bool:
@@ -234,6 +234,16 @@ def _validate_auth_settings(settings: Settings) -> None:
             raise ValueError("OIDC_JWKS_URI file:// URL must include a file path.")
     elif parsed_jwks.scheme not in {"http", "https"} or not parsed_jwks.netloc:
         raise ValueError("OIDC_JWKS_URI must be a valid http(s) or file:// URL.")
+    hosted_ui_url = settings.cognito_hosted_ui_url.strip()
+    if hosted_ui_url:
+        parsed_hosted_ui_url = urlparse(hosted_ui_url)
+        if (
+            parsed_hosted_ui_url.scheme not in {"http", "https"}
+            or not parsed_hosted_ui_url.netloc
+        ):
+            raise ValueError(
+                "SPARKPILOT_COGNITO_HOSTED_UI_URL must be a valid http(s) URL."
+            )
 
 
 def _validate_security_runtime_settings(settings: Settings) -> None:

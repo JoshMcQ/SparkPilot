@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,18 +29,20 @@ RunState = Literal[
 ]
 PreflightCheckStatus = Literal["pass", "warning", "fail"]
 UserRole = Literal["admin", "operator", "user"]
+COGNITO_PASSWORD_FEDERATION: Final[str] = "cognito_password"  # pragma: allowlist secret
+FederationType = Literal[COGNITO_PASSWORD_FEDERATION, "saml", "oidc"]
 
 
 class TenantCreateRequest(BaseModel):
     name: str = Field(min_length=3, max_length=255)
-    federation_type: Literal["cognito_password", "saml", "oidc"] = "cognito_password"
+    federation_type: FederationType = COGNITO_PASSWORD_FEDERATION
     idp_metadata: dict | None = None
 
 
 class TenantResponse(BaseModel):
     id: str
     name: str
-    federation_type: Literal["cognito_password", "saml", "oidc"]
+    federation_type: FederationType
     idp_metadata: dict | None = Field(
         default=None, validation_alias="idp_metadata_json"
     )
@@ -50,8 +52,12 @@ class TenantResponse(BaseModel):
 
 class InternalTenantCreateRequest(BaseModel):
     name: str = Field(min_length=3, max_length=255)
-    admin_email: str = Field(min_length=3, max_length=255)
-    federation_type: Literal["cognito_password", "saml", "oidc"] = "cognito_password"
+    admin_email: str = Field(
+        min_length=3,
+        max_length=255,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+    federation_type: FederationType = COGNITO_PASSWORD_FEDERATION
     idp_metadata: dict | None = None
 
 
@@ -84,16 +90,11 @@ class InternalTenantListItemResponse(BaseModel):
 class InternalTenantDetailResponse(BaseModel):
     tenant_id: str
     tenant_name: str
-    federation_type: Literal["cognito_password", "saml", "oidc"]
+    federation_type: FederationType
     idp_metadata: dict | None
     created_at: datetime
     updated_at: datetime
     users: list[InternalTenantUserResponse]
-
-
-class InviteAcceptResponse(BaseModel):
-    status: Literal["redirecting"]
-    redirect_url: str
 
 
 class AuthCallbackResponse(BaseModel):

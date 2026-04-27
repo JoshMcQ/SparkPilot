@@ -75,6 +75,12 @@ def issue_test_token(
         "exp": now + expires_in_seconds,
     }
     if extra_claims:
+        reserved_claims = {"sub", "iss", "aud", "iat", "exp"}
+        conflicts = reserved_claims & set(extra_claims.keys())
+        if conflicts:
+            raise ValueError(
+                f"extra_claims cannot override reserved JWT claims: {sorted(conflicts)}"
+            )
         payload.update(extra_claims)
     return jwt.encode(
         payload,

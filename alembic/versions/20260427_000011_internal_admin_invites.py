@@ -64,8 +64,18 @@ def upgrade() -> None:
             sa.Column("invited_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("invite_consumed_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
             sa.CheckConstraint("role IN ('admin','member')", name="ck_users_role"),
             sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
             sa.PrimaryKeyConstraint("id"),
@@ -84,6 +94,11 @@ def upgrade() -> None:
                 sa.Column(
                     "invite_consumed_at", sa.DateTime(timezone=True), nullable=True
                 ),
+            )
+        if "last_login_at" not in user_columns:
+            op.add_column(
+                "users",
+                sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
             )
 
     inspector = sa.inspect(bind)
@@ -113,8 +128,15 @@ def upgrade() -> None:
             sa.Column("purpose", sa.String(length=32), nullable=False),
             sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("callback_consumed_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column(
+                "callback_consumed_at", sa.DateTime(timezone=True), nullable=True
+            ),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
             sa.Column("created_by", sa.String(length=255), nullable=False),
             sa.CheckConstraint(
                 "purpose IN ('invite_accept')",
@@ -135,7 +157,9 @@ def upgrade() -> None:
         if "callback_consumed_at" not in token_columns:
             op.add_column(
                 "magic_link_tokens",
-                sa.Column("callback_consumed_at", sa.DateTime(timezone=True), nullable=True),
+                sa.Column(
+                    "callback_consumed_at", sa.DateTime(timezone=True), nullable=True
+                ),
             )
 
     inspector = sa.inspect(bind)
@@ -153,7 +177,12 @@ def upgrade() -> None:
             ),
             sa.Column("magic_link_url", sa.Text(), nullable=False),
             sa.Column("created_by", sa.String(length=255), nullable=False),
-            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
             sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
             sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT"),
             sa.PrimaryKeyConstraint("id"),

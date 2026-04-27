@@ -115,7 +115,8 @@ def test_internal_tenant_invite_happy_path_end_to_end(
                 ).scalars()
             )
             assert len(logs) == 1
-            assert token in logs[0].magic_link_url
+            assert "token=" not in logs[0].magic_link_url
+            assert logs[0].magic_link_url == magic_link_url.split("?", 1)[0]
 
         accept = client.get(
             "/v1/invite/accept",
@@ -224,6 +225,40 @@ def test_invite_accept_rejects_consumed_and_wrong_token(
         )
         assert wrong.status_code == 404
         assert "not found" in wrong.json()["detail"].lower()
+
+
+def test_invite_accept_fails_closed_when_cognito_hosted_ui_url_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+    monkeypatch.setenv("SPARKPILOT_COGNITO_HOSTED_UI_URL", "")
+    get_settings.cache_clear()
+    _oidc_verifier.cache_clear()
+    internal_headers = _auth_headers("ops-subject", "ops@sparkpilot.cloud")
+
+    with _BaseTestClient(app) as client:
+        create = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Missing Hosted UI Tenant",
+                "admin_email": "hosted-ui@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+        response = client.get("/v1/invite/accept", params={"token": token})
+        assert response.status_code == 503
+        assert "not configured" in response.json()["detail"].lower()
+
+        with SessionLocal() as db:
+            row = db.execute(
+                select(MagicLinkToken).where(MagicLinkToken.token_hash == token_hash)
+            ).scalar_one()
+            assert row.consumed_at is None
 
 
 def test_regenerate_invite_after_consumption_invalidates_old_token_and_issues_new(
@@ -435,3 +470,8 @@ def test_bootstrap_flow_defaults_by_environment(
     monkeypatch.setenv("SPARKPILOT_ENVIRONMENT", "test")
     get_settings.cache_clear()
     assert get_settings().bootstrap_flow_enabled is True
+
+    monkeypatch.delenv("SPARKPILOT_BOOTSTRAP_FLOW", raising=False)
+    monkeypatch.setenv("SPARKPILOT_ENVIRONMENT", "staging")
+    get_settings.cache_clear()
+    assert get_settings().bootstrap_flow_enabled is False

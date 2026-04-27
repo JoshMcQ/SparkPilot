@@ -7,6 +7,7 @@ Hierarchy:
     SparkPilotError
     |- EntityNotFoundError
     |- ConflictError
+    |- GoneError
     |- ValidationError
     |- QuotaExceededError
     |- ProvisioningError

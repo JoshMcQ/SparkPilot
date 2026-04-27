@@ -154,6 +154,7 @@ _PRODUCTION_ENV_VALUES = {"production", "prod"}
 _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 _FALSE_VALUES = {"0", "false", "no", "n", "off", ""}
 _INVITE_STATE_PREFIX = "sp_invite_v1"
+_INVITE_STATE_TTL_SECONDS = 10 * 60
 
 
 def _env_value(*names: str, default: str = "") -> str:
@@ -448,6 +449,7 @@ class InviteStatePayload:
     tenant_id: str
     user_id: str
     token_id: str
+    exp: int
 
 
 def _forbidden(detail: str) -> HTTPException:
@@ -506,6 +508,7 @@ def _encode_invite_state(payload: InviteStatePayload) -> str:
             "tenant_id": payload.tenant_id,
             "user_id": payload.user_id,
             "token_id": payload.token_id,
+            "exp": payload.exp,
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -549,12 +552,21 @@ def _decode_invite_state(state: str | None) -> InviteStatePayload | None:
     tenant_id = str(payload.get("tenant_id") or "").strip()
     user_id = str(payload.get("user_id") or "").strip()
     token_id = str(payload.get("token_id") or "").strip()
+    raw_exp = payload.get("exp")
+    try:
+        exp = int(raw_exp)
+    except (TypeError, ValueError):
+        return None
+    now_ts = int(datetime.now(UTC).timestamp())
+    if exp <= now_ts:
+        return None
     if not tenant_id or not user_id or not token_id:
         return None
     return InviteStatePayload(
         tenant_id=tenant_id,
         user_id=user_id,
         token_id=token_id,
+        exp=exp,
     )
 
 
@@ -999,11 +1011,22 @@ def _invite_accept_base_url(request: Request) -> str:
     return str(request.url_for("accept_invite"))
 
 
-def _cognito_invite_redirect_url(state: str) -> str:
+def _configured_cognito_hosted_ui_url() -> str:
     runtime_settings = get_settings()
     hosted_ui_url = runtime_settings.cognito_hosted_ui_url.strip()
     if not hosted_ui_url:
-        hosted_ui_url = "https://example.com/oauth2/authorize"
+        logger.error(
+            "Cognito hosted UI URL is not configured; invite accept cannot redirect."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cognito hosted UI URL is not configured.",
+        )
+    return hosted_ui_url
+
+
+def _cognito_invite_redirect_url(state: str) -> str:
+    hosted_ui_url = _configured_cognito_hosted_ui_url()
     return _append_query_params(hosted_ui_url, {"state": state})
 
 
@@ -1107,12 +1130,18 @@ def accept_invite(
     token: str = Query(min_length=10),
     db: Session = Depends(get_db),
 ) -> Response:
+    _configured_cognito_hosted_ui_url()
     consumed = consume_invite_token(db, token=token)
     state = _encode_invite_state(
         InviteStatePayload(
             tenant_id=consumed.user.tenant_id,
             user_id=consumed.user.id,
             token_id=consumed.token.id,
+            exp=int(
+                (
+                    datetime.now(UTC) + timedelta(seconds=_INVITE_STATE_TTL_SECONDS)
+                ).timestamp()
+            ),
         )
     )
     redirect_url = _cognito_invite_redirect_url(state)
