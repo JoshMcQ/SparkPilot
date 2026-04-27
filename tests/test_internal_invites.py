@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from sparkpilot.api import _oidc_verifier, app
 from sparkpilot.config import get_settings
@@ -36,6 +37,11 @@ def _set_internal_admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _auth_headers(subject: str, email: str) -> dict[str, str]:
     token = issue_test_token(subject, extra_claims={"email": email})
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_issue_test_token_rejects_reserved_claim_overrides() -> None:
+    with pytest.raises(ValueError):
+        issue_test_token("subject", extra_claims={"sub": "override"})
 
 
 def test_require_internal_admin_dependency_enforces_authn_and_email_membership(
@@ -188,6 +194,26 @@ def test_invite_accept_rejects_expired_token(monkeypatch: pytest.MonkeyPatch) ->
         expired = client.get("/v1/invite/accept", params={"token": token})
         assert expired.status_code == 410
         assert "expired" in expired.json()["detail"].lower()
+
+
+def test_internal_tenant_create_rejects_invalid_admin_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+    internal_headers = _auth_headers("ops-subject", "ops@sparkpilot.cloud")
+
+    with _BaseTestClient(app) as client:
+        response = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Invalid Email Tenant",
+                "admin_email": "not-an-email",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        assert response.status_code == 422
 
 
 def test_invite_accept_rejects_consumed_and_wrong_token(
@@ -477,6 +503,57 @@ def test_invite_callback_rejects_authenticated_email_mismatch(
                 select(MagicLinkToken).where(MagicLinkToken.token_hash == token_hash)
             ).scalar_one()
             assert row.callback_consumed_at is None
+
+
+def test_user_identity_user_id_is_unique(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+    internal_headers = _auth_headers("ops-subject", "ops@sparkpilot.cloud")
+
+    with _BaseTestClient(app) as client:
+        create = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Unique Identity Tenant",
+                "admin_email": "unique@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        payload = create.json()
+        tenant_id = payload["tenant_id"]
+        user_id = payload["user_id"]
+        token = parse_qs(urlsplit(payload["magic_link_url"]).query)["token"][0]
+
+        accept = client.get(
+            "/v1/invite/accept",
+            params={"token": token},
+            follow_redirects=False,
+        )
+        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        invited_headers = _auth_headers("invite-user-sub", "unique@tenant.example")
+        callback = client.get(
+            "/auth/callback",
+            params={"state": state},
+            headers=invited_headers,
+        )
+        assert callback.status_code == 200
+
+        with SessionLocal() as db:
+            db.add(
+                UserIdentity(
+                    actor="other-subject",
+                    role="admin",
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    active=True,
+                )
+            )
+            with pytest.raises(IntegrityError):
+                db.commit()
+            db.rollback()
 
 
 def test_bootstrap_flow_returns_410_when_disabled(

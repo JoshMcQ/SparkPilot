@@ -140,7 +140,7 @@ class MagicLinkToken(Base):
     __table_args__ = (
         UniqueConstraint("token_hash", name="uq_magic_link_tokens_token_hash"),
         CheckConstraint(
-            "purpose IN ('invite_accept')",
+            "purpose IN ('invite_accept','password_reset','email_verify')",
             name="ck_magic_link_tokens_purpose",
         ),
         Index(

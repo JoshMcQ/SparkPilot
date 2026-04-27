@@ -149,7 +149,7 @@ def upgrade() -> None:
             ),
             sa.Column("created_by", sa.String(length=255), nullable=False),
             sa.CheckConstraint(
-                "purpose IN ('invite_accept')",
+                "purpose IN ('invite_accept','password_reset','email_verify')",
                 name="ck_magic_link_tokens_purpose",
             ),
             sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
