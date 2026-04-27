@@ -437,6 +437,48 @@ def test_invite_callback_rejects_valid_signed_state_when_token_expired(
         assert "expired" in callback.json()["detail"].lower()
 
 
+def test_invite_callback_rejects_authenticated_email_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+    internal_headers = _auth_headers("ops-subject", "ops@sparkpilot.cloud")
+
+    with _BaseTestClient(app) as client:
+        create = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Mismatch Tenant",
+                "admin_email": "expected@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        accept = client.get(
+            "/v1/invite/accept",
+            params={"token": token},
+            follow_redirects=False,
+        )
+        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+
+        mismatch_headers = _auth_headers("invite-user-sub", "wrong@tenant.example")
+        callback = client.get(
+            "/auth/callback",
+            params={"state": state},
+            headers=mismatch_headers,
+        )
+        assert callback.status_code == 401
+        assert "does not match" in callback.json()["detail"].lower()
+
+        with SessionLocal() as db:
+            row = db.execute(
+                select(MagicLinkToken).where(MagicLinkToken.token_hash == token_hash)
+            ).scalar_one()
+            assert row.callback_consumed_at is None
+
+
 def test_bootstrap_flow_returns_410_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

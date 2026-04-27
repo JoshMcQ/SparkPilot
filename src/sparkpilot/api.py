@@ -48,6 +48,7 @@ from sparkpilot.models import (
     JobTemplate,
     Run,
     TeamEnvironmentScope,
+    User,
     UserIdentity,
 )
 from sparkpilot.oidc import (
@@ -1169,6 +1170,21 @@ def get_auth_callback(
             status="ok",
             actor=identity.subject,
             invite_applied=False,
+        )
+
+    identity_email = _normalized_email_from_identity(identity)
+    invited_user = db.get(User, invite_payload.user_id)
+    if invited_user is None or invited_user.tenant_id != invite_payload.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite user not found.",
+        )
+    invited_email = invited_user.email.strip().lower()
+    if not identity_email or identity_email != invited_email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invite email does not match authenticated identity.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     consume_invite_callback_state(

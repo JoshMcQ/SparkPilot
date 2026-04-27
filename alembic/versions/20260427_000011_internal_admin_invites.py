@@ -104,6 +104,11 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     if _table_exists(inspector, "user_identities"):
         identity_columns = _column_names(inspector, "user_identities")
+        unique_constraint_names = {
+            constraint["name"]
+            for constraint in inspector.get_unique_constraints("user_identities")
+            if constraint.get("name")
+        }
         if "user_id" not in identity_columns:
             with op.batch_alter_table("user_identities") as batch_op:
                 batch_op.add_column(
@@ -115,6 +120,11 @@ def upgrade() -> None:
                     ["user_id"],
                     ["id"],
                     ondelete="RESTRICT",
+                )
+        if "uq_user_identities_user_id" not in unique_constraint_names:
+            with op.batch_alter_table("user_identities") as batch_op:
+                batch_op.create_unique_constraint(
+                    "uq_user_identities_user_id", ["user_id"]
                 )
 
     inspector = sa.inspect(bind)
@@ -208,13 +218,30 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     if _table_exists(inspector, "user_identities"):
         identity_columns = _column_names(inspector, "user_identities")
-        if "user_id" in identity_columns:
-            with op.batch_alter_table("user_identities") as batch_op:
+        unique_constraint_names = {
+            constraint["name"]
+            for constraint in inspector.get_unique_constraints("user_identities")
+            if constraint.get("name")
+        }
+        with op.batch_alter_table("user_identities") as batch_op:
+            if "uq_user_identities_user_id" in unique_constraint_names:
+                batch_op.drop_constraint(
+                    "uq_user_identities_user_id",
+                    type_="unique",
+                )
+            if "user_id" in identity_columns:
                 batch_op.drop_column("user_id")
 
     inspector = sa.inspect(bind)
     if _table_exists(inspector, "users"):
-        op.drop_table("users")
+        user_columns = _column_names(inspector, "users")
+        with op.batch_alter_table("users") as batch_op:
+            if "last_login_at" in user_columns:
+                batch_op.drop_column("last_login_at")
+            if "invite_consumed_at" in user_columns:
+                batch_op.drop_column("invite_consumed_at")
+            if "invited_at" in user_columns:
+                batch_op.drop_column("invited_at")
 
     inspector = sa.inspect(bind)
     if _table_exists(inspector, "tenants"):

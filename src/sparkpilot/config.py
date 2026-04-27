@@ -1,4 +1,5 @@
 from functools import lru_cache
+import hashlib
 import re
 from typing import Literal, cast
 from urllib.parse import urlparse
@@ -143,7 +144,13 @@ class Settings(BaseSettings):
         explicit_secret = self.invite_state_secret.strip()
         if explicit_secret:
             return explicit_secret
-        return self.bootstrap_secret.strip()
+        base_secret = self.bootstrap_secret.strip().encode("utf-8")
+        # Derive a purpose-bound key to avoid reusing bootstrap secret material.
+        return hashlib.blake2b(
+            base_secret,
+            digest_size=32,
+            person=b"sp_invite_state",
+        ).hexdigest()
 
 
 def is_valid_iam_role_arn(value: str) -> bool:

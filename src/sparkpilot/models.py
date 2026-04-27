@@ -108,6 +108,7 @@ class UserIdentity(Base):
         CheckConstraint(
             "role IN ('admin','operator','user')", name="ck_user_identities_role"
         ),
+        UniqueConstraint("user_id", name="uq_user_identities_user_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
