@@ -58,6 +58,19 @@ from sparkpilot.services.crud import (  # noqa: F401
     retry_environment_provisioning,
 )
 
+# --- internal_admin ---
+from sparkpilot.services.internal_admin import (  # noqa: F401
+    INVITE_ACCEPT_PURPOSE,
+    apply_invite_identity_mapping,
+    consume_invite_callback_state,
+    consume_invite_token,
+    create_tenant_with_admin_invite,
+    get_internal_tenant_detail,
+    hash_magic_link_token,
+    list_internal_tenant_summaries,
+    regenerate_user_invite,
+)
+
 # --- diagnostics ---
 from sparkpilot.services.diagnostics import (  # noqa: F401
     _diagnostics_from_log_lines,

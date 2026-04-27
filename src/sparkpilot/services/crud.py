@@ -52,12 +52,15 @@ logger = logging.getLogger(__name__)
 
 
 def _provisioning_log_uri(env_id: str) -> str:
-    return f"s3://{get_settings().ops_s3_bucket}/provisioning/{env_id}/{uuid.uuid4()}.log"
+    return (
+        f"s3://{get_settings().ops_s3_bucket}/provisioning/{env_id}/{uuid.uuid4()}.log"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Tenant
 # ---------------------------------------------------------------------------
+
 
 def create_tenant(
     db: Session,
@@ -67,10 +70,16 @@ def create_tenant(
     *,
     commit: bool = True,
 ) -> Tenant:
-    existing = db.execute(select(Tenant).where(Tenant.name == req.name)).scalar_one_or_none()
+    existing = db.execute(
+        select(Tenant).where(Tenant.name == req.name)
+    ).scalar_one_or_none()
     if existing:
         raise ConflictError("Tenant name already exists.")
-    tenant = Tenant(name=req.name)
+    tenant = Tenant(
+        name=req.name,
+        federation_type=req.federation_type,
+        idp_metadata_json=req.idp_metadata,
+    )
     db.add(tenant)
     db.flush()
     write_audit_event(
@@ -81,7 +90,10 @@ def create_tenant(
         entity_type="tenant",
         entity_id=tenant.id,
         tenant_id=tenant.id,
-        details={"name": tenant.name},
+        details={
+            "name": tenant.name,
+            "federation_type": tenant.federation_type,
+        },
     )
     if commit:
         db.commit()
@@ -94,6 +106,7 @@ def create_tenant(
 # ---------------------------------------------------------------------------
 # Team
 # ---------------------------------------------------------------------------
+
 
 def create_team(
     db: Session,
@@ -131,7 +144,9 @@ def create_team(
     return row
 
 
-def list_teams(db: Session, tenant_id: str | None = None, *, limit: int = 200, offset: int = 0) -> list[Team]:
+def list_teams(
+    db: Session, tenant_id: str | None = None, *, limit: int = 200, offset: int = 0
+) -> list[Team]:
     stmt = select(Team).order_by(Team.created_at.desc())
     if tenant_id:
         stmt = stmt.where(Team.tenant_id == tenant_id)
@@ -143,6 +158,7 @@ def list_teams(db: Session, tenant_id: str | None = None, *, limit: int = 200, o
 # User identity
 # ---------------------------------------------------------------------------
 
+
 def create_or_update_user_identity(
     db: Session,
     req: "UserIdentityCreateRequest",
@@ -152,7 +168,9 @@ def create_or_update_user_identity(
 ) -> UserIdentity:
     if req.role in {"operator", "user"}:
         if not req.tenant_id or not req.team_id:
-            raise ValidationError("tenant_id and team_id are required for operator/user roles.")
+            raise ValidationError(
+                "tenant_id and team_id are required for operator/user roles."
+            )
     if req.tenant_id:
         _require_tenant(db, req.tenant_id)
     team: Team | None = None
@@ -160,7 +178,9 @@ def create_or_update_user_identity(
         team = _require_team(db, req.team_id)
     if req.tenant_id and team and team.tenant_id != req.tenant_id:
         raise ValidationError("team_id must belong to tenant_id.")
-    row = db.execute(select(UserIdentity).where(UserIdentity.actor == req.actor)).scalar_one_or_none()
+    row = db.execute(
+        select(UserIdentity).where(UserIdentity.actor == req.actor)
+    ).scalar_one_or_none()
     action = "user_identity.update"
     if row is None:
         row = UserIdentity(actor=req.actor, role=req.role)
@@ -192,10 +212,15 @@ def create_or_update_user_identity(
     return row
 
 
-def list_user_identities(db: Session, *, limit: int = 200, offset: int = 0) -> list[UserIdentity]:
+def list_user_identities(
+    db: Session, *, limit: int = 200, offset: int = 0
+) -> list[UserIdentity]:
     return list(
         db.execute(
-            select(UserIdentity).order_by(UserIdentity.created_at.desc()).limit(limit).offset(offset)
+            select(UserIdentity)
+            .order_by(UserIdentity.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         ).scalars()
     )
 
@@ -203,6 +228,7 @@ def list_user_identities(db: Session, *, limit: int = 200, offset: int = 0) -> l
 # ---------------------------------------------------------------------------
 # Team ↔ Environment scoping
 # ---------------------------------------------------------------------------
+
 
 def add_team_environment_scope(
     db: Session,
@@ -309,7 +335,10 @@ def list_team_environment_scopes(
 # Environment
 # ---------------------------------------------------------------------------
 
-def list_environments(db: Session, tenant_id: str | None, *, limit: int = 200, offset: int = 0) -> list[Environment]:
+
+def list_environments(
+    db: Session, tenant_id: str | None, *, limit: int = 200, offset: int = 0
+) -> list[Environment]:
     stmt = select(Environment).order_by(Environment.created_at.desc())
     if tenant_id:
         stmt = stmt.where(Environment.tenant_id == tenant_id)
@@ -421,7 +450,9 @@ def get_environment(db: Session, environment_id: str) -> Environment:
     return _require_environment(db, environment_id)
 
 
-def get_environment_preflight(db: Session, environment_id: str, *, run_id: str | None = None) -> dict[str, Any]:
+def get_environment_preflight(
+    db: Session, environment_id: str, *, run_id: str | None = None
+) -> dict[str, Any]:
     env = _require_environment(db, environment_id)
     spark_conf: dict[str, str] | None = None
     if run_id:
@@ -429,7 +460,10 @@ def get_environment_preflight(db: Session, environment_id: str, *, run_id: str |
         if run.environment_id != environment_id:
             raise EntityNotFoundError("Run not found for this environment.")
         job = _require_job(db, run.job_id)
-        spark_conf = {**(job.spark_conf_json or {}), **(run.spark_conf_overrides_json or {})}
+        spark_conf = {
+            **(job.spark_conf_json or {}),
+            **(run.spark_conf_overrides_json or {}),
+        }
     return _build_preflight(env, run_id=run_id, spark_conf=spark_conf, db=db)
 
 
@@ -467,7 +501,9 @@ def retry_environment_provisioning(
         )
     ).first()
     if existing_active_operation:
-        raise ConflictError("An active provisioning operation already exists for this environment.")
+        raise ConflictError(
+            "An active provisioning operation already exists for this environment."
+        )
 
     env.status = "provisioning"
     env.updated_at = _now()
@@ -537,7 +573,9 @@ def delete_environment(
         )
     ).first()
     if active_operation:
-        raise ConflictError("Environment has an active provisioning operation. Retry later.")
+        raise ConflictError(
+            "Environment has an active provisioning operation. Retry later."
+        )
 
     env.status = "deleted"
     env.updated_at = _now()
@@ -562,6 +600,7 @@ def delete_environment(
 # ---------------------------------------------------------------------------
 # Job
 # ---------------------------------------------------------------------------
+
 
 def create_job(
     db: Session,
@@ -595,7 +634,11 @@ def create_job(
         entity_type="job",
         entity_id=job.id,
         tenant_id=env.tenant_id,
-        details={"name": job.name, "artifact_uri": job.artifact_uri, "artifact_digest": job.artifact_digest},
+        details={
+            "name": job.name,
+            "artifact_uri": job.artifact_uri,
+            "artifact_digest": job.artifact_digest,
+        },
     )
     if commit:
         db.commit()
@@ -626,6 +669,7 @@ def list_jobs(
 # Run
 # ---------------------------------------------------------------------------
 
+
 def _resolve_run_configuration(
     db: Session,
     *,
@@ -633,22 +677,34 @@ def _resolve_run_configuration(
     req: RunCreateRequest,
 ) -> tuple[GoldenPath | None, dict[str, int], dict[str, str]]:
     if req.golden_path and req.spark_conf is not None:
-        raise ValidationError("Provide either golden_path or spark_conf overrides, not both.")
+        raise ValidationError(
+            "Provide either golden_path or spark_conf overrides, not both."
+        )
 
     if not req.golden_path:
         requested = req.requested_resources.model_dump()
         spark_conf = req.spark_conf if req.spark_conf is not None else {}
         return None, requested, spark_conf
 
-    selected_golden_path = _resolve_golden_path_for_run(db, environment, req.golden_path)
+    selected_golden_path = _resolve_golden_path_for_run(
+        db, environment, req.golden_path
+    )
     requested = dict(selected_golden_path.requested_resources_json or {})
     run_spark_conf = dict(selected_golden_path.spark_conf_json or {})
     if selected_golden_path.instance_architecture == "arm64":
-        run_spark_conf["spark.kubernetes.executor.node.selector.kubernetes.io/arch"] = "arm64"
-        run_spark_conf["spark.kubernetes.driver.node.selector.kubernetes.io/arch"] = "arm64"
+        run_spark_conf["spark.kubernetes.executor.node.selector.kubernetes.io/arch"] = (
+            "arm64"
+        )
+        run_spark_conf["spark.kubernetes.driver.node.selector.kubernetes.io/arch"] = (
+            "arm64"
+        )
     elif selected_golden_path.instance_architecture == "x86_64":
-        run_spark_conf["spark.kubernetes.executor.node.selector.kubernetes.io/arch"] = "amd64"
-        run_spark_conf["spark.kubernetes.driver.node.selector.kubernetes.io/arch"] = "amd64"
+        run_spark_conf["spark.kubernetes.executor.node.selector.kubernetes.io/arch"] = (
+            "amd64"
+        )
+        run_spark_conf["spark.kubernetes.driver.node.selector.kubernetes.io/arch"] = (
+            "amd64"
+        )
     return selected_golden_path, requested, run_spark_conf
 
 
@@ -661,7 +717,9 @@ def _resolve_timeout_seconds(
 ) -> int:
     timeout_seconds = req.timeout_seconds or job.timeout_seconds
     if selected_golden_path:
-        timeout_seconds = min(timeout_seconds, selected_golden_path.max_runtime_minutes * 60)
+        timeout_seconds = min(
+            timeout_seconds, selected_golden_path.max_runtime_minutes * 60
+        )
     if timeout_seconds > environment.max_run_seconds:
         raise ValidationError(
             f"Run timeout exceeds environment max_run_seconds ({environment.max_run_seconds})."
@@ -700,6 +758,7 @@ def create_run(
 
     # Policy engine evaluation before quota checks (#39)
     from sparkpilot.policy_engine import evaluate_policies
+
     policy_results = evaluate_policies(
         db,
         env,
@@ -710,9 +769,13 @@ def create_run(
         actor=actor,
         source_ip=source_ip,
     )
-    hard_failures = [r for r in policy_results if not r["passed"] and r["enforcement"] == "hard"]
+    hard_failures = [
+        r for r in policy_results if not r["passed"] and r["enforcement"] == "hard"
+    ]
     if hard_failures:
-        messages = "; ".join(f"[{f['policy_name']}] {f['message']}" for f in hard_failures)
+        messages = "; ".join(
+            f"[{f['policy_name']}] {f['message']}" for f in hard_failures
+        )
         raise ValidationError(f"Policy violation(s): {messages}")
 
     enforce_quota_for_run(db, env, requested)
@@ -724,7 +787,9 @@ def create_run(
     )
 
     existing = db.execute(
-        select(Run).where(and_(Run.job_id == job_id, Run.idempotency_key == idempotency_key))
+        select(Run).where(
+            and_(Run.job_id == job_id, Run.idempotency_key == idempotency_key)
+        )
     ).scalar_one_or_none()
     if existing:
         return existing
@@ -762,6 +827,7 @@ def create_run(
     if getattr(env, "lake_formation_enabled", False):
         try:
             from sparkpilot.services.lake_formation import get_lf_permission_context
+
             lf_context = get_lf_permission_context(
                 env.region,
                 runtime_settings.emr_execution_role_arn,
@@ -778,7 +844,11 @@ def create_run(
                 details=lf_context,
             )
         except Exception:
-            logger.warning("Failed to record LF permission context for run %s", run.id, exc_info=True)
+            logger.warning(
+                "Failed to record LF permission context for run %s",
+                run.id,
+                exc_info=True,
+            )
 
     if commit:
         db.commit()
@@ -854,6 +924,7 @@ def cancel_run(
 # ---------------------------------------------------------------------------
 # Usage / logs
 # ---------------------------------------------------------------------------
+
 
 def get_usage(
     db: Session,

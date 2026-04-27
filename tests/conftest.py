@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import time
+from typing import Any
 from urllib.parse import urlsplit
 
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -21,7 +22,10 @@ os.environ.setdefault("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
 os.environ.setdefault("SPARKPILOT_AUTH_MODE", "oidc")
 os.environ.setdefault("SPARKPILOT_OIDC_ISSUER", "https://sparkpilot.test-issuer")
 os.environ.setdefault("SPARKPILOT_OIDC_AUDIENCE", "sparkpilot-api")
-os.environ.setdefault("SPARKPILOT_BOOTSTRAP_SECRET", "sparkpilot-bootstrap-secret-for-tests")
+os.environ.setdefault(
+    "SPARKPILOT_BOOTSTRAP_SECRET", "sparkpilot-bootstrap-secret-for-tests"
+)
+os.environ.setdefault("SPARKPILOT_BOOTSTRAP_FLOW", "enabled")
 
 from sparkpilot.api import _oidc_verifier
 from sparkpilot.config import get_settings
@@ -60,6 +64,7 @@ def issue_test_token(
     issuer: str = TEST_OIDC_ISSUER,
     audience: str = TEST_OIDC_AUDIENCE,
     expires_in_seconds: int = 3600,
+    extra_claims: dict[str, Any] | None = None,
 ) -> str:
     now = int(time.time())
     payload = {
@@ -69,6 +74,14 @@ def issue_test_token(
         "iat": now,
         "exp": now + expires_in_seconds,
     }
+    if extra_claims:
+        reserved_claims = {"sub", "iss", "aud", "iat", "exp"}
+        conflicts = reserved_claims & set(extra_claims.keys())
+        if conflicts:
+            raise ValueError(
+                f"extra_claims cannot override reserved JWT claims: {sorted(conflicts)}"
+            )
+        payload.update(extra_claims)
     return jwt.encode(
         payload,
         _PRIVATE_KEY,
@@ -91,7 +104,9 @@ class PatchedTestClient(_BaseTestClient):
             json={"actor": DEFAULT_TEST_SUBJECT, "role": "admin", "active": True},
             headers={
                 "Authorization": f"Bearer {bootstrap_token}",
-                "X-Bootstrap-Secret": os.getenv("SPARKPILOT_BOOTSTRAP_SECRET", TEST_BOOTSTRAP_SECRET),
+                "X-Bootstrap-Secret": os.getenv(
+                    "SPARKPILOT_BOOTSTRAP_SECRET", TEST_BOOTSTRAP_SECRET
+                ),
             },
         )
         if response.status_code not in {200, 201, 409, 403}:
@@ -126,7 +141,9 @@ class PatchedTestClient(_BaseTestClient):
         }
         explicit_auth = "Authorization" in headers
         if not explicit_auth:
-            headers["Authorization"] = f"Bearer {issue_test_token(DEFAULT_TEST_SUBJECT)}"
+            headers["Authorization"] = (
+                f"Bearer {issue_test_token(DEFAULT_TEST_SUBJECT)}"
+            )
         else:
             auth_value = str(headers.get("Authorization", "")).strip()
             scheme, _, token = auth_value.partition(" ")
@@ -137,7 +154,9 @@ class PatchedTestClient(_BaseTestClient):
                 and token != "invalid-token"
                 and "." not in token
             ):
-                headers["Authorization"] = f"Bearer {issue_test_token(DEFAULT_TEST_SUBJECT)}"
+                headers["Authorization"] = (
+                    f"Bearer {issue_test_token(DEFAULT_TEST_SUBJECT)}"
+                )
         kwargs["headers"] = headers
 
         if not skip_bootstrap and not self._is_user_identity_path(url):
@@ -150,13 +169,16 @@ fastapi_testclient.TestClient = PatchedTestClient
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+def clear_settings_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
     monkeypatch.setenv("SPARKPILOT_ENVIRONMENT", "test")
     monkeypatch.setenv("SPARKPILOT_AUTH_MODE", "oidc")
     monkeypatch.setenv("SPARKPILOT_OIDC_ISSUER", TEST_OIDC_ISSUER)
     monkeypatch.setenv("SPARKPILOT_OIDC_AUDIENCE", TEST_OIDC_AUDIENCE)
     monkeypatch.setenv("SPARKPILOT_OIDC_JWKS_URI", _jwks_uri())
     monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_SECRET", TEST_BOOTSTRAP_SECRET)
+    monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_FLOW", "enabled")
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
     monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
     get_settings.cache_clear()

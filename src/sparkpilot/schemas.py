@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,17 +29,80 @@ RunState = Literal[
 ]
 PreflightCheckStatus = Literal["pass", "warning", "fail"]
 UserRole = Literal["admin", "operator", "user"]
+COGNITO_PASSWORD_FEDERATION: Final[str] = "cognito_password"  # pragma: allowlist secret
+FederationType = Literal[COGNITO_PASSWORD_FEDERATION, "saml", "oidc"]
 
 
 class TenantCreateRequest(BaseModel):
     name: str = Field(min_length=3, max_length=255)
+    federation_type: FederationType = COGNITO_PASSWORD_FEDERATION
+    idp_metadata: dict | None = None
 
 
 class TenantResponse(BaseModel):
     id: str
     name: str
+    federation_type: FederationType
+    idp_metadata: dict | None = Field(
+        default=None, validation_alias="idp_metadata_json"
+    )
     created_at: datetime
     updated_at: datetime
+
+
+class InternalTenantCreateRequest(BaseModel):
+    name: str = Field(min_length=3, max_length=255)
+    admin_email: str = Field(
+        min_length=3,
+        max_length=255,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+    federation_type: FederationType = COGNITO_PASSWORD_FEDERATION
+    idp_metadata: dict | None = None
+
+
+class InternalTenantCreateResponse(BaseModel):
+    tenant_id: str
+    user_id: str
+    magic_link_url: str
+
+
+class InternalTenantUserResponse(BaseModel):
+    id: str
+    tenant_id: str
+    email: str
+    role: Literal["admin", "member"]
+    invited_at: datetime | None
+    invite_consumed_at: datetime | None
+    last_login_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class InternalTenantListItemResponse(BaseModel):
+    tenant_id: str
+    tenant_name: str
+    admin_email: str | None
+    created_at: datetime
+    last_login_at: datetime | None
+
+
+class InternalTenantDetailResponse(BaseModel):
+    tenant_id: str
+    tenant_name: str
+    federation_type: FederationType
+    idp_metadata: dict | None
+    created_at: datetime
+    updated_at: datetime
+    users: list[InternalTenantUserResponse]
+
+
+class AuthCallbackResponse(BaseModel):
+    status: Literal["ok"]
+    actor: str
+    invite_applied: bool
+    user_id: str | None = None
+    tenant_id: str | None = None
 
 
 class TeamCreateRequest(BaseModel):

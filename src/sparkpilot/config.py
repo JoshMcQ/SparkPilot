@@ -1,6 +1,7 @@
 from functools import lru_cache
+import hashlib
 import re
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import urlparse
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,10 +9,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sparkpilot.cost_center import parse_cost_center_policy
 
 
-EMR_EXECUTION_ROLE_PLACEHOLDER_ARN = "arn:aws:iam::111111111111:role/SparkPilotEmrExecutionRole"
+EMR_EXECUTION_ROLE_PLACEHOLDER_ARN = (
+    "arn:aws:iam::111111111111:role/SparkPilotEmrExecutionRole"
+)
 IAM_ROLE_ARN_PATTERN = re.compile(r"^arn:aws:iam::\d{12}:role/.+")
 MIN_BOOTSTRAP_SECRET_LENGTH = 16
-_DEFAULT_DATABASE_URL = "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
+_DEFAULT_DATABASE_URL = (
+    "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
+)
 _LOCALHOST_ORIGINS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -41,8 +46,38 @@ class Settings(BaseSettings):
     )
     bootstrap_secret: str = Field(
         default="",
-        validation_alias=AliasChoices("SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET"),
+        validation_alias=AliasChoices(
+            "SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET"
+        ),
     )
+    invite_state_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_INVITE_STATE_SECRET", "INVITE_STATE_SECRET"
+        ),
+    )
+    bootstrap_flow: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_BOOTSTRAP_FLOW",
+            "BOOTSTRAP_FLOW",
+        ),
+    )
+    internal_admins: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_INTERNAL_ADMINS",
+            "INTERNAL_ADMINS",
+        ),
+    )
+    cognito_hosted_ui_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_COGNITO_HOSTED_UI_URL",
+            "COGNITO_HOSTED_UI_URL",
+        ),
+    )
+    magic_link_ttl_hours: int = 24
     aws_region: str = "us-east-1"
     log_group_prefix: str = "/sparkpilot/runs"
     emr_release_label: str = "emr-7.10.0-latest"
@@ -82,6 +117,41 @@ class Settings(BaseSettings):
         origins = [item.strip() for item in self.cors_origins.split(",")]
         return [item for item in origins if item]
 
+    @property
+    def bootstrap_flow_mode(self) -> Literal["enabled", "disabled"]:
+        raw = self.bootstrap_flow.strip().lower()
+        if raw in {"enabled", "disabled"}:
+            return cast(Literal["enabled", "disabled"], raw)
+        environment_name = self.environment.strip().lower()
+        if environment_name in {"dev", "development", "local", "test"}:
+            return "enabled"
+        return "disabled"
+
+    @property
+    def bootstrap_flow_enabled(self) -> bool:
+        return self.bootstrap_flow_mode == "enabled"
+
+    @property
+    def internal_admin_email_set(self) -> set[str]:
+        return {
+            email.strip().lower()
+            for email in self.internal_admins.split(",")
+            if email.strip()
+        }
+
+    @property
+    def invite_state_signing_secret(self) -> str:
+        explicit_secret = self.invite_state_secret.strip()
+        if explicit_secret:
+            return explicit_secret
+        base_secret = self.bootstrap_secret.strip().encode("utf-8")
+        # Derive a purpose-bound key to avoid reusing bootstrap secret material.
+        return hashlib.blake2b(
+            base_secret,
+            digest_size=32,
+            person=b"sp_invite_state",
+        ).hexdigest()
+
 
 def is_valid_iam_role_arn(value: str) -> bool:
     return bool(IAM_ROLE_ARN_PATTERN.match(value.strip()))
@@ -89,7 +159,12 @@ def is_valid_iam_role_arn(value: str) -> bool:
 
 def _validate_environment_mode(settings: Settings) -> bool:
     environment_name = settings.environment.strip().lower()
-    is_dev_like_environment = environment_name in {"dev", "development", "local", "test"}
+    is_dev_like_environment = environment_name in {
+        "dev",
+        "development",
+        "local",
+        "test",
+    }
     is_prod_like_environment = environment_name in {"prod", "production"}
     if settings.database_url.startswith("sqlite") and not is_dev_like_environment:
         raise ValueError(
@@ -107,7 +182,8 @@ def _validate_environment_mode(settings: Settings) -> bool:
                 "The default localhost URL must not be used in staging or production."
             )
         localhost_cors = [
-            o for o in settings.cors_origin_list
+            o
+            for o in settings.cors_origin_list
             if urlparse(o).hostname in _LOCALHOST_ORIGINS
         ]
         if localhost_cors:
@@ -126,19 +202,28 @@ def _validate_numeric_runtime_settings(settings: Settings) -> None:
     if settings.pricing_cache_seconds <= 0:
         raise ValueError("SPARKPILOT_PRICING_CACHE_SECONDS must be greater than 0.")
     if settings.pricing_vcpu_usd_per_second <= 0:
-        raise ValueError("SPARKPILOT_PRICING_VCPU_USD_PER_SECOND must be greater than 0.")
+        raise ValueError(
+            "SPARKPILOT_PRICING_VCPU_USD_PER_SECOND must be greater than 0."
+        )
     if settings.pricing_memory_gb_usd_per_second <= 0:
-        raise ValueError("SPARKPILOT_PRICING_MEMORY_GB_USD_PER_SECOND must be greater than 0.")
+        raise ValueError(
+            "SPARKPILOT_PRICING_MEMORY_GB_USD_PER_SECOND must be greater than 0."
+        )
     if not (0 <= settings.pricing_arm64_discount_pct <= 100):
-        raise ValueError("SPARKPILOT_PRICING_ARM64_DISCOUNT_PCT must be between 0 and 100.")
+        raise ValueError(
+            "SPARKPILOT_PRICING_ARM64_DISCOUNT_PCT must be between 0 and 100."
+        )
     if not (0 <= settings.pricing_mixed_discount_pct <= 100):
-        raise ValueError("SPARKPILOT_PRICING_MIXED_DISCOUNT_PCT must be between 0 and 100.")
-
+        raise ValueError(
+            "SPARKPILOT_PRICING_MIXED_DISCOUNT_PCT must be between 0 and 100."
+        )
 
 
 def _validate_auth_settings(settings: Settings) -> None:
     if settings.auth_mode != "oidc":
-        raise ValueError("AUTH_MODE must be 'oidc'. No legacy auth modes are supported.")
+        raise ValueError(
+            "AUTH_MODE must be 'oidc'. No legacy auth modes are supported."
+        )
     issuer = settings.oidc_issuer.strip()
     if not issuer:
         raise ValueError("OIDC_ISSUER is required.")
@@ -156,6 +241,16 @@ def _validate_auth_settings(settings: Settings) -> None:
             raise ValueError("OIDC_JWKS_URI file:// URL must include a file path.")
     elif parsed_jwks.scheme not in {"http", "https"} or not parsed_jwks.netloc:
         raise ValueError("OIDC_JWKS_URI must be a valid http(s) or file:// URL.")
+    hosted_ui_url = settings.cognito_hosted_ui_url.strip()
+    if hosted_ui_url:
+        parsed_hosted_ui_url = urlparse(hosted_ui_url)
+        if (
+            parsed_hosted_ui_url.scheme not in {"http", "https"}
+            or not parsed_hosted_ui_url.netloc
+        ):
+            raise ValueError(
+                "SPARKPILOT_COGNITO_HOSTED_UI_URL must be a valid http(s) URL."
+            )
 
 
 def _validate_security_runtime_settings(settings: Settings) -> None:
@@ -163,6 +258,12 @@ def _validate_security_runtime_settings(settings: Settings) -> None:
     if len(bootstrap_secret) < MIN_BOOTSTRAP_SECRET_LENGTH:
         raise ValueError(
             f"BOOTSTRAP_SECRET must be set and at least {MIN_BOOTSTRAP_SECRET_LENGTH} characters."
+        )
+    invite_state_secret = settings.invite_state_secret.strip()
+    if invite_state_secret and len(invite_state_secret) < MIN_BOOTSTRAP_SECRET_LENGTH:
+        raise ValueError(
+            "SPARKPILOT_INVITE_STATE_SECRET must be at least "
+            f"{MIN_BOOTSTRAP_SECRET_LENGTH} characters when provided."
         )
     if not settings.cors_origin_list:
         raise ValueError("SPARKPILOT_CORS_ORIGINS must contain at least one origin.")
@@ -176,6 +277,14 @@ def _validate_security_runtime_settings(settings: Settings) -> None:
             raise ValueError(
                 "SPARKPILOT_CORS_ORIGINS must contain valid http(s) origins in scheme://host[:port] format."
             )
+    if settings.bootstrap_flow.strip():
+        normalized = settings.bootstrap_flow.strip().lower()
+        if normalized not in {"enabled", "disabled"}:
+            raise ValueError(
+                "SPARKPILOT_BOOTSTRAP_FLOW must be either 'enabled' or 'disabled'."
+            )
+    if settings.magic_link_ttl_hours <= 0:
+        raise ValueError("SPARKPILOT_MAGIC_LINK_TTL_HOURS must be greater than 0.")
 
 
 def _validate_cost_center_policy(settings: Settings) -> None:
@@ -183,7 +292,9 @@ def _validate_cost_center_policy(settings: Settings) -> None:
         try:
             parse_cost_center_policy(settings.cost_center_policy_json)
         except ValueError as exc:
-            raise ValueError(f"SPARKPILOT_COST_CENTER_POLICY_JSON is invalid: {exc}") from exc
+            raise ValueError(
+                f"SPARKPILOT_COST_CENTER_POLICY_JSON is invalid: {exc}"
+            ) from exc
 
 
 def _validate_live_mode_role_arn(settings: Settings) -> None:

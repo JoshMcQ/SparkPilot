@@ -2,11 +2,15 @@ from datetime import UTC, datetime, timedelta
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import lru_cache
+import base64
+import hashlib
 import hmac
+import json
 import logging
 import os
 import re
 from typing import Any, TypeVar
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import boto3
 import httpx
@@ -22,6 +26,7 @@ from fastapi import (
 )
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session
@@ -43,12 +48,19 @@ from sparkpilot.models import (
     JobTemplate,
     Run,
     TeamEnvironmentScope,
+    User,
     UserIdentity,
 )
-from sparkpilot.oidc import OIDCTokenVerifier, OIDCValidationError, OIDCKeyRotationError
+from sparkpilot.oidc import (
+    OIDCIdentity,
+    OIDCTokenVerifier,
+    OIDCValidationError,
+    OIDCKeyRotationError,
+)
 from sparkpilot.schemas import (
     AwsByocLiteDiscoveryResponse,
     AwsByocLiteClusterDiscoveryItem,
+    AuthCallbackResponse,
     AuthMeResponse,
     BootstrapStatusResponse,
     CostShowbackResponse,
@@ -59,6 +71,11 @@ from sparkpilot.schemas import (
     EnvironmentResponse,
     GoldenPathCreate,
     GoldenPathResponse,
+    InternalTenantCreateRequest,
+    InternalTenantCreateResponse,
+    InternalTenantDetailResponse,
+    InternalTenantListItemResponse,
+    InternalTenantUserResponse,
     InteractiveEndpointCreateRequest,
     InteractiveEndpointResponse,
     JobCreateRequest,
@@ -89,6 +106,9 @@ from sparkpilot.schemas import (
 )
 from sparkpilot.services import (
     add_team_environment_scope,
+    apply_invite_identity_mapping,
+    consume_invite_callback_state,
+    consume_invite_token,
     remove_team_environment_scope,
     cancel_run,
     create_environment,
@@ -98,6 +118,7 @@ from sparkpilot.services import (
     create_or_update_user_identity,
     create_or_update_team_budget,
     create_team,
+    create_tenant_with_admin_invite,
     create_run,
     create_tenant,
     fetch_run_logs,
@@ -105,6 +126,7 @@ from sparkpilot.services import (
     get_environment,
     get_environment_preflight,
     get_golden_path,
+    get_internal_tenant_detail,
     list_emr_releases,
     get_team_budget,
     get_provisioning_operation,
@@ -113,12 +135,14 @@ from sparkpilot.services import (
     list_golden_paths,
     list_environments,
     list_jobs,
+    list_internal_tenant_summaries,
     list_run_diagnostics,
     list_team_environment_scopes,
     list_teams,
     list_user_identities,
     list_runs,
     model_to_dict,
+    regenerate_user_invite,
     retry_environment_provisioning,
     _golden_path_to_response_payload,
 )
@@ -130,6 +154,8 @@ logger = logging.getLogger(__name__)
 _PRODUCTION_ENV_VALUES = {"production", "prod"}
 _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 _FALSE_VALUES = {"0", "false", "no", "n", "off", ""}
+_INVITE_STATE_PREFIX = "sp_invite_v1"
+_INVITE_STATE_TTL_SECONDS = 10 * 60
 
 
 def _env_value(*names: str, default: str = "") -> str:
@@ -301,8 +327,9 @@ def _custom_openapi() -> dict[str, Any]:
         "bearerFormat": "JWT",
         "description": "OIDC access token",
     }
+    public_paths = {"/healthz", "/v1/invite/accept"}
     for path, operations in schema.get("paths", {}).items():
-        if path == "/healthz":
+        if path in public_paths:
             continue
         if not isinstance(operations, dict):
             continue
@@ -370,7 +397,7 @@ def _oidc_verifier() -> OIDCTokenVerifier:
     )
 
 
-def _require_api_auth(request: Request) -> str:
+def _require_api_identity(request: Request) -> OIDCIdentity:
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
     if scheme.lower() != "bearer" or not token:
@@ -396,7 +423,11 @@ def _require_api_auth(request: Request) -> str:
             detail=str(exc),
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
-    return identity.subject
+    return identity
+
+
+def _require_api_auth(request: Request) -> str:
+    return _require_api_identity(request).subject
 
 
 @dataclass(frozen=True)
@@ -408,8 +439,145 @@ class AccessContext:
     scoped_environment_ids: set[str]
 
 
+@dataclass(frozen=True)
+class InternalAdminContext:
+    actor: str
+    email: str
+
+
+@dataclass(frozen=True)
+class InviteStatePayload:
+    tenant_id: str
+    user_id: str
+    token_id: str
+    exp: int
+
+
 def _forbidden(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+def _bootstrap_flow_disabled_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "Bootstrap secret flow is disabled. "
+            "Use internal admin invite provisioning instead."
+        ),
+    )
+
+
+def _require_bootstrap_flow_enabled() -> None:
+    if not get_settings().bootstrap_flow_enabled:
+        raise _bootstrap_flow_disabled_error()
+
+
+def _normalized_email_from_identity(identity: OIDCIdentity) -> str | None:
+    raw = identity.claims.get("email")
+    if raw is None:
+        return None
+    value = str(raw).strip().lower()
+    return value or None
+
+
+def require_internal_admin(request: Request) -> InternalAdminContext:
+    identity = _require_api_identity(request)
+    email = _normalized_email_from_identity(identity)
+    allowed = get_settings().internal_admin_email_set
+    if not email or email not in allowed:
+        raise _forbidden("Internal admin access required")
+    return InternalAdminContext(actor=identity.subject, email=email)
+
+
+def _state_signing_key() -> bytes:
+    return get_settings().invite_state_signing_secret.encode("utf-8")
+
+
+def _urlsafe_b64encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _urlsafe_b64decode(raw: str) -> bytes:
+    pad = "=" * (-len(raw) % 4)
+    return base64.urlsafe_b64decode(f"{raw}{pad}".encode("ascii"))
+
+
+def _encode_invite_state(payload: InviteStatePayload) -> str:
+    body = json.dumps(
+        {
+            "kind": "invite",
+            "tenant_id": payload.tenant_id,
+            "user_id": payload.user_id,
+            "token_id": payload.token_id,
+            "exp": payload.exp,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    body_enc = _urlsafe_b64encode(body)
+    mac = hmac.new(
+        _state_signing_key(), body_enc.encode("ascii"), hashlib.sha256
+    ).digest()
+    sig_enc = _urlsafe_b64encode(mac)
+    return f"{_INVITE_STATE_PREFIX}.{body_enc}.{sig_enc}"
+
+
+def _decode_invite_state(state: str | None) -> InviteStatePayload | None:
+    if not state:
+        return None
+    prefix, dot, remainder = state.partition(".")
+    if prefix != _INVITE_STATE_PREFIX or not dot:
+        return None
+    body_enc, dot2, sig_enc = remainder.partition(".")
+    if not dot2 or not body_enc or not sig_enc:
+        return None
+    expected = hmac.new(
+        _state_signing_key(),
+        body_enc.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    try:
+        provided = _urlsafe_b64decode(sig_enc)
+    except (ValueError, TypeError):
+        return None
+    if not hmac.compare_digest(provided, expected):
+        return None
+    try:
+        payload = json.loads(_urlsafe_b64decode(body_enc).decode("utf-8"))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("kind") != "invite":
+        return None
+    tenant_id = str(payload.get("tenant_id") or "").strip()
+    user_id = str(payload.get("user_id") or "").strip()
+    token_id = str(payload.get("token_id") or "").strip()
+    raw_exp = payload.get("exp")
+    try:
+        exp = int(raw_exp)
+    except (TypeError, ValueError):
+        return None
+    now_ts = int(datetime.now(UTC).timestamp())
+    if exp <= now_ts:
+        return None
+    if not tenant_id or not user_id or not token_id:
+        return None
+    return InviteStatePayload(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        token_id=token_id,
+        exp=exp,
+    )
+
+
+def _append_query_params(url: str, params: dict[str, str]) -> str:
+    parts = urlsplit(url)
+    existing = dict(parse_qsl(parts.query, keep_blank_values=True))
+    existing.update(params)
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(existing), parts.fragment)
+    )
 
 
 def _has_any_identities(db: Session) -> bool:
@@ -816,6 +984,7 @@ def post_bootstrap_user_identity(
     db: Session = Depends(get_db),
     bootstrap_secret: str | None = Header(default=None, alias="X-Bootstrap-Secret"),
 ) -> UserIdentityResponse:
+    _require_bootstrap_flow_enabled()
     actor, source_ip = _actor_and_ip(request)
     if _has_any_identities(db):
         active_identity = db.execute(
@@ -837,6 +1006,210 @@ def post_bootstrap_user_identity(
         bootstrap_secret=bootstrap_secret,
     )
     return _response(model_to_dict(row), UserIdentityResponse)
+
+
+def _invite_accept_base_url(request: Request) -> str:
+    return str(request.url_for("accept_invite"))
+
+
+def _configured_cognito_hosted_ui_url() -> str:
+    runtime_settings = get_settings()
+    hosted_ui_url = runtime_settings.cognito_hosted_ui_url.strip()
+    if not hosted_ui_url:
+        logger.error(
+            "Cognito hosted UI URL is not configured; invite accept cannot redirect."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cognito hosted UI URL is not configured.",
+        )
+    return hosted_ui_url
+
+
+def _cognito_invite_redirect_url(state: str) -> str:
+    hosted_ui_url = _configured_cognito_hosted_ui_url()
+    return _append_query_params(hosted_ui_url, {"state": state})
+
+
+@app.post(
+    "/v1/internal/tenants",
+    response_model=InternalTenantCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_internal_tenant(
+    req: InternalTenantCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    internal_admin: InternalAdminContext = Depends(require_internal_admin),
+) -> InternalTenantCreateResponse:
+    source_ip = request.client.host if request.client else None
+    result = create_tenant_with_admin_invite(
+        db,
+        req=req,
+        created_by=internal_admin.email,
+        source_ip=source_ip,
+        invite_accept_base_url=_invite_accept_base_url(request),
+        ttl_hours=get_settings().magic_link_ttl_hours,
+    )
+    return InternalTenantCreateResponse(
+        tenant_id=result.tenant.id,
+        user_id=result.user.id,
+        magic_link_url=result.magic_link_url,
+    )
+
+
+@app.post(
+    "/v1/internal/tenants/{tenant_id}/users/{user_id}/regenerate-invite",
+    response_model=InternalTenantCreateResponse,
+)
+def post_internal_regenerate_invite(
+    tenant_id: str,
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    internal_admin: InternalAdminContext = Depends(require_internal_admin),
+) -> InternalTenantCreateResponse:
+    source_ip = request.client.host if request.client else None
+    result = regenerate_user_invite(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        created_by=internal_admin.email,
+        source_ip=source_ip,
+        invite_accept_base_url=_invite_accept_base_url(request),
+        ttl_hours=get_settings().magic_link_ttl_hours,
+    )
+    return InternalTenantCreateResponse(
+        tenant_id=result.tenant.id,
+        user_id=result.user.id,
+        magic_link_url=result.magic_link_url,
+    )
+
+
+@app.get("/v1/internal/tenants", response_model=list[InternalTenantListItemResponse])
+def get_internal_tenants(
+    _internal_admin: InternalAdminContext = Depends(require_internal_admin),
+    db: Session = Depends(get_db),
+) -> list[InternalTenantListItemResponse]:
+    summaries = list_internal_tenant_summaries(db)
+    return [
+        InternalTenantListItemResponse(
+            tenant_id=item.tenant.id,
+            tenant_name=item.tenant.name,
+            admin_email=item.admin_email,
+            created_at=item.tenant.created_at,
+            last_login_at=item.admin_last_login_at,
+        )
+        for item in summaries
+    ]
+
+
+@app.get(
+    "/v1/internal/tenants/{tenant_id}", response_model=InternalTenantDetailResponse
+)
+def get_internal_tenant_by_id(
+    tenant_id: str,
+    _internal_admin: InternalAdminContext = Depends(require_internal_admin),
+    db: Session = Depends(get_db),
+) -> InternalTenantDetailResponse:
+    detail = get_internal_tenant_detail(db, tenant_id=tenant_id)
+    return InternalTenantDetailResponse(
+        tenant_id=detail.tenant.id,
+        tenant_name=detail.tenant.name,
+        federation_type=detail.tenant.federation_type,
+        idp_metadata=detail.tenant.idp_metadata_json,
+        created_at=detail.tenant.created_at,
+        updated_at=detail.tenant.updated_at,
+        users=[
+            InternalTenantUserResponse(**model_to_dict(user)) for user in detail.users
+        ],
+    )
+
+
+@app.get("/v1/invite/accept", name="accept_invite")
+def accept_invite(
+    token: str = Query(min_length=10),
+    db: Session = Depends(get_db),
+) -> Response:
+    _configured_cognito_hosted_ui_url()
+    consumed = consume_invite_token(db, token=token)
+    state = _encode_invite_state(
+        InviteStatePayload(
+            tenant_id=consumed.user.tenant_id,
+            user_id=consumed.user.id,
+            token_id=consumed.token.id,
+            exp=int(
+                (
+                    datetime.now(UTC) + timedelta(seconds=_INVITE_STATE_TTL_SECONDS)
+                ).timestamp()
+            ),
+        )
+    )
+    redirect_url = _cognito_invite_redirect_url(state)
+    return RedirectResponse(
+        url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+    )
+
+
+@app.get("/auth/callback", response_model=AuthCallbackResponse)
+def get_auth_callback(
+    request: Request,
+    state: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> AuthCallbackResponse:
+    identity = _require_api_identity(request)
+    invite_payload = _decode_invite_state(state)
+    if invite_payload is None:
+        if state and state.partition(".")[0] == _INVITE_STATE_PREFIX:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid invite state.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return AuthCallbackResponse(
+            status="ok",
+            actor=identity.subject,
+            invite_applied=False,
+        )
+
+    identity_email = _normalized_email_from_identity(identity)
+    invited_user = db.get(User, invite_payload.user_id)
+    if invited_user is None or invited_user.tenant_id != invite_payload.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite user not found.",
+        )
+    invited_email = invited_user.email.strip().lower()
+    if not identity_email or identity_email != invited_email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invite email does not match authenticated identity.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    consume_invite_callback_state(
+        db,
+        token_id=invite_payload.token_id,
+        tenant_id=invite_payload.tenant_id,
+        user_id=invite_payload.user_id,
+    )
+    source_ip = request.client.host if request.client else None
+    apply_invite_identity_mapping(
+        db,
+        tenant_id=invite_payload.tenant_id,
+        user_id=invite_payload.user_id,
+        actor=identity.subject,
+        source_ip=source_ip,
+        commit=False,
+    )
+    db.commit()
+    return AuthCallbackResponse(
+        status="ok",
+        actor=identity.subject,
+        invite_applied=True,
+        user_id=invite_payload.user_id,
+        tenant_id=invite_payload.tenant_id,
+    )
 
 
 @app.get("/v1/user-identities", response_model=list[UserIdentityResponse])
@@ -870,6 +1243,7 @@ def post_user_identity(
         _require_admin(access)
         row = create_or_update_user_identity(db, req, actor=actor, source_ip=source_ip)
     else:
+        _require_bootstrap_flow_enabled()
         row = _create_bootstrap_admin_identity(
             db,
             actor=actor,

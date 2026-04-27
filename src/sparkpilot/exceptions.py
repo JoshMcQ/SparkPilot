@@ -7,6 +7,7 @@ Hierarchy:
     SparkPilotError
     |- EntityNotFoundError
     |- ConflictError
+    |- GoneError
     |- ValidationError
     |- QuotaExceededError
     |- ProvisioningError
@@ -38,6 +39,13 @@ class ConflictError(SparkPilotError):
 
     def __init__(self, detail: str = "Conflict.") -> None:
         super().__init__(detail, status_code=409)
+
+
+class GoneError(SparkPilotError):
+    """Requested resource existed but is no longer usable."""
+
+    def __init__(self, detail: str = "Gone.") -> None:
+        super().__init__(detail, status_code=410)
 
 
 class ValidationError(SparkPilotError):
