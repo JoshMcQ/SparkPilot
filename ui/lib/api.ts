@@ -410,7 +410,8 @@ export async function fetchInternalTenants(): Promise<InternalTenantListItem[]> 
 }
 
 export async function fetchInternalTenantDetail(tenantId: string): Promise<InternalTenantDetail> {
-  const response = await fetch(`${API_PREFIX}/v1/internal/tenants/${tenantId}`, {
+  const encodedTenantId = encodeURIComponent(tenantId);
+  const response = await fetch(`${API_PREFIX}/v1/internal/tenants/${encodedTenantId}`, {
     cache: "no-store",
     headers: _headers(false),
   });
@@ -440,8 +441,10 @@ export async function regenerateInternalTenantInvite(
   tenantId: string,
   userId: string,
 ): Promise<InternalTenantCreateResponse> {
+  const encodedTenantId = encodeURIComponent(tenantId);
+  const encodedUserId = encodeURIComponent(userId);
   const response = await fetch(
-    `${API_PREFIX}/v1/internal/tenants/${tenantId}/users/${userId}/regenerate-invite`,
+    `${API_PREFIX}/v1/internal/tenants/${encodedTenantId}/users/${encodedUserId}/regenerate-invite`,
     {
       method: "POST",
       headers: _headers(true),

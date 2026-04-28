@@ -59,8 +59,14 @@ export default function ProvisionInternalTenantPage() {
     if (!result) {
       return;
     }
-    await navigator.clipboard.writeText(result.magic_link_url);
-    setCopied(true);
+    try {
+      await navigator.clipboard.writeText(result.magic_link_url);
+      setCopied(true);
+    } catch (err: unknown) {
+      console.error("Failed to copy internal tenant magic link to clipboard.", err);
+      setCopied(false);
+      setError("Failed to copy to clipboard. Please copy the magic link manually.");
+    }
   }
 
   if (gateLoading) {

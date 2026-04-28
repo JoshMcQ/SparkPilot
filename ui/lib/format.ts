@@ -34,6 +34,18 @@ export function usd(micros: number | null | undefined): string {
   return `$${value.toFixed(4)}`;
 }
 
+/** Format ISO date-like values for internal admin UI tables. */
+export function formatDate(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+  return new Date(parsed).toLocaleString();
+}
+
 /** Friendly error message derived from an API error. */
 export function friendlyError(err: unknown, fallback: string): string {
   if (err instanceof Error) {

@@ -16,19 +16,8 @@ import {
   regenerateInviteWithConfirmation,
   type InviteStatus,
 } from "@/lib/internal-admin-tools";
-import { friendlyError } from "@/lib/format";
+import { formatDate, friendlyError } from "@/lib/format";
 import { useInternalAdmin } from "@/lib/use-internal-admin";
-
-function _formatDate(value: string | null): string {
-  if (!value) {
-    return "-";
-  }
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    return value;
-  }
-  return new Date(parsed).toLocaleString();
-}
 
 function _statusBadge(status: InviteStatus): JSX.Element {
   if (status === "consumed") {
@@ -71,6 +60,9 @@ export default function InternalTenantDetailPage() {
     if (gateLoading || !isInternalAdmin) {
       return;
     }
+    setLoading(true);
+    setDetail(null);
+    setError(null);
     void loadDetail();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gateLoading, isInternalAdmin, tenantId]);
@@ -173,7 +165,7 @@ export default function InternalTenantDetailPage() {
         <div className="subtle">
           Federation: <code>{detail.federation_type}</code>
         </div>
-        <div className="subtle">Created: {_formatDate(detail.created_at)}</div>
+        <div className="subtle">Created: {formatDate(detail.created_at)}</div>
       </div>
 
       {actionError ? (
@@ -204,7 +196,7 @@ export default function InternalTenantDetailPage() {
                   <tr key={user.id}>
                     <td>{user.email}</td>
                     <td>{user.role}</td>
-                    <td>{_formatDate(user.last_login_at)}</td>
+                    <td>{formatDate(user.last_login_at)}</td>
                     <td>{_statusBadge(user.inviteStatus)}</td>
                     <td className="col-actions">
                       {canRegenerateInvite(user.inviteStatus) ? (

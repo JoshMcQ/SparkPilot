@@ -45,7 +45,15 @@ export function toInternalTenantCreateRequest(
   const metadataText = input.idp_metadata_text.trim();
   let idpMetadata: Record<string, unknown> | null = null;
   if (input.federation_type !== "cognito_password" && metadataText) {
-    idpMetadata = JSON.parse(metadataText) as Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(metadataText);
+      if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error("IdP metadata must be a JSON object.");
+      }
+      idpMetadata = parsed as Record<string, unknown>;
+    } catch {
+      throw new Error("IdP metadata must be valid JSON.");
+    }
   }
   return {
     name: input.name.trim(),

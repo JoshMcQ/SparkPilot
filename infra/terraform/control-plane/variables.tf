@@ -273,13 +273,6 @@ variable "oidc_audience" {
   type        = string
   description = "DEPRECATED: customer OIDC audience alias. Use customer_oidc_audience."
   default     = ""
-  validation {
-    condition = (
-      trimspace(var.oidc_audience) == "" ||
-      length(trimspace(var.oidc_audience)) > 0
-    )
-    error_message = "oidc_audience must be empty or non-empty."
-  }
 }
 
 variable "oidc_jwks_uri" {
@@ -312,13 +305,6 @@ variable "customer_oidc_audience" {
   type        = string
   description = "Customer-pool OIDC audience expected by SparkPilot."
   default     = ""
-  validation {
-    condition = (
-      trimspace(var.customer_oidc_audience) == "" ||
-      length(trimspace(var.customer_oidc_audience)) > 0
-    )
-    error_message = "customer_oidc_audience must be empty or non-empty."
-  }
 }
 
 variable "customer_oidc_jwks_uri" {

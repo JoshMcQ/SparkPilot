@@ -4,19 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { type InternalTenantListItem } from "@/lib/api";
+import { formatDate } from "@/lib/format";
 import { resolveInternalTenantsListState } from "@/lib/internal-tenants-list";
 import { useInternalAdmin } from "@/lib/use-internal-admin";
-
-function _formatDate(value: string | null): string {
-  if (!value) {
-    return "-";
-  }
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    return value;
-  }
-  return new Date(parsed).toLocaleString();
-}
 
 export default function InternalTenantsPage() {
   const { loading: gateLoading, isInternalAdmin, error: gateError } = useInternalAdmin({
@@ -127,8 +117,8 @@ export default function InternalTenantsPage() {
                   <td>{row.tenant_name}</td>
                   <td>{row.admin_email ?? "-"}</td>
                   <td>{row.federation_type}</td>
-                  <td>{_formatDate(row.created_at)}</td>
-                  <td>{_formatDate(row.last_login_at)}</td>
+                  <td>{formatDate(row.created_at)}</td>
+                  <td>{formatDate(row.last_login_at)}</td>
                   <td className="col-actions">
                     <Link href={`/internal/tenants/${row.tenant_id}`} className="inline-link">
                       View

@@ -92,6 +92,9 @@ locals {
   customer_oidc_issuer_effective   = trimspace(var.customer_oidc_issuer) != "" ? trimspace(var.customer_oidc_issuer) : trimspace(var.oidc_issuer)
   customer_oidc_audience_effective = trimspace(var.customer_oidc_audience) != "" ? trimspace(var.customer_oidc_audience) : trimspace(var.oidc_audience)
   customer_oidc_jwks_uri_effective = trimspace(var.customer_oidc_jwks_uri) != "" ? trimspace(var.customer_oidc_jwks_uri) : trimspace(var.oidc_jwks_uri)
+  internal_oidc_issuer_effective   = trimspace(var.internal_oidc_issuer)
+  internal_oidc_audience_effective = trimspace(var.internal_oidc_audience)
+  internal_oidc_jwks_uri_effective = trimspace(var.internal_oidc_jwks_uri)
 
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
@@ -155,9 +158,9 @@ locals {
     { name = "SPARKPILOT_CUSTOMER_OIDC_ISSUER", value = local.customer_oidc_issuer_effective },
     { name = "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", value = local.customer_oidc_audience_effective },
     { name = "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", value = local.customer_oidc_jwks_uri_effective },
-    { name = "SPARKPILOT_INTERNAL_OIDC_ISSUER", value = var.internal_oidc_issuer },
-    { name = "SPARKPILOT_INTERNAL_OIDC_AUDIENCE", value = var.internal_oidc_audience },
-    { name = "SPARKPILOT_INTERNAL_OIDC_JWKS_URI", value = var.internal_oidc_jwks_uri },
+    { name = "SPARKPILOT_INTERNAL_OIDC_ISSUER", value = local.internal_oidc_issuer_effective },
+    { name = "SPARKPILOT_INTERNAL_OIDC_AUDIENCE", value = local.internal_oidc_audience_effective },
+    { name = "SPARKPILOT_INTERNAL_OIDC_JWKS_URI", value = local.internal_oidc_jwks_uri_effective },
     # Phase 1 expand-contract compatibility aliases (customer pool).
     { name = "SPARKPILOT_OIDC_ISSUER", value = local.customer_oidc_issuer_effective },
     { name = "SPARKPILOT_OIDC_AUDIENCE", value = local.customer_oidc_audience_effective },
@@ -292,6 +295,17 @@ check "customer_oidc_configuration_complete" {
       local.customer_oidc_jwks_uri_effective != ""
     )
     error_message = "Set customer_oidc_* variables (preferred) or legacy oidc_* aliases so customer auth config is complete."
+  }
+}
+
+check "internal_oidc_configuration_complete" {
+  assert {
+    condition = (
+      local.internal_oidc_issuer_effective != "" &&
+      local.internal_oidc_audience_effective != "" &&
+      local.internal_oidc_jwks_uri_effective != ""
+    )
+    error_message = "Set internal_oidc_* variables so internal auth config is complete."
   }
 }
 
