@@ -43,6 +43,7 @@ export const config = {
     "/integrations/:path*",
     "/costs/:path*",
     "/policies/:path*",
+    "/internal/:path*",
     "/access/:path*",
     "/settings/:path*",
   ],

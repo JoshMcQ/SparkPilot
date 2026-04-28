@@ -17,13 +17,22 @@ def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setenv("SPARKPILOT_AUTH_MODE", "oidc")
     monkeypatch.setenv(
-        "SPARKPILOT_OIDC_ISSUER",
+        "SPARKPILOT_CUSTOMER_OIDC_ISSUER",
         "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example",
     )
-    monkeypatch.setenv("SPARKPILOT_OIDC_AUDIENCE", "sparkpilot-api")
+    monkeypatch.setenv("SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", "sparkpilot-api")
     monkeypatch.setenv(
-        "SPARKPILOT_OIDC_JWKS_URI",
+        "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI",
         "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example/.well-known/jwks.json",
+    )
+    monkeypatch.setenv(
+        "SPARKPILOT_INTERNAL_OIDC_ISSUER",
+        "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_internal",
+    )
+    monkeypatch.setenv("SPARKPILOT_INTERNAL_OIDC_AUDIENCE", "sparkpilot-internal-api")
+    monkeypatch.setenv(
+        "SPARKPILOT_INTERNAL_OIDC_JWKS_URI",
+        "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_internal/.well-known/jwks.json",
     )
     monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_SECRET", "0123456789abcdef")
     monkeypatch.setenv("SPARKPILOT_CORS_ORIGINS", "https://app.sparkpilot.cloud")
@@ -45,9 +54,12 @@ def _expect_startup_failure(match: str) -> None:
 @pytest.mark.parametrize(
     ("env_var", "expected_check"),
     [
-        ("SPARKPILOT_OIDC_ISSUER", "oidc_issuer_present"),
-        ("SPARKPILOT_OIDC_AUDIENCE", "oidc_audience_present"),
-        ("SPARKPILOT_OIDC_JWKS_URI", "oidc_jwks_uri_present"),
+        ("SPARKPILOT_CUSTOMER_OIDC_ISSUER", "customer_pool_oidc_issuer_present"),
+        ("SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", "customer_pool_oidc_audience_present"),
+        ("SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", "customer_pool_oidc_jwks_uri_present"),
+        ("SPARKPILOT_INTERNAL_OIDC_ISSUER", "internal_pool_oidc_issuer_present"),
+        ("SPARKPILOT_INTERNAL_OIDC_AUDIENCE", "internal_pool_oidc_audience_present"),
+        ("SPARKPILOT_INTERNAL_OIDC_JWKS_URI", "internal_pool_oidc_jwks_uri_present"),
     ],
 )
 def test_production_startup_fails_when_required_oidc_env_missing(
@@ -60,6 +72,14 @@ def test_production_startup_fails_when_required_oidc_env_missing(
         "sparkpilot.api._fetch_jwks_json", lambda *_args, **_kwargs: {"keys": []}
     )
     monkeypatch.delenv(env_var, raising=False)
+    legacy_alias_by_customer_var = {
+        "SPARKPILOT_CUSTOMER_OIDC_ISSUER": "SPARKPILOT_OIDC_ISSUER",
+        "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE": "SPARKPILOT_OIDC_AUDIENCE",
+        "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI": "SPARKPILOT_OIDC_JWKS_URI",
+    }
+    legacy_alias = legacy_alias_by_customer_var.get(env_var)
+    if legacy_alias:
+        monkeypatch.delenv(legacy_alias, raising=False)
     get_settings.cache_clear()
 
     _expect_startup_failure(expected_check)
@@ -75,7 +95,7 @@ def test_production_startup_fails_when_jwks_unreachable(
 
     monkeypatch.setattr("sparkpilot.api._fetch_jwks_json", _raise_unreachable)
 
-    _expect_startup_failure("oidc_jwks_reachable_json")
+    _expect_startup_failure("customer_pool_oidc_jwks_reachable_json")
 
 
 def test_production_startup_fails_when_jwks_not_json(
@@ -88,7 +108,7 @@ def test_production_startup_fails_when_jwks_not_json(
 
     monkeypatch.setattr("sparkpilot.api._fetch_jwks_json", _raise_non_json)
 
-    _expect_startup_failure("oidc_jwks_reachable_json")
+    _expect_startup_failure("customer_pool_oidc_jwks_reachable_json")
 
 
 def test_production_startup_fails_when_auth_mode_not_oidc(
@@ -183,10 +203,14 @@ def test_production_startup_logs_pass_fail_for_each_check(
     assert any("[FAIL]" in message for message in messages)
     expected_checks = {
         "auth_mode_oidc",
-        "oidc_issuer_present",
-        "oidc_audience_present",
-        "oidc_jwks_uri_present",
-        "oidc_jwks_reachable_json",
+        "customer_pool_oidc_issuer_present",
+        "customer_pool_oidc_audience_present",
+        "customer_pool_oidc_jwks_uri_present",
+        "customer_pool_oidc_jwks_reachable_json",
+        "internal_pool_oidc_issuer_present",
+        "internal_pool_oidc_audience_present",
+        "internal_pool_oidc_jwks_uri_present",
+        "internal_pool_oidc_jwks_reachable_json",
         "bootstrap_secret_min_length",
         "cors_no_localhost",
         "dry_run_disabled",

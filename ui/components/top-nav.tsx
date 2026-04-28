@@ -2,23 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-type NavItem = {
-  href: string;
-  label: string;
-};
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/onboarding/aws", label: "Start Here" },
-  { href: "/environments", label: "Environments" },
-  { href: "/runs", label: "Runs" },
-  { href: "/integrations", label: "Integrations" },
-  { href: "/costs", label: "Costs" },
-  { href: "/policies", label: "Policies" },
-  { href: "/access", label: "Access" },
-  { href: "/settings", label: "Settings" },
-];
+import { useInternalAdmin } from "@/lib/use-internal-admin";
+import { buildTopNavItems } from "@/lib/top-nav-items";
 
 function _isActive(pathname: string, href: string): boolean {
   if (href === "/") {
@@ -29,9 +14,11 @@ function _isActive(pathname: string, href: string): boolean {
 
 export function TopNav() {
   const pathname = usePathname();
+  const { isInternalAdmin } = useInternalAdmin();
+  const navItems = buildTopNavItems(isInternalAdmin);
   return (
     <nav className="nav" aria-label="Primary">
-      {NAV_ITEMS.map((item) => {
+      {navItems.map((item) => {
         const active = _isActive(pathname, item.href);
         return (
           <Link

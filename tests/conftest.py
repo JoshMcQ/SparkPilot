@@ -20,19 +20,23 @@ os.environ.setdefault("SPARKPILOT_DATABASE_URL", "sqlite:///./sparkpilot_test.db
 os.environ.setdefault("SPARKPILOT_DRY_RUN_MODE", "true")
 os.environ.setdefault("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
 os.environ.setdefault("SPARKPILOT_AUTH_MODE", "oidc")
-os.environ.setdefault("SPARKPILOT_OIDC_ISSUER", "https://sparkpilot.test-issuer")
-os.environ.setdefault("SPARKPILOT_OIDC_AUDIENCE", "sparkpilot-api")
+os.environ.setdefault("SPARKPILOT_CUSTOMER_OIDC_ISSUER", "https://sparkpilot.test-issuer")
+os.environ.setdefault("SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", "sparkpilot-api")
 os.environ.setdefault(
     "SPARKPILOT_BOOTSTRAP_SECRET", "sparkpilot-bootstrap-secret-for-tests"
 )
 os.environ.setdefault("SPARKPILOT_BOOTSTRAP_FLOW", "enabled")
 
-from sparkpilot.api import _oidc_verifier
+from sparkpilot.api import _oidc_verifier, _oidc_verifiers
 from sparkpilot.config import get_settings
 
 
 TEST_OIDC_ISSUER = "https://sparkpilot.test-issuer"
 TEST_OIDC_AUDIENCE = "sparkpilot-api"
+TEST_CUSTOMER_OIDC_ISSUER = TEST_OIDC_ISSUER
+TEST_CUSTOMER_OIDC_AUDIENCE = TEST_OIDC_AUDIENCE
+TEST_INTERNAL_OIDC_ISSUER = "https://sparkpilot.test-internal-issuer"
+TEST_INTERNAL_OIDC_AUDIENCE = "sparkpilot-internal-api"
 TEST_BOOTSTRAP_SECRET = "sparkpilot-bootstrap-secret-for-tests"
 TEST_JWT_KID = "sparkpilot-test-kid"
 DEFAULT_TEST_SUBJECT = "test-user"
@@ -174,18 +178,30 @@ def clear_settings_cache(
 ) -> Generator[None, None, None]:
     monkeypatch.setenv("SPARKPILOT_ENVIRONMENT", "test")
     monkeypatch.setenv("SPARKPILOT_AUTH_MODE", "oidc")
-    monkeypatch.setenv("SPARKPILOT_OIDC_ISSUER", TEST_OIDC_ISSUER)
-    monkeypatch.setenv("SPARKPILOT_OIDC_AUDIENCE", TEST_OIDC_AUDIENCE)
+    monkeypatch.setenv("SPARKPILOT_OIDC_ISSUER", TEST_CUSTOMER_OIDC_ISSUER)
+    monkeypatch.setenv("SPARKPILOT_OIDC_AUDIENCE", TEST_CUSTOMER_OIDC_AUDIENCE)
     monkeypatch.setenv("SPARKPILOT_OIDC_JWKS_URI", _jwks_uri())
+    monkeypatch.setenv("SPARKPILOT_CUSTOMER_OIDC_ISSUER", TEST_CUSTOMER_OIDC_ISSUER)
+    monkeypatch.setenv(
+        "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", TEST_CUSTOMER_OIDC_AUDIENCE
+    )
+    monkeypatch.setenv("SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", _jwks_uri())
+    monkeypatch.setenv("SPARKPILOT_INTERNAL_OIDC_ISSUER", TEST_INTERNAL_OIDC_ISSUER)
+    monkeypatch.setenv(
+        "SPARKPILOT_INTERNAL_OIDC_AUDIENCE", TEST_INTERNAL_OIDC_AUDIENCE
+    )
+    monkeypatch.setenv("SPARKPILOT_INTERNAL_OIDC_JWKS_URI", _jwks_uri())
     monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_SECRET", TEST_BOOTSTRAP_SECRET)
     monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_FLOW", "enabled")
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
     monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
     get_settings.cache_clear()
     _oidc_verifier.cache_clear()
+    _oidc_verifiers.cache_clear()
     yield
     get_settings.cache_clear()
     _oidc_verifier.cache_clear()
+    _oidc_verifiers.cache_clear()
 
 
 @pytest.fixture
