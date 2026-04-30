@@ -10,9 +10,15 @@
 #   VPC_ID                  - VPC ID for the environment
 #   PRIVATE_SUBNET_IDS_JSON - JSON array of private subnet IDs
 #   DB_PASSWORD             - RDS database password
-#   OIDC_ISSUER             - OIDC issuer URL
-#   OIDC_AUDIENCE           - OIDC audience
-#   OIDC_JWKS_URI           - OIDC JWKS URI
+#   OIDC_ISSUER             - legacy/customer OIDC issuer URL
+#   OIDC_AUDIENCE           - legacy/customer OIDC audience
+#   OIDC_JWKS_URI           - legacy/customer OIDC JWKS URI
+#   CUSTOMER_OIDC_ISSUER    - optional customer OIDC issuer URL
+#   CUSTOMER_OIDC_AUDIENCE  - optional customer OIDC audience
+#   CUSTOMER_OIDC_JWKS_URI  - optional customer OIDC JWKS URI
+#   INTERNAL_OIDC_ISSUER    - internal OIDC issuer URL
+#   INTERNAL_OIDC_AUDIENCE  - internal OIDC audience
+#   INTERNAL_OIDC_JWKS_URI  - internal OIDC JWKS URI
 #   BOOTSTRAP_SECRET        - API bootstrap secret
 #   EMR_EXECUTION_ROLE_ARN  - EMR execution role ARN
 #
@@ -74,8 +80,21 @@ fi
 [ -z "${OIDC_ISSUER:-}" ]             && MISSING+=("${ENV_UPPER}_OIDC_ISSUER")
 [ -z "${OIDC_AUDIENCE:-}" ]           && MISSING+=("${ENV_UPPER}_OIDC_AUDIENCE")
 [ -z "${OIDC_JWKS_URI:-}" ]           && MISSING+=("${ENV_UPPER}_OIDC_JWKS_URI")
+[ -z "${INTERNAL_OIDC_ISSUER:-}" ]    && MISSING+=("${ENV_UPPER}_INTERNAL_OIDC_ISSUER")
+[ -z "${INTERNAL_OIDC_AUDIENCE:-}" ]  && MISSING+=("${ENV_UPPER}_INTERNAL_OIDC_AUDIENCE")
+[ -z "${INTERNAL_OIDC_JWKS_URI:-}" ]  && MISSING+=("${ENV_UPPER}_INTERNAL_OIDC_JWKS_URI")
 [ -z "${BOOTSTRAP_SECRET:-}" ]        && MISSING+=("${ENV_UPPER}_BOOTSTRAP_SECRET")
 [ -z "${EMR_EXECUTION_ROLE_ARN:-}" ]  && MISSING+=("${ENV_UPPER}_EMR_EXECUTION_ROLE_ARN")
+
+customer_oidc_any=false
+[ -n "${CUSTOMER_OIDC_ISSUER:-}" ] && customer_oidc_any=true
+[ -n "${CUSTOMER_OIDC_AUDIENCE:-}" ] && customer_oidc_any=true
+[ -n "${CUSTOMER_OIDC_JWKS_URI:-}" ] && customer_oidc_any=true
+if [[ "${customer_oidc_any}" == "true" ]]; then
+  [ -z "${CUSTOMER_OIDC_ISSUER:-}" ] && MISSING+=("${ENV_UPPER}_CUSTOMER_OIDC_ISSUER")
+  [ -z "${CUSTOMER_OIDC_AUDIENCE:-}" ] && MISSING+=("${ENV_UPPER}_CUSTOMER_OIDC_AUDIENCE")
+  [ -z "${CUSTOMER_OIDC_JWKS_URI:-}" ] && MISSING+=("${ENV_UPPER}_CUSTOMER_OIDC_JWKS_URI")
+fi
 
 if [ "${#MISSING[@]}" -gt 0 ]; then
   echo "::error::${DEPLOY_ENV} deploy preflight FAILED - role ARN is set but ${#MISSING[@]} required secret(s) are missing:"
