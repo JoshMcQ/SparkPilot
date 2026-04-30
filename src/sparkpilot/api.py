@@ -1271,9 +1271,11 @@ def post_internal_tenant(
     return InternalTenantCreateResponse(
         tenant_id=result.tenant.id,
         user_id=result.user.id,
-        invite_email_sent_to=result.invite_email.recipient_email,
+        invite_email_recipient=result.invite_email.recipient_email,
         invite_email_provider=result.invite_email.provider,
+        invite_email_status=result.invite_email.status,
         invite_email_provider_message_id=result.invite_email.provider_message_id,
+        invite_email_failure_detail=result.invite_email.failure_detail,
     )
 
 
@@ -1310,9 +1312,11 @@ def post_internal_regenerate_invite(
     return InternalTenantCreateResponse(
         tenant_id=result.tenant.id,
         user_id=result.user.id,
-        invite_email_sent_to=result.invite_email.recipient_email,
+        invite_email_recipient=result.invite_email.recipient_email,
         invite_email_provider=result.invite_email.provider,
+        invite_email_status=result.invite_email.status,
         invite_email_provider_message_id=result.invite_email.provider_message_id,
+        invite_email_failure_detail=result.invite_email.failure_detail,
     )
 
 

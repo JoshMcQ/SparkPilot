@@ -154,7 +154,19 @@ def _send_invite_email_and_audit(
             },
         )
         db.commit()
-        raise SparkPilotError(failure_detail, status_code=exc.status_code) from exc
+        logger.warning(
+            "Invite email delivery failed provider=resend tenant_id=%s user_id=%s error_type=%s",
+            tenant.id,
+            user.id,
+            exc.__class__.__name__,
+        )
+        return InviteEmailDelivery(
+            provider="resend",
+            recipient_email=user.email,
+            status="failed",
+            provider_message_id=None,
+            failure_detail=failure_detail,
+        )
 
     write_audit_event(
         db,
