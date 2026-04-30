@@ -263,9 +263,9 @@ variable "oidc_issuer" {
   validation {
     condition = (
       trimspace(var.oidc_issuer) == "" ||
-      can(regex("^https?://", trimspace(var.oidc_issuer)))
+      can(regex("^https://", trimspace(var.oidc_issuer)))
     )
-    error_message = "oidc_issuer must be empty or an http(s) URL."
+    error_message = "oidc_issuer must be empty or an https URL."
   }
 }
 
@@ -282,9 +282,9 @@ variable "oidc_jwks_uri" {
   validation {
     condition = (
       trimspace(var.oidc_jwks_uri) == "" ||
-      can(regex("^(https?://|file://)", trimspace(var.oidc_jwks_uri)))
+      can(regex("^(https://|file://)", trimspace(var.oidc_jwks_uri)))
     )
-    error_message = "oidc_jwks_uri must be empty or start with http://, https://, or file://."
+    error_message = "oidc_jwks_uri must be empty or start with https:// or file://."
   }
 }
 
@@ -295,9 +295,9 @@ variable "customer_oidc_issuer" {
   validation {
     condition = (
       trimspace(var.customer_oidc_issuer) == "" ||
-      can(regex("^https?://", trimspace(var.customer_oidc_issuer)))
+      can(regex("^https://", trimspace(var.customer_oidc_issuer)))
     )
-    error_message = "customer_oidc_issuer must be empty or an http(s) URL."
+    error_message = "customer_oidc_issuer must be empty or an https URL."
   }
 }
 
@@ -314,9 +314,9 @@ variable "customer_oidc_jwks_uri" {
   validation {
     condition = (
       trimspace(var.customer_oidc_jwks_uri) == "" ||
-      can(regex("^(https?://|file://)", trimspace(var.customer_oidc_jwks_uri)))
+      can(regex("^(https://|file://)", trimspace(var.customer_oidc_jwks_uri)))
     )
-    error_message = "customer_oidc_jwks_uri must be empty or start with http://, https://, or file://."
+    error_message = "customer_oidc_jwks_uri must be empty or start with https:// or file://."
   }
 }
 
@@ -324,8 +324,8 @@ variable "internal_oidc_issuer" {
   type        = string
   description = "Internal-pool OIDC issuer URL used by SparkPilot."
   validation {
-    condition     = can(regex("^https?://", trimspace(var.internal_oidc_issuer)))
-    error_message = "internal_oidc_issuer must be an http(s) URL."
+    condition     = can(regex("^https://", trimspace(var.internal_oidc_issuer)))
+    error_message = "internal_oidc_issuer must be an https URL."
   }
 }
 
@@ -342,8 +342,8 @@ variable "internal_oidc_jwks_uri" {
   type        = string
   description = "Internal-pool OIDC JWKS URI used to validate access tokens."
   validation {
-    condition     = can(regex("^(https?://|file://)", trimspace(var.internal_oidc_jwks_uri)))
-    error_message = "internal_oidc_jwks_uri must start with http://, https://, or file://."
+    condition     = can(regex("^(https://|file://)", trimspace(var.internal_oidc_jwks_uri)))
+    error_message = "internal_oidc_jwks_uri must start with https:// or file://."
   }
 }
 
@@ -402,9 +402,9 @@ variable "crm_webhook_url" {
   validation {
     condition = (
       trimspace(var.crm_webhook_url) == "" ||
-      can(regex("^https?://", trimspace(var.crm_webhook_url)))
+      can(regex("^https://", trimspace(var.crm_webhook_url)))
     )
-    error_message = "crm_webhook_url must be empty or an http(s) URL."
+    error_message = "crm_webhook_url must be empty or an https URL."
   }
 }
 

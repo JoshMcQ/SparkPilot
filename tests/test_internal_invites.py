@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import hashlib
+import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
@@ -398,8 +399,10 @@ def test_tenant_created_webhook_is_fire_and_forget(
     get_settings.cache_clear()
     _oidc_verifier.cache_clear()
     _oidc_verifiers.cache_clear()
+    dispatched = threading.Event()
 
     def _slow_capture(_url: str, _payload: dict[str, str]) -> None:
+        dispatched.set()
         time.sleep(1.0)
 
     monkeypatch.setattr("sparkpilot.crm_webhook._post_crm_webhook", _slow_capture)
@@ -419,6 +422,7 @@ def test_tenant_created_webhook_is_fire_and_forget(
         elapsed = time.perf_counter() - started
         assert response.status_code == 201, response.text
         assert elapsed < 0.5
+        assert dispatched.wait(timeout=1.0)
 
 
 def test_tenant_invite_regenerated_webhook_fires_when_configured(

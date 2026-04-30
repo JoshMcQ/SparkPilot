@@ -89,9 +89,15 @@ locals {
     trimspace(var.cur_athena_table) != "" &&
     trimspace(var.cur_athena_output_location) != ""
   )
-  customer_oidc_issuer_effective   = trimspace(var.customer_oidc_issuer) != "" ? trimspace(var.customer_oidc_issuer) : trimspace(var.oidc_issuer)
-  customer_oidc_audience_effective = trimspace(var.customer_oidc_audience) != "" ? trimspace(var.customer_oidc_audience) : trimspace(var.oidc_audience)
-  customer_oidc_jwks_uri_effective = trimspace(var.customer_oidc_jwks_uri) != "" ? trimspace(var.customer_oidc_jwks_uri) : trimspace(var.oidc_jwks_uri)
+  customer_oidc_issuer             = trimspace(var.customer_oidc_issuer)
+  customer_oidc_audience           = trimspace(var.customer_oidc_audience)
+  customer_oidc_jwks_uri           = trimspace(var.customer_oidc_jwks_uri)
+  legacy_oidc_issuer               = trimspace(var.oidc_issuer)
+  legacy_oidc_audience             = trimspace(var.oidc_audience)
+  legacy_oidc_jwks_uri             = trimspace(var.oidc_jwks_uri)
+  customer_oidc_issuer_effective   = local.customer_oidc_issuer != "" ? local.customer_oidc_issuer : local.legacy_oidc_issuer
+  customer_oidc_audience_effective = local.customer_oidc_audience != "" ? local.customer_oidc_audience : local.legacy_oidc_audience
+  customer_oidc_jwks_uri_effective = local.customer_oidc_jwks_uri != "" ? local.customer_oidc_jwks_uri : local.legacy_oidc_jwks_uri
   internal_oidc_issuer_effective   = trimspace(var.internal_oidc_issuer)
   internal_oidc_audience_effective = trimspace(var.internal_oidc_audience)
   internal_oidc_jwks_uri_effective = trimspace(var.internal_oidc_jwks_uri)
@@ -155,16 +161,16 @@ locals {
     { name = "SPARKPILOT_DRY_RUN_MODE", value = tostring(var.dry_run_mode) },
     { name = "SPARKPILOT_ENABLE_FULL_BYOC_MODE", value = tostring(var.enable_full_byoc_mode) },
     { name = "SPARKPILOT_AUTH_MODE", value = "oidc" },
-    { name = "SPARKPILOT_CUSTOMER_OIDC_ISSUER", value = local.customer_oidc_issuer_effective },
-    { name = "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", value = local.customer_oidc_audience_effective },
-    { name = "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", value = local.customer_oidc_jwks_uri_effective },
+    { name = "SPARKPILOT_CUSTOMER_OIDC_ISSUER", value = local.customer_oidc_issuer },
+    { name = "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", value = local.customer_oidc_audience },
+    { name = "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", value = local.customer_oidc_jwks_uri },
     { name = "SPARKPILOT_INTERNAL_OIDC_ISSUER", value = local.internal_oidc_issuer_effective },
     { name = "SPARKPILOT_INTERNAL_OIDC_AUDIENCE", value = local.internal_oidc_audience_effective },
     { name = "SPARKPILOT_INTERNAL_OIDC_JWKS_URI", value = local.internal_oidc_jwks_uri_effective },
     # Phase 1 expand-contract compatibility aliases (customer pool).
-    { name = "SPARKPILOT_OIDC_ISSUER", value = local.customer_oidc_issuer_effective },
-    { name = "SPARKPILOT_OIDC_AUDIENCE", value = local.customer_oidc_audience_effective },
-    { name = "SPARKPILOT_OIDC_JWKS_URI", value = local.customer_oidc_jwks_uri_effective },
+    { name = "SPARKPILOT_OIDC_ISSUER", value = local.legacy_oidc_issuer },
+    { name = "SPARKPILOT_OIDC_AUDIENCE", value = local.legacy_oidc_audience },
+    { name = "SPARKPILOT_OIDC_JWKS_URI", value = local.legacy_oidc_jwks_uri },
     { name = "SPARKPILOT_AWS_REGION", value = var.region },
     { name = "SPARKPILOT_POLL_INTERVAL_SECONDS", value = tostring(var.poll_interval_seconds) },
     { name = "SPARKPILOT_CORS_ORIGINS", value = join(",", var.cors_origins) },

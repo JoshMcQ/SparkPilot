@@ -184,6 +184,8 @@ export default function ProvisionInternalTenantPage() {
               onClick={() => {
                 setResult(null);
                 setForm(INITIAL_FORM);
+                setError(null);
+                setCopied(false);
               }}
             >
               Provision Another
