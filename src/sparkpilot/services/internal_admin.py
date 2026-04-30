@@ -17,8 +17,10 @@ from sparkpilot.exceptions import (
     ConflictError,
     EntityNotFoundError,
     GoneError,
+    SparkPilotError,
     ValidationError,
 )
+from sparkpilot.invite_email import InviteEmailDelivery, send_invite_email
 from sparkpilot.models import MagicLinkLog, MagicLinkToken, Tenant, User, UserIdentity
 from sparkpilot.schemas import InternalTenantCreateRequest, TenantCreateRequest
 from sparkpilot.services.crud import create_tenant
@@ -32,7 +34,7 @@ INVITE_ACCEPT_PURPOSE = "invite_accept"
 class InternalTenantProvisionResult:
     tenant: Tenant
     user: User
-    magic_link_url: str
+    invite_email: InviteEmailDelivery
 
 
 @dataclass(frozen=True)
@@ -87,7 +89,7 @@ def _create_magic_link_token(
     return row, plain_token
 
 
-def _log_magic_link_stub(
+def _log_magic_link_issued(
     db: Session,
     *,
     user_id: str,
@@ -97,7 +99,7 @@ def _log_magic_link_stub(
 ) -> None:
     redacted_magic_link = magic_link_url.split("?", 1)[0]
     logger.info(
-        "Magic link issued (stub) user_id=%s tenant_id=%s purpose=%s created_by=%s",
+        "Invite magic link issued user_id=%s tenant_id=%s purpose=%s created_by=%s",
         user_id,
         tenant_id,
         INVITE_ACCEPT_PURPOSE,
@@ -112,6 +114,64 @@ def _log_magic_link_stub(
             created_by=created_by,
         )
     )
+
+
+def _send_invite_email_and_audit(
+    db: Session,
+    *,
+    tenant: Tenant,
+    user: User,
+    created_by: str,
+    source_ip: str | None,
+    invite_url: str,
+    ttl_hours: int,
+    idempotency_key: str,
+    failure_detail: str,
+) -> InviteEmailDelivery:
+    try:
+        delivery = send_invite_email(
+            recipient_email=user.email,
+            tenant_name=tenant.name,
+            invite_url=invite_url,
+            tenant_id=tenant.id,
+            user_id=user.id,
+            ttl_hours=ttl_hours,
+            idempotency_key=idempotency_key,
+        )
+    except SparkPilotError as exc:
+        write_audit_event(
+            db,
+            actor=created_by,
+            source_ip=source_ip,
+            action="user.invite_email_failed",
+            entity_type="user",
+            entity_id=user.id,
+            tenant_id=tenant.id,
+            details={
+                "email": user.email,
+                "provider": "resend",
+                "error_type": exc.__class__.__name__,
+            },
+        )
+        db.commit()
+        raise SparkPilotError(failure_detail, status_code=exc.status_code) from exc
+
+    write_audit_event(
+        db,
+        actor=created_by,
+        source_ip=source_ip,
+        action="user.invite_email_sent",
+        entity_type="user",
+        entity_id=user.id,
+        tenant_id=tenant.id,
+        details={
+            "email": user.email,
+            "provider": delivery.provider,
+            "provider_message_id": delivery.provider_message_id,
+        },
+    )
+    db.commit()
+    return delivery
 
 
 def _invalidate_unconsumed_user_invites(
@@ -172,15 +232,16 @@ def create_tenant_with_admin_invite(
     db.add(user)
     db.flush()
     expires_at = now + timedelta(hours=ttl_hours)
-    _, plain_token = _create_magic_link_token(
+    token_row, plain_token = _create_magic_link_token(
         db,
         user_id=user.id,
         tenant_id=tenant.id,
         created_by=created_by,
         expires_at=expires_at,
     )
+    token_id = token_row.id
     magic_link_url = f"{invite_accept_base_url}?token={plain_token}"
-    _log_magic_link_stub(
+    _log_magic_link_issued(
         db,
         user_id=user.id,
         tenant_id=tenant.id,
@@ -203,6 +264,20 @@ def create_tenant_with_admin_invite(
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
+    invite_email = _send_invite_email_and_audit(
+        db,
+        tenant=tenant,
+        user=user,
+        created_by=created_by,
+        source_ip=source_ip,
+        invite_url=magic_link_url,
+        ttl_hours=ttl_hours,
+        idempotency_key=f"invite:{token_id}",
+        failure_detail=(
+            "Tenant was created, but invite email delivery failed. "
+            "Fix invite email configuration and regenerate the invite from tenant detail."
+        ),
+    )
     emit_tenant_lifecycle_event(
         event_type="tenant.created",
         tenant_id=tenant.id,
@@ -213,7 +288,7 @@ def create_tenant_with_admin_invite(
     return InternalTenantProvisionResult(
         tenant=tenant,
         user=user,
-        magic_link_url=magic_link_url,
+        invite_email=invite_email,
     )
 
 
@@ -238,15 +313,16 @@ def regenerate_user_invite(
     _invalidate_unconsumed_user_invites(db, user_id=user.id, now=now)
     user.invited_at = now
     expires_at = now + timedelta(hours=ttl_hours)
-    _, plain_token = _create_magic_link_token(
+    token_row, plain_token = _create_magic_link_token(
         db,
         user_id=user.id,
         tenant_id=tenant.id,
         created_by=created_by,
         expires_at=expires_at,
     )
+    token_id = token_row.id
     magic_link_url = f"{invite_accept_base_url}?token={plain_token}"
-    _log_magic_link_stub(
+    _log_magic_link_issued(
         db,
         user_id=user.id,
         tenant_id=tenant.id,
@@ -269,6 +345,20 @@ def regenerate_user_invite(
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
+    invite_email = _send_invite_email_and_audit(
+        db,
+        tenant=tenant,
+        user=user,
+        created_by=created_by,
+        source_ip=source_ip,
+        invite_url=magic_link_url,
+        ttl_hours=ttl_hours,
+        idempotency_key=f"invite:{token_id}",
+        failure_detail=(
+            "Invite was regenerated, but invite email delivery failed. "
+            "Fix invite email configuration and regenerate the invite again."
+        ),
+    )
     emit_tenant_lifecycle_event(
         event_type="tenant.invite_regenerated",
         tenant_id=tenant.id,
@@ -279,7 +369,7 @@ def regenerate_user_invite(
     return InternalTenantProvisionResult(
         tenant=tenant,
         user=user,
-        magic_link_url=magic_link_url,
+        invite_email=invite_email,
     )
 
 

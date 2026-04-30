@@ -21,6 +21,8 @@
 #   INTERNAL_OIDC_JWKS_URI  - internal OIDC JWKS URI
 #   BOOTSTRAP_SECRET        - API bootstrap secret
 #   EMR_EXECUTION_ROLE_ARN  - EMR execution role ARN
+#   RESEND_API_KEY_SECRET_ARN - Secrets Manager ARN containing the Resend API key
+#   INVITE_EMAIL_FROM       - sender address for invite emails
 #
 # Outputs (via GITHUB_OUTPUT):
 #   skip=true   - deploy disabled, role missing, or environment not configured
@@ -94,6 +96,11 @@ if [[ "${customer_oidc_any}" == "true" ]]; then
   [ -z "${CUSTOMER_OIDC_ISSUER:-}" ] && MISSING+=("${ENV_UPPER}_CUSTOMER_OIDC_ISSUER")
   [ -z "${CUSTOMER_OIDC_AUDIENCE:-}" ] && MISSING+=("${ENV_UPPER}_CUSTOMER_OIDC_AUDIENCE")
   [ -z "${CUSTOMER_OIDC_JWKS_URI:-}" ] && MISSING+=("${ENV_UPPER}_CUSTOMER_OIDC_JWKS_URI")
+fi
+
+if [[ "${DEPLOY_ENV}" != "dev" ]]; then
+  [ -z "${RESEND_API_KEY_SECRET_ARN:-}" ] && MISSING+=("${ENV_UPPER}_RESEND_API_KEY_SECRET_ARN")
+  [ -z "${INVITE_EMAIL_FROM:-}" ]         && MISSING+=("${ENV_UPPER}_INVITE_EMAIL_FROM")
 fi
 
 if [ "${#MISSING[@]}" -gt 0 ]; then

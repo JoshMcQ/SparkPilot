@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   fetchInternalTenantDetail,
@@ -40,7 +39,6 @@ export default function InternalTenantDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InternalTenantCreateResponse | null>(null);
-  const [copied, setCopied] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [regeneratingUserId, setRegeneratingUserId] = useState<string | null>(null);
 
@@ -89,7 +87,6 @@ export default function InternalTenantDetailPage() {
       );
       if (invite) {
         setResult(invite);
-        setCopied(false);
         await loadDetail();
       }
     } catch (err: unknown) {
@@ -97,14 +94,6 @@ export default function InternalTenantDetailPage() {
     } finally {
       setRegeneratingUserId(null);
     }
-  }
-
-  async function onCopyMagicLink(): Promise<void> {
-    if (!result) {
-      return;
-    }
-    await navigator.clipboard.writeText(result.magic_link_url);
-    setCopied(true);
   }
 
   if (gateLoading) {
@@ -222,27 +211,21 @@ export default function InternalTenantDetailPage() {
 
       {result ? (
         <div className="card">
-          <h3>New Magic Link</h3>
+          <h3>Invite Email Sent</h3>
           <div className="subtle">
-            Copy this URL and send it manually to the invited user.
+            A fresh invite was sent to {result.invite_email_sent_to}.
           </div>
-          <pre className="code-block">{result.magic_link_url}</pre>
           <div className="button-row">
-            <button type="button" className="button button-sm" onClick={() => void onCopyMagicLink()}>
-              Copy
-            </button>
             <button
               type="button"
-              className="button button-sm button-secondary"
+              className="button button-sm"
               onClick={() => {
                 setResult(null);
-                setCopied(false);
               }}
             >
               Close
             </button>
           </div>
-          {copied ? <div className="success-text">Copied to clipboard.</div> : null}
         </div>
       ) : null}
     </section>

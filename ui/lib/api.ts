@@ -346,7 +346,9 @@ export type InternalTenantCreateRequest = {
 export type InternalTenantCreateResponse = {
   tenant_id: string;
   user_id: string;
-  magic_link_url: string;
+  invite_email_sent_to: string;
+  invite_email_provider: "resend";
+  invite_email_provider_message_id: string | null;
 };
 
 export type InternalTenantUser = {

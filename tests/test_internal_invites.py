@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sparkpilot.api import _oidc_verifier, _oidc_verifiers, app
 from sparkpilot.config import get_settings, validate_runtime_settings
 from sparkpilot.db import Base, SessionLocal, engine
+from sparkpilot.invite_email import InviteEmailDelivery
 from sparkpilot.models import (
     AuditEvent,
     MagicLinkLog,
@@ -36,7 +37,36 @@ def _reset_db() -> None:
     reset_sqlite_test_db(base=Base, engine=engine, session_local=SessionLocal)
 
 
-def _set_internal_admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _set_internal_admin_env(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
+    sent_invites: list[dict[str, str]] = []
+
+    def _capture_invite_email(
+        *,
+        recipient_email: str,
+        tenant_name: str,
+        invite_url: str,
+        tenant_id: str,
+        user_id: str,
+        ttl_hours: int,
+        idempotency_key: str,
+    ) -> InviteEmailDelivery:
+        sent_invites.append(
+            {
+                "recipient_email": recipient_email,
+                "tenant_name": tenant_name,
+                "invite_url": invite_url,
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "ttl_hours": str(ttl_hours),
+                "idempotency_key": idempotency_key,
+            }
+        )
+        return InviteEmailDelivery(
+            provider="resend",
+            recipient_email=recipient_email,
+            provider_message_id=f"email-{len(sent_invites)}",
+        )
+
     monkeypatch.setenv("SPARKPILOT_INTERNAL_ADMINS", "admin@example.invalid")
     monkeypatch.setenv(
         "SPARKPILOT_COGNITO_HOSTED_UI_URL", "https://auth.example.com/oauth2/authorize"
@@ -49,6 +79,11 @@ def _set_internal_admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
     _oidc_verifier.cache_clear()
     _oidc_verifiers.cache_clear()
+    monkeypatch.setattr(
+        "sparkpilot.services.internal_admin.send_invite_email",
+        _capture_invite_email,
+    )
+    return sent_invites
 
 
 def _auth_headers(
@@ -72,6 +107,10 @@ def _auth_headers(
         extra_claims={"email": email},
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+def _invite_token_from_url(invite_url: str) -> str:
+    return parse_qs(urlsplit(invite_url).query)["token"][0]
 
 
 def test_issue_test_token_rejects_reserved_claim_overrides() -> None:
@@ -123,7 +162,7 @@ def test_internal_tenant_invite_happy_path_end_to_end(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -141,9 +180,14 @@ def test_internal_tenant_invite_happy_path_end_to_end(
         created = create.json()
         tenant_id = created["tenant_id"]
         user_id = created["user_id"]
-        magic_link_url = created["magic_link_url"]
+        assert created["invite_email_sent_to"] == "admin@acme.example"
+        assert created["invite_email_provider"] == "resend"
+        assert created["invite_email_provider_message_id"] == "email-1"
+        assert "magic_link_url" not in created
+        assert len(sent_invites) == 1
+        magic_link_url = sent_invites[0]["invite_url"]
         assert "/v1/invite/accept?token=" in magic_link_url
-        token = parse_qs(urlsplit(magic_link_url).query)["token"][0]
+        token = _invite_token_from_url(magic_link_url)
 
         listed = client.get("/v1/internal/tenants", headers=internal_headers)
         assert listed.status_code == 200
@@ -224,7 +268,7 @@ def test_internal_tenant_create_writes_internal_audit_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -260,6 +304,88 @@ def test_internal_tenant_create_writes_internal_audit_event(
             assert event.details_json.get("target_user_id") == payload["user_id"]
             assert event.details_json.get("request_id")
             assert event.source_ip is not None
+
+            email_event = (
+                db.execute(
+                    select(AuditEvent)
+                    .where(
+                        AuditEvent.action == "user.invite_email_sent",
+                        AuditEvent.tenant_id == payload["tenant_id"],
+                        AuditEvent.entity_id == payload["user_id"],
+                    )
+                    .order_by(AuditEvent.created_at.desc())
+                )
+                .scalars()
+                .first()
+            )
+            assert email_event is not None
+            assert email_event.actor == "admin@example.invalid"
+            assert email_event.details_json == {
+                "email": "audit@tenant.example",
+                "provider": "resend",
+                "provider_message_id": "email-1",
+            }
+            assert len(sent_invites) == 1
+
+
+def test_internal_tenant_create_persists_invite_and_audits_email_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    _set_internal_admin_env(monkeypatch)
+
+    from sparkpilot.invite_email import InviteEmailDeliveryError
+
+    def _fail_invite_email(**_kwargs: object) -> InviteEmailDelivery:
+        raise InviteEmailDeliveryError("provider rejected invite email")
+
+    monkeypatch.setattr(
+        "sparkpilot.services.internal_admin.send_invite_email",
+        _fail_invite_email,
+    )
+    internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
+
+    with _BaseTestClient(app) as client:
+        response = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Email Failure Tenant",
+                "admin_email": "email-failure@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        assert response.status_code == 502, response.text
+        assert "provider rejected" not in response.text
+        assert "token=" not in response.text
+
+    with SessionLocal() as db:
+        user = db.execute(
+            select(User).where(User.email == "email-failure@tenant.example")
+        ).scalar_one_or_none()
+        assert user is not None
+        token = db.execute(
+            select(MagicLinkToken).where(MagicLinkToken.user_id == user.id)
+        ).scalar_one_or_none()
+        assert token is not None
+        event = (
+            db.execute(
+                select(AuditEvent)
+                .where(
+                    AuditEvent.action == "user.invite_email_failed",
+                    AuditEvent.entity_id == user.id,
+                )
+                .order_by(AuditEvent.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+        assert event is not None
+        assert event.details_json == {
+            "email": "email-failure@tenant.example",
+            "provider": "resend",
+            "error_type": "InviteEmailDeliveryError",
+        }
 
 
 def test_internal_tenant_read_and_regenerate_write_audit_events(
@@ -473,7 +599,7 @@ def test_tenant_admin_invite_consumed_webhook_fires_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     monkeypatch.setenv("SPARKPILOT_CRM_WEBHOOK_URL", "https://crm.example/webhook")
     get_settings.cache_clear()
     _oidc_verifier.cache_clear()
@@ -497,7 +623,7 @@ def test_tenant_admin_invite_consumed_webhook_fires_when_configured(
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
 
         accept = client.get(
             "/v1/invite/accept",
@@ -527,7 +653,7 @@ def test_tenant_admin_invite_consumed_webhook_fires_when_configured(
 
 def test_invite_accept_rejects_expired_token(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -540,7 +666,8 @@ def test_invite_accept_rejects_expired_token(monkeypatch: pytest.MonkeyPatch) ->
             },
             headers=internal_headers,
         )
-        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        assert create.status_code == 201, create.text
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
         with SessionLocal() as db:
@@ -579,7 +706,7 @@ def test_invite_accept_rejects_consumed_and_wrong_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -592,7 +719,8 @@ def test_invite_accept_rejects_consumed_and_wrong_token(
             },
             headers=internal_headers,
         )
-        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        assert create.status_code == 201, create.text
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
 
         first = client.get(
             "/v1/invite/accept",
@@ -616,7 +744,7 @@ def test_invite_accept_fails_closed_when_cognito_hosted_ui_url_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     monkeypatch.setenv("SPARKPILOT_COGNITO_HOSTED_UI_URL", "")
     get_settings.cache_clear()
     _oidc_verifier.cache_clear()
@@ -633,7 +761,8 @@ def test_invite_accept_fails_closed_when_cognito_hosted_ui_url_missing(
             },
             headers=internal_headers,
         )
-        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        assert create.status_code == 201, create.text
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
         response = client.get("/v1/invite/accept", params={"token": token})
@@ -651,7 +780,7 @@ def test_regenerate_invite_after_consumption_invalidates_old_token_and_issues_ne
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -666,9 +795,7 @@ def test_regenerate_invite_after_consumption_invalidates_old_token_and_issues_ne
         )
         tenant_id = create.json()["tenant_id"]
         user_id = create.json()["user_id"]
-        old_token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][
-            0
-        ]
+        old_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
 
         consumed = client.get(
             "/v1/invite/accept",
@@ -682,9 +809,11 @@ def test_regenerate_invite_after_consumption_invalidates_old_token_and_issues_ne
             headers=internal_headers,
         )
         assert regenerate.status_code == 200, regenerate.text
-        new_token = parse_qs(urlsplit(regenerate.json()["magic_link_url"]).query)[
-            "token"
-        ][0]
+        regenerated = regenerate.json()
+        assert regenerated["invite_email_sent_to"] == "regen@tenant.example"
+        assert regenerated["invite_email_provider"] == "resend"
+        assert "magic_link_url" not in regenerated
+        new_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
         assert new_token != old_token
 
         old_again = client.get("/v1/invite/accept", params={"token": old_token})
@@ -702,7 +831,7 @@ def test_invite_callback_rejects_reused_state_for_consumed_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -715,7 +844,8 @@ def test_invite_callback_rejects_reused_state_for_consumed_token(
             },
             headers=internal_headers,
         )
-        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        assert create.status_code == 201, create.text
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
         accept = client.get(
             "/v1/invite/accept",
             params={"token": token},
@@ -746,7 +876,7 @@ def test_invite_callback_rejects_tampered_state_signature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -759,7 +889,8 @@ def test_invite_callback_rejects_tampered_state_signature(
             },
             headers=internal_headers,
         )
-        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        assert create.status_code == 201, create.text
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
         accept = client.get(
             "/v1/invite/accept",
             params={"token": token},
@@ -785,7 +916,7 @@ def test_invite_callback_rejects_valid_signed_state_when_token_expired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -798,7 +929,8 @@ def test_invite_callback_rejects_valid_signed_state_when_token_expired(
             },
             headers=internal_headers,
         )
-        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        assert create.status_code == 201, create.text
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         accept = client.get(
             "/v1/invite/accept",
@@ -832,7 +964,7 @@ def test_invite_callback_rejects_authenticated_email_mismatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -845,7 +977,8 @@ def test_invite_callback_rejects_authenticated_email_mismatch(
             },
             headers=internal_headers,
         )
-        token = parse_qs(urlsplit(create.json()["magic_link_url"]).query)["token"][0]
+        assert create.status_code == 201, create.text
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         accept = client.get(
             "/v1/invite/accept",
@@ -876,7 +1009,7 @@ def test_user_identity_user_id_is_unique(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -889,10 +1022,11 @@ def test_user_identity_user_id_is_unique(
             },
             headers=internal_headers,
         )
+        assert create.status_code == 201, create.text
         payload = create.json()
         tenant_id = payload["tenant_id"]
         user_id = payload["user_id"]
-        token = parse_qs(urlsplit(payload["magic_link_url"]).query)["token"][0]
+        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
 
         accept = client.get(
             "/v1/invite/accept",
@@ -929,7 +1063,7 @@ def test_invite_callback_preserves_existing_team_assignment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_db()
-    _set_internal_admin_env(monkeypatch)
+    sent_invites = _set_internal_admin_env(monkeypatch)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -945,9 +1079,7 @@ def test_invite_callback_preserves_existing_team_assignment(
         create_payload = create.json()
         tenant_id = create_payload["tenant_id"]
         user_id = create_payload["user_id"]
-        first_token = parse_qs(urlsplit(create_payload["magic_link_url"]).query)[
-            "token"
-        ][0]
+        first_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
 
         first_accept = client.get(
             "/v1/invite/accept",
@@ -983,9 +1115,8 @@ def test_invite_callback_preserves_existing_team_assignment(
             f"/v1/internal/tenants/{tenant_id}/users/{user_id}/regenerate-invite",
             headers=internal_headers,
         )
-        second_token = parse_qs(urlsplit(regenerate.json()["magic_link_url"]).query)[
-            "token"
-        ][0]
+        assert regenerate.status_code == 200, regenerate.text
+        second_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
 
         second_accept = client.get(
             "/v1/invite/accept",

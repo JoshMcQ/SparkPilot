@@ -33,7 +33,6 @@ export default function ProvisionInternalTenantPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InternalTenantCreateResponse | null>(null);
-  const [copied, setCopied] = useState(false);
   const submittingRef = useRef(false);
   const showMetadata = form.federation_type !== "cognito_password";
   const metadataHelp = useMemo(
@@ -50,7 +49,6 @@ export default function ProvisionInternalTenantPage() {
     setSubmitting(true);
     setResult(null);
     setError(null);
-    setCopied(false);
     try {
       const payload = await provisionTenantFromForm(form);
       setResult(payload);
@@ -59,21 +57,6 @@ export default function ProvisionInternalTenantPage() {
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
-    }
-  }
-
-  async function onCopyMagicLink(): Promise<void> {
-    if (!result) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(result.magic_link_url);
-      setCopied(true);
-      setError(null);
-    } catch (err: unknown) {
-      console.error("Failed to copy internal tenant magic link to clipboard.", err);
-      setCopied(false);
-      setError("Failed to copy to clipboard. Please copy the magic link manually.");
     }
   }
 
@@ -111,7 +94,7 @@ export default function ProvisionInternalTenantPage() {
             Back to tenant list
           </Link>
         </div>
-        <div className="subtle">Create a tenant and generate a manual admin invite link.</div>
+        <div className="subtle">Create a tenant and email the admin invite.</div>
       </div>
 
       <form className="card" onSubmit={(event) => void onSubmit(event)}>
@@ -177,29 +160,23 @@ export default function ProvisionInternalTenantPage() {
 
       {result ? (
         <div className="card">
-          <h3>Magic Link Ready</h3>
+          <h3>Invite Email Sent</h3>
           <div className="subtle">
-            Copy this URL and send it manually to the tenant admin.
+            The invite was sent to {result.invite_email_sent_to}.
           </div>
-          <pre className="code-block">{result.magic_link_url}</pre>
           <div className="button-row">
-            <button type="button" className="button button-sm" onClick={() => void onCopyMagicLink()}>
-              Copy
-            </button>
             <button
               type="button"
-              className="button button-sm button-secondary"
+              className="button button-sm"
               onClick={() => {
                 setResult(null);
                 setForm(INITIAL_FORM);
                 setError(null);
-                setCopied(false);
               }}
             >
               Provision Another
             </button>
           </div>
-          {copied ? <div className="success-text">Copied to clipboard.</div> : null}
         </div>
       ) : null}
     </section>

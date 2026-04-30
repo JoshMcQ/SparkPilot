@@ -122,6 +122,25 @@ class Settings(BaseSettings):
             "CRM_WEBHOOK_URL",
         ),
     )
+    resend_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("SPARKPILOT_RESEND_API_KEY", "RESEND_API_KEY"),
+    )
+    invite_email_from: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_INVITE_EMAIL_FROM",
+            "INVITE_EMAIL_FROM",
+        ),
+    )
+    invite_email_reply_to: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_INVITE_EMAIL_REPLY_TO",
+            "INVITE_EMAIL_REPLY_TO",
+        ),
+    )
+    invite_email_timeout_seconds: float = 10.0
     magic_link_ttl_hours: int = 24
     aws_region: str = "us-east-1"
     log_group_prefix: str = "/sparkpilot/runs"
@@ -360,6 +379,49 @@ def _validate_auth_settings(settings: Settings) -> None:
             raise ValueError("SPARKPILOT_CRM_WEBHOOK_URL must be a valid http(s) URL.")
 
 
+def _extract_email_address(value: str) -> str:
+    candidate = value.strip()
+    if "<" in candidate or ">" in candidate:
+        start = candidate.rfind("<")
+        end = candidate.rfind(">")
+        if start < 0 or end <= start:
+            return ""
+        candidate = candidate[start + 1 : end].strip()
+    return candidate
+
+
+def _validate_invite_email_settings(settings: Settings) -> None:
+    resend_api_key = settings.resend_api_key.strip()
+    from_email = settings.invite_email_from.strip()
+    reply_to = settings.invite_email_reply_to.strip()
+    if resend_api_key and not from_email:
+        raise ValueError(
+            "SPARKPILOT_INVITE_EMAIL_FROM is required when SPARKPILOT_RESEND_API_KEY is set."
+        )
+    if from_email:
+        parsed_from = _extract_email_address(from_email)
+        if (
+            "@" not in parsed_from
+            or parsed_from.startswith("@")
+            or parsed_from.endswith("@")
+        ):
+            raise ValueError(
+                "SPARKPILOT_INVITE_EMAIL_FROM must be an email address or friendly-name address."
+            )
+    if reply_to:
+        parsed_reply_to = _extract_email_address(reply_to)
+        if (
+            "@" not in parsed_reply_to
+            or parsed_reply_to.startswith("@")
+            or parsed_reply_to.endswith("@")
+        ):
+            raise ValueError("SPARKPILOT_INVITE_EMAIL_REPLY_TO must be an email address.")
+    if settings.invite_email_timeout_seconds <= 0:
+        raise ValueError(
+            "SPARKPILOT_INVITE_EMAIL_TIMEOUT_SECONDS must be greater than 0."
+        )
+
+
 def _validate_security_runtime_settings(settings: Settings) -> None:
     bootstrap_secret = settings.bootstrap_secret.strip()
     if len(bootstrap_secret) < MIN_BOOTSTRAP_SECRET_LENGTH:
@@ -427,6 +489,7 @@ def validate_runtime_settings(settings: Settings) -> None:
     _validate_numeric_runtime_settings(settings)
     _validate_cost_center_policy(settings)
     _validate_auth_settings(settings)
+    _validate_invite_email_settings(settings)
     _validate_security_runtime_settings(settings)
     if settings.legacy_customer_oidc_aliases_in_use:
         logger.warning(

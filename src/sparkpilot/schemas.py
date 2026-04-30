@@ -64,7 +64,9 @@ class InternalTenantCreateRequest(BaseModel):
 class InternalTenantCreateResponse(BaseModel):
     tenant_id: str
     user_id: str
-    magic_link_url: str
+    invite_email_sent_to: str
+    invite_email_provider: Literal["resend"]
+    invite_email_provider_message_id: str | None = None
 
 
 class InternalTenantUserResponse(BaseModel):

@@ -35,6 +35,11 @@ def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_internal/.well-known/jwks.json",
     )
     monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_SECRET", "0123456789abcdef")
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
     monkeypatch.setenv("SPARKPILOT_CORS_ORIGINS", "https://app.sparkpilot.cloud")
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "false")
@@ -80,6 +85,34 @@ def test_production_startup_fails_when_required_oidc_env_missing(
     legacy_alias = legacy_alias_by_customer_var.get(env_var)
     if legacy_alias:
         monkeypatch.delenv(legacy_alias, raising=False)
+    get_settings.cache_clear()
+
+    _expect_startup_failure(expected_check)
+
+
+@pytest.mark.parametrize(
+    ("env_var", "legacy_alias", "expected_check"),
+    [
+        ("SPARKPILOT_RESEND_API_KEY", "RESEND_API_KEY", "resend_api_key_present"),
+        (
+            "SPARKPILOT_INVITE_EMAIL_FROM",
+            "INVITE_EMAIL_FROM",
+            "invite_email_from_present",
+        ),
+    ],
+)
+def test_production_startup_fails_when_invite_email_env_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    env_var: str,
+    legacy_alias: str,
+    expected_check: str,
+) -> None:
+    _set_valid_production_env(monkeypatch)
+    monkeypatch.setattr(
+        "sparkpilot.api._fetch_jwks_json", lambda *_args, **_kwargs: {"keys": []}
+    )
+    monkeypatch.delenv(env_var, raising=False)
+    monkeypatch.delenv(legacy_alias, raising=False)
     get_settings.cache_clear()
 
     _expect_startup_failure(expected_check)
@@ -211,6 +244,8 @@ def test_production_startup_logs_pass_fail_for_each_check(
         "internal_pool_oidc_audience_present",
         "internal_pool_oidc_jwks_uri_present",
         "internal_pool_oidc_jwks_reachable_json",
+        "resend_api_key_present",
+        "invite_email_from_present",
         "bootstrap_secret_min_length",
         "cors_no_localhost",
         "dry_run_disabled",
