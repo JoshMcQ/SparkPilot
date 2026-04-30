@@ -40,6 +40,10 @@ def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "SPARKPILOT_INVITE_EMAIL_FROM",
         "SparkPilot <invites@example.invalid>",
     )
+    monkeypatch.setenv(
+        "SPARKPILOT_COGNITO_HOSTED_UI_URL",
+        "https://auth.example.invalid/oauth2/authorize",
+    )
     monkeypatch.setenv("SPARKPILOT_CORS_ORIGINS", "https://app.sparkpilot.cloud")
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "false")
@@ -98,6 +102,11 @@ def test_production_startup_fails_when_required_oidc_env_missing(
             "SPARKPILOT_INVITE_EMAIL_FROM",
             "INVITE_EMAIL_FROM",
             "invite_email_from_present",
+        ),
+        (
+            "SPARKPILOT_COGNITO_HOSTED_UI_URL",
+            "COGNITO_HOSTED_UI_URL",
+            "cognito_hosted_ui_url_present",
         ),
     ],
 )

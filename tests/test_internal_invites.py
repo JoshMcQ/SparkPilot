@@ -18,6 +18,7 @@ from sparkpilot.models import (
     AuditEvent,
     MagicLinkLog,
     MagicLinkToken,
+    Tenant,
     Team,
     User,
     UserIdentity,
@@ -443,6 +444,60 @@ def test_tenant_lifecycle_event_failure_does_not_block_invite_email(
         assert payload["invite_email_status"] == "sent"
 
     assert len(sent_invites) == 1
+
+
+def test_invite_email_audit_commit_failure_does_not_fail_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sparkpilot.services import internal_admin as internal_admin_service
+
+    tenant = Tenant(id="tenant-123", name="Audit Commit Failure Tenant")
+    user = User(
+        id="user-123",
+        tenant_id=tenant.id,
+        email="audit-commit-failure@tenant.example",
+        role="admin",
+    )
+    sent_delivery = InviteEmailDelivery(
+        provider="resend",
+        recipient_email=user.email,
+        status="sent",
+        provider_message_id="email-123",
+    )
+
+    class _AuditCommitFailureSession:
+        rollback_called = False
+
+        def add(self, _row: object) -> None:
+            return None
+
+        def commit(self) -> None:
+            raise RuntimeError("audit commit failed")
+
+        def rollback(self) -> None:
+            self.rollback_called = True
+
+    db = _AuditCommitFailureSession()
+    monkeypatch.setattr(
+        internal_admin_service,
+        "send_invite_email",
+        lambda **_kwargs: sent_delivery,
+    )
+
+    result = internal_admin_service._send_invite_email_and_audit(
+        db,
+        tenant=tenant,
+        user=user,
+        created_by="admin@example.invalid",
+        source_ip=None,
+        invite_url="https://app.example.invalid/v1/invite/accept?token=secret-token",
+        ttl_hours=24,
+        idempotency_key="invite:token-row-123",
+        failure_detail="Invite email delivery failed.",
+    )
+
+    assert result is sent_delivery
+    assert db.rollback_called is True
 
 
 def test_internal_tenant_read_and_regenerate_write_audit_events(

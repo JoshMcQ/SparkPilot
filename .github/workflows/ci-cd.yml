@@ -200,6 +200,7 @@ jobs:
           TF_VAR_ui_desired_count: ${{ vars.DEV_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.DEV_DB_INSTANCE_CLASS || 'db.t4g.micro' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.DEV_EMR_EXECUTION_ROLE_ARN }}
+          COGNITO_HOSTED_UI_URL: ${{ vars.DEV_COGNITO_HOSTED_UI_URL || secrets.DEV_COGNITO_HOSTED_UI_URL || '' }}
           RESEND_API_KEY_SECRET_ARN: ${{ secrets.DEV_RESEND_API_KEY_SECRET_ARN || vars.DEV_RESEND_API_KEY_SECRET_ARN || '' }}
           INVITE_EMAIL_FROM: ${{ vars.DEV_INVITE_EMAIL_FROM || secrets.DEV_INVITE_EMAIL_FROM || '' }}
         run: bash scripts/ci/deploy_preflight.sh
@@ -335,6 +336,7 @@ jobs:
           UI_IMAGE_URI: ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
           UI_API_BASE_URL: ${{ vars.DEV_UI_API_BASE_URL || '' }}
           ENABLE_ECS_EXEC: ${{ vars.DEV_ENABLE_ECS_EXEC || 'false' }}
+          COGNITO_HOSTED_UI_URL: ${{ vars.DEV_COGNITO_HOSTED_UI_URL || secrets.DEV_COGNITO_HOSTED_UI_URL || '' }}
           RESEND_API_KEY_SECRET_ARN: ${{ secrets.DEV_RESEND_API_KEY_SECRET_ARN || vars.DEV_RESEND_API_KEY_SECRET_ARN || '' }}
           INVITE_EMAIL_FROM: ${{ vars.DEV_INVITE_EMAIL_FROM || secrets.DEV_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.DEV_INVITE_EMAIL_REPLY_TO || secrets.DEV_INVITE_EMAIL_REPLY_TO || '' }}
@@ -384,6 +386,7 @@ jobs:
           TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.STAGING_DB_INSTANCE_CLASS || 'db.t4g.small' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.STAGING_EMR_EXECUTION_ROLE_ARN }}
+          COGNITO_HOSTED_UI_URL: ${{ vars.STAGING_COGNITO_HOSTED_UI_URL || secrets.STAGING_COGNITO_HOSTED_UI_URL || '' }}
           RESEND_API_KEY_SECRET_ARN: ${{ secrets.STAGING_RESEND_API_KEY_SECRET_ARN || vars.STAGING_RESEND_API_KEY_SECRET_ARN || '' }}
           INVITE_EMAIL_FROM: ${{ vars.STAGING_INVITE_EMAIL_FROM || secrets.STAGING_INVITE_EMAIL_FROM || '' }}
         run: bash scripts/ci/deploy_preflight.sh
@@ -521,6 +524,7 @@ jobs:
           UI_IMAGE_URI: ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
           UI_API_BASE_URL: ${{ vars.STAGING_UI_API_BASE_URL || '' }}
           ENABLE_ECS_EXEC: ${{ vars.STAGING_ENABLE_ECS_EXEC || 'false' }}
+          COGNITO_HOSTED_UI_URL: ${{ vars.STAGING_COGNITO_HOSTED_UI_URL || secrets.STAGING_COGNITO_HOSTED_UI_URL || '' }}
           RESEND_API_KEY_SECRET_ARN: ${{ secrets.STAGING_RESEND_API_KEY_SECRET_ARN || vars.STAGING_RESEND_API_KEY_SECRET_ARN || '' }}
           INVITE_EMAIL_FROM: ${{ vars.STAGING_INVITE_EMAIL_FROM || secrets.STAGING_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.STAGING_INVITE_EMAIL_REPLY_TO || secrets.STAGING_INVITE_EMAIL_REPLY_TO || '' }}
@@ -570,6 +574,7 @@ jobs:
           TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '0' }}
           TF_VAR_db_instance_class: ${{ vars.PROD_DB_INSTANCE_CLASS || 'db.t4g.medium' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.PROD_EMR_EXECUTION_ROLE_ARN }}
+          COGNITO_HOSTED_UI_URL: ${{ vars.PROD_COGNITO_HOSTED_UI_URL || secrets.PROD_COGNITO_HOSTED_UI_URL || '' }}
           RESEND_API_KEY_SECRET_ARN: ${{ secrets.PROD_RESEND_API_KEY_SECRET_ARN || vars.PROD_RESEND_API_KEY_SECRET_ARN || '' }}
           INVITE_EMAIL_FROM: ${{ vars.PROD_INVITE_EMAIL_FROM || secrets.PROD_INVITE_EMAIL_FROM || '' }}
         run: bash scripts/ci/deploy_preflight.sh
@@ -707,6 +712,7 @@ jobs:
           UI_IMAGE_URI: ${{ steps.repos.outputs.ui_repo }}:${{ github.sha }}
           UI_API_BASE_URL: ${{ vars.PROD_UI_API_BASE_URL || '' }}
           ENABLE_ECS_EXEC: ${{ vars.PROD_ENABLE_ECS_EXEC || 'false' }}
+          COGNITO_HOSTED_UI_URL: ${{ vars.PROD_COGNITO_HOSTED_UI_URL || secrets.PROD_COGNITO_HOSTED_UI_URL || '' }}
           RESEND_API_KEY_SECRET_ARN: ${{ secrets.PROD_RESEND_API_KEY_SECRET_ARN || vars.PROD_RESEND_API_KEY_SECRET_ARN || '' }}
           INVITE_EMAIL_FROM: ${{ vars.PROD_INVITE_EMAIL_FROM || secrets.PROD_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.PROD_INVITE_EMAIL_REPLY_TO || secrets.PROD_INVITE_EMAIL_REPLY_TO || '' }}

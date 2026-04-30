@@ -95,6 +95,7 @@ cloudflare_proxied="$(normalize_bool "${CLOUDFLARE_PROXIED:-false}")"
 cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
 ui_image_uri="$(echo "${UI_IMAGE_URI:-}" | xargs)"
 ui_api_base_url="$(echo "${UI_API_BASE_URL:-}" | xargs)"
+cognito_hosted_ui_url="$(echo "${COGNITO_HOSTED_UI_URL:-}" | xargs)"
 resend_api_key_secret_arn="$(echo "${RESEND_API_KEY_SECRET_ARN:-}" | xargs)"
 invite_email_from="$(echo "${INVITE_EMAIL_FROM:-}" | xargs)"
 invite_email_reply_to="$(echo "${INVITE_EMAIL_REPLY_TO:-}" | xargs)"
@@ -115,6 +116,10 @@ if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lo
   fi
   if [[ -z "${resend_api_key_secret_arn}" ]]; then
     echo "::error::RESEND_API_KEY_SECRET_ARN must be set for non-dev invite email delivery." >&2
+    exit 1
+  fi
+  if [[ -z "${cognito_hosted_ui_url}" ]]; then
+    echo "::error::COGNITO_HOSTED_UI_URL must be set for non-dev invite email redirects." >&2
     exit 1
   fi
   if [[ -z "${invite_email_from}" ]]; then
@@ -195,6 +200,7 @@ jq -n \
   --argjson enable_ecs_exec "${enable_ecs_exec}" \
   --arg ui_image_uri "${ui_image_uri}" \
   --arg ui_api_base_url "${ui_api_base_url}" \
+  --arg cognito_hosted_ui_url "${cognito_hosted_ui_url}" \
   --arg resend_api_key_secret_arn "${resend_api_key_secret_arn}" \
   --arg invite_email_from "${invite_email_from}" \
   --arg invite_email_reply_to "${invite_email_reply_to}" \
@@ -232,6 +238,7 @@ jq -n \
     enable_ecs_exec: $enable_ecs_exec,
     ui_image_uri: $ui_image_uri,
     ui_api_base_url: $ui_api_base_url,
+    cognito_hosted_ui_url: $cognito_hosted_ui_url,
     resend_api_key_secret_arn: $resend_api_key_secret_arn,
     invite_email_from: $invite_email_from,
     invite_email_reply_to: $invite_email_reply_to,

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html import escape
 import logging
+import random
+import time
 from typing import Literal
 
 import httpx
@@ -15,6 +17,9 @@ from sparkpilot.exceptions import SparkPilotError
 logger = logging.getLogger(__name__)
 
 RESEND_EMAILS_URL = "https://api.resend.com/emails"
+RESEND_SEND_MAX_ATTEMPTS = 3
+RESEND_RETRY_BASE_SECONDS = 0.25
+RESEND_RETRY_JITTER_SECONDS = 0.1
 
 
 class InviteEmailConfigurationError(SparkPilotError):
@@ -62,6 +67,13 @@ def _invite_email_html(*, tenant_name: str, invite_url: str, ttl_hours: int) -> 
         f'<p><a href="{safe_invite_url}">Accept invite</a></p>'
         f"<p>This link expires in {ttl_hours} hours. If you were not expecting "
         "this invite, ignore this email.</p>"
+    )
+
+
+def _resend_retry_delay_seconds(attempt: int) -> float:
+    return (RESEND_RETRY_BASE_SECONDS * (2 ** (attempt - 1))) + random.uniform(
+        0,
+        RESEND_RETRY_JITTER_SECONDS,
     )
 
 
@@ -118,15 +130,50 @@ def send_invite_email(
         "Authorization": f"Bearer {api_key}",
         "Idempotency-Key": idempotency_key[:256],
     }
-    try:
-        response = httpx.post(
-            RESEND_EMAILS_URL,
-            json=payload,
-            headers=headers,
-            timeout=settings.invite_email_timeout_seconds,
+    response: httpx.Response | None = None
+    for attempt in range(1, RESEND_SEND_MAX_ATTEMPTS + 1):
+        try:
+            response = httpx.post(
+                RESEND_EMAILS_URL,
+                json=payload,
+                headers=headers,
+                timeout=settings.invite_email_timeout_seconds,
+            )
+        except httpx.HTTPError as exc:
+            if attempt >= RESEND_SEND_MAX_ATTEMPTS:
+                raise InviteEmailDeliveryError(
+                    "Resend invite email request failed."
+                ) from exc
+            delay = _resend_retry_delay_seconds(attempt)
+            logger.warning(
+                "Resend invite email transport failure attempt=%s/%s tenant_id=%s user_id=%s error_type=%s retry_delay_seconds=%.3f",
+                attempt,
+                RESEND_SEND_MAX_ATTEMPTS,
+                tenant_id,
+                user_id,
+                exc.__class__.__name__,
+                delay,
+            )
+            time.sleep(delay)
+            continue
+        if response.status_code < 500:
+            break
+        if attempt >= RESEND_SEND_MAX_ATTEMPTS:
+            break
+        delay = _resend_retry_delay_seconds(attempt)
+        logger.warning(
+            "Resend invite email transient HTTP %s attempt=%s/%s tenant_id=%s user_id=%s retry_delay_seconds=%.3f",
+            response.status_code,
+            attempt,
+            RESEND_SEND_MAX_ATTEMPTS,
+            tenant_id,
+            user_id,
+            delay,
         )
-    except httpx.HTTPError as exc:
-        raise InviteEmailDeliveryError("Resend invite email request failed.") from exc
+        time.sleep(delay)
+
+    if response is None:
+        raise InviteEmailDeliveryError("Resend invite email request failed.")
 
     if response.status_code >= 400:
         logger.warning(

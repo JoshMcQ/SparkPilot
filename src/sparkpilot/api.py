@@ -306,6 +306,10 @@ def _validate_production_startup() -> None:
         "SPARKPILOT_INVITE_EMAIL_FROM",
         "INVITE_EMAIL_FROM",
     )
+    cognito_hosted_ui_url = _env_value(
+        "SPARKPILOT_COGNITO_HOSTED_UI_URL",
+        "COGNITO_HOSTED_UI_URL",
+    )
     _record(
         "resend_api_key_present",
         bool(resend_api_key),
@@ -315,6 +319,11 @@ def _validate_production_startup() -> None:
         "invite_email_from_present",
         bool(invite_email_from),
         "SPARKPILOT_INVITE_EMAIL_FROM must be set for invite email delivery.",
+    )
+    _record(
+        "cognito_hosted_ui_url_present",
+        bool(cognito_hosted_ui_url),
+        "SPARKPILOT_COGNITO_HOSTED_UI_URL must be set for invite email redirects.",
     )
 
     bootstrap_secret = _env_value("SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET")

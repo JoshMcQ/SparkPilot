@@ -109,6 +109,7 @@ def test_send_invite_email_rejects_provider_errors_without_leaking_token(
         "SparkPilot <invites@example.invalid>",
     )
     _clear_settings_cache()
+    monkeypatch.setattr("sparkpilot.invite_email.time.sleep", lambda _seconds: None)
 
     def _fake_post(*_args, **_kwargs) -> httpx.Response:
         return httpx.Response(500, json={"message": "provider unavailable"})
@@ -130,11 +131,115 @@ def test_send_invite_email_rejects_provider_errors_without_leaking_token(
     _clear_settings_cache()
 
 
+def test_send_invite_email_retries_transient_provider_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
+    _clear_settings_cache()
+    sleeps: list[float] = []
+    idempotency_keys: list[str] = []
+
+    def _fake_post(
+        _url: str,
+        *,
+        json: dict[str, object],
+        headers: dict[str, str],
+        timeout: float,
+    ) -> httpx.Response:
+        assert json["to"] == ["admin@example.invalid"]
+        assert timeout == 10.0
+        idempotency_keys.append(headers["Idempotency-Key"])
+        if len(idempotency_keys) == 1:
+            return httpx.Response(503, json={"message": "try again"})
+        return httpx.Response(200, json={"id": "email_retry"})
+
+    monkeypatch.setattr("sparkpilot.invite_email.httpx.post", _fake_post)
+    monkeypatch.setattr(
+        "sparkpilot.invite_email.time.sleep",
+        lambda seconds: sleeps.append(seconds),
+    )
+
+    delivery = send_invite_email(
+        recipient_email="admin@example.invalid",
+        tenant_name="Acme Corp",
+        invite_url="https://app.example.invalid/v1/invite/accept?token=secret-token",
+        tenant_id="tenant-123",
+        user_id="user-123",
+        ttl_hours=24,
+        idempotency_key="invite:token-row-123",
+    )
+
+    assert delivery.provider_message_id == "email_retry"
+    assert idempotency_keys == ["invite:token-row-123", "invite:token-row-123"]
+    assert len(sleeps) == 1
+    _clear_settings_cache()
+
+
+def test_send_invite_email_retries_transport_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
+    _clear_settings_cache()
+    attempts = 0
+
+    def _fake_post(*_args, **_kwargs) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise httpx.ConnectError("temporary network failure")
+        return httpx.Response(200, json={"id": "email_after_retry"})
+
+    monkeypatch.setattr("sparkpilot.invite_email.httpx.post", _fake_post)
+    monkeypatch.setattr("sparkpilot.invite_email.time.sleep", lambda _seconds: None)
+
+    delivery = send_invite_email(
+        recipient_email="admin@example.invalid",
+        tenant_name="Acme Corp",
+        invite_url="https://app.example.invalid/v1/invite/accept?token=secret-token",
+        tenant_id="tenant-123",
+        user_id="user-123",
+        ttl_hours=24,
+        idempotency_key="invite:token-row-123",
+    )
+
+    assert delivery.provider_message_id == "email_after_retry"
+    assert attempts == 2
+    _clear_settings_cache()
+
+
+def test_invite_email_requires_hosted_ui_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
+    monkeypatch.delenv("SPARKPILOT_COGNITO_HOSTED_UI_URL", raising=False)
+    _clear_settings_cache()
+
+    with pytest.raises(ValueError, match="SPARKPILOT_COGNITO_HOSTED_UI_URL"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
 def test_invite_email_from_required_when_resend_key_is_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
     monkeypatch.setenv("SPARKPILOT_INVITE_EMAIL_FROM", "")
+    monkeypatch.setenv(
+        "SPARKPILOT_COGNITO_HOSTED_UI_URL",
+        "https://auth.example.invalid/oauth2/authorize",
+    )
     _clear_settings_cache()
 
     with pytest.raises(ValueError, match="SPARKPILOT_INVITE_EMAIL_FROM is required"):
@@ -167,6 +272,10 @@ def test_invite_email_settings_reject_malformed_addresses(
     monkeypatch.setenv(
         "SPARKPILOT_INVITE_EMAIL_FROM",
         "SparkPilot <invites@example.invalid>",
+    )
+    monkeypatch.setenv(
+        "SPARKPILOT_COGNITO_HOSTED_UI_URL",
+        "https://auth.example.invalid/oauth2/authorize",
     )
     monkeypatch.setenv(env_var, value)
     _clear_settings_cache()
