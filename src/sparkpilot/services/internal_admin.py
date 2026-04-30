@@ -174,6 +174,30 @@ def _send_invite_email_and_audit(
     return delivery
 
 
+def _emit_tenant_lifecycle_event_safely(
+    *,
+    event_type: str,
+    tenant: Tenant,
+    user: User,
+    created_by: str,
+) -> None:
+    try:
+        emit_tenant_lifecycle_event(
+            event_type=event_type,
+            tenant_id=tenant.id,
+            tenant_name=tenant.name,
+            admin_email=user.email,
+            actor_email=created_by,
+        )
+    except Exception:  # pragma: no cover - defensive guard around integration stub
+        logger.exception(
+            "Tenant lifecycle webhook dispatch failed event_type=%s tenant_id=%s user_id=%s",
+            event_type,
+            tenant.id,
+            user.id,
+        )
+
+
 def _invalidate_unconsumed_user_invites(
     db: Session, *, user_id: str, now: datetime
 ) -> None:
@@ -264,6 +288,12 @@ def create_tenant_with_admin_invite(
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
+    _emit_tenant_lifecycle_event_safely(
+        event_type="tenant.created",
+        tenant=tenant,
+        user=user,
+        created_by=created_by,
+    )
     invite_email = _send_invite_email_and_audit(
         db,
         tenant=tenant,
@@ -277,13 +307,6 @@ def create_tenant_with_admin_invite(
             "Tenant was created, but invite email delivery failed. "
             "Fix invite email configuration and regenerate the invite from tenant detail."
         ),
-    )
-    emit_tenant_lifecycle_event(
-        event_type="tenant.created",
-        tenant_id=tenant.id,
-        tenant_name=tenant.name,
-        admin_email=user.email,
-        actor_email=created_by,
     )
     return InternalTenantProvisionResult(
         tenant=tenant,
@@ -345,6 +368,12 @@ def regenerate_user_invite(
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
+    _emit_tenant_lifecycle_event_safely(
+        event_type="tenant.invite_regenerated",
+        tenant=tenant,
+        user=user,
+        created_by=created_by,
+    )
     invite_email = _send_invite_email_and_audit(
         db,
         tenant=tenant,
@@ -358,13 +387,6 @@ def regenerate_user_invite(
             "Invite was regenerated, but invite email delivery failed. "
             "Fix invite email configuration and regenerate the invite again."
         ),
-    )
-    emit_tenant_lifecycle_event(
-        event_type="tenant.invite_regenerated",
-        tenant_id=tenant.id,
-        tenant_name=tenant.name,
-        admin_email=user.email,
-        actor_email=created_by,
     )
     return InternalTenantProvisionResult(
         tenant=tenant,

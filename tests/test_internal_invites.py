@@ -333,16 +333,25 @@ def test_internal_tenant_create_persists_invite_and_audits_email_failure(
 ) -> None:
     _reset_db()
     _set_internal_admin_env(monkeypatch)
+    monkeypatch.setenv("SPARKPILOT_CRM_WEBHOOK_URL", "https://crm.example/webhook")
+    get_settings.cache_clear()
+    _oidc_verifier.cache_clear()
+    _oidc_verifiers.cache_clear()
+    webhook_calls: list[dict[str, str]] = []
 
     from sparkpilot.invite_email import InviteEmailDeliveryError
 
     def _fail_invite_email(**_kwargs: object) -> InviteEmailDelivery:
         raise InviteEmailDeliveryError("provider rejected invite email")
 
+    def _capture_webhook(_url: str, payload: dict[str, str]) -> None:
+        webhook_calls.append(payload)
+
     monkeypatch.setattr(
         "sparkpilot.services.internal_admin.send_invite_email",
         _fail_invite_email,
     )
+    monkeypatch.setattr("sparkpilot.crm_webhook._post_crm_webhook", _capture_webhook)
     internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
 
     with _BaseTestClient(app) as client:
@@ -358,6 +367,12 @@ def test_internal_tenant_create_persists_invite_and_audits_email_failure(
         assert response.status_code == 502, response.text
         assert "provider rejected" not in response.text
         assert "token=" not in response.text
+
+    deadline = time.time() + 1.0
+    while not webhook_calls and time.time() < deadline:
+        time.sleep(0.01)
+    assert webhook_calls
+    assert webhook_calls[0]["event_type"] == "tenant.created"
 
     with SessionLocal() as db:
         user = db.execute(
@@ -386,6 +401,38 @@ def test_internal_tenant_create_persists_invite_and_audits_email_failure(
             "provider": "resend",
             "error_type": "InviteEmailDeliveryError",
         }
+
+
+def test_tenant_lifecycle_event_failure_does_not_block_invite_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    sent_invites = _set_internal_admin_env(monkeypatch)
+
+    def _raise_emit_failure(**_kwargs: object) -> None:
+        raise RuntimeError("webhook dispatch failed")
+
+    monkeypatch.setattr(
+        "sparkpilot.services.internal_admin.emit_tenant_lifecycle_event",
+        _raise_emit_failure,
+    )
+    internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
+
+    with _BaseTestClient(app) as client:
+        response = client.post(
+            "/v1/internal/tenants",
+            json={
+                "name": "Webhook Failure Tenant",
+                "admin_email": "webhook-failure@tenant.example",
+                "federation_type": "oidc",
+            },
+            headers=internal_headers,
+        )
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert payload["invite_email_sent_to"] == "webhook-failure@tenant.example"
+
+    assert len(sent_invites) == 1
 
 
 def test_internal_tenant_read_and_regenerate_write_audit_events(
