@@ -111,8 +111,21 @@ def _auth_headers(
     return {"Authorization": f"Bearer {token}"}
 
 
-def _invite_token_from_url(invite_url: str) -> str:
-    return parse_qs(urlsplit(invite_url).query)["token"][0]
+def _invite_token_from_url(
+    sent_invites: list[dict[str, str]],
+    *,
+    expected_count: int | None = None,
+) -> str:
+    # Returns the token parsed from the most recently captured invite URL.
+    # When expected_count is provided, fail loudly if the list length differs so
+    # accidental duplicate sends (which would mean the user got two emails) are
+    # caught at assertion time rather than silently ignored.
+    if expected_count is not None:
+        assert len(sent_invites) == expected_count, (
+            f"expected {expected_count} invite(s) sent, got {len(sent_invites)}"
+        )
+    assert sent_invites, "no invites have been captured in sent_invites"
+    return parse_qs(urlsplit(sent_invites[-1]["invite_url"]).query)["token"][0]
 
 
 def test_issue_test_token_rejects_reserved_claim_overrides() -> None:
@@ -188,10 +201,9 @@ def test_internal_tenant_invite_happy_path_end_to_end(
         assert created["invite_email_provider_message_id"] == "email-1"
         assert created["invite_email_failure_detail"] is None
         assert "magic_link_url" not in created
-        assert len(sent_invites) == 1
-        magic_link_url = sent_invites[0]["invite_url"]
+        magic_link_url = sent_invites[-1]["invite_url"]
         assert "/v1/invite/accept?token=" in magic_link_url
-        token = _invite_token_from_url(magic_link_url)
+        token = _invite_token_from_url(sent_invites, expected_count=1)
 
         listed = client.get("/v1/internal/tenants", headers=internal_headers)
         assert listed.status_code == 200
@@ -735,7 +747,7 @@ def test_tenant_admin_invite_consumed_webhook_fires_when_configured(
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
 
         accept = client.get(
             "/v1/invite/accept",
@@ -779,7 +791,7 @@ def test_invite_accept_rejects_expired_token(monkeypatch: pytest.MonkeyPatch) ->
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
         with SessionLocal() as db:
@@ -832,7 +844,7 @@ def test_invite_accept_rejects_consumed_and_wrong_token(
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
 
         first = client.get(
             "/v1/invite/accept",
@@ -874,7 +886,7 @@ def test_invite_accept_fails_closed_when_cognito_hosted_ui_url_missing(
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
         response = client.get("/v1/invite/accept", params={"token": token})
@@ -907,7 +919,7 @@ def test_regenerate_invite_after_consumption_invalidates_old_token_and_issues_ne
         )
         tenant_id = create.json()["tenant_id"]
         user_id = create.json()["user_id"]
-        old_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        old_token = _invite_token_from_url(sent_invites)
 
         consumed = client.get(
             "/v1/invite/accept",
@@ -926,7 +938,7 @@ def test_regenerate_invite_after_consumption_invalidates_old_token_and_issues_ne
         assert regenerated["invite_email_provider"] == "resend"
         assert regenerated["invite_email_status"] == "sent"
         assert "magic_link_url" not in regenerated
-        new_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        new_token = _invite_token_from_url(sent_invites)
         assert new_token != old_token
 
         old_again = client.get("/v1/invite/accept", params={"token": old_token})
@@ -958,7 +970,7 @@ def test_invite_callback_rejects_reused_state_for_consumed_token(
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
         accept = client.get(
             "/v1/invite/accept",
             params={"token": token},
@@ -1003,7 +1015,7 @@ def test_invite_callback_rejects_tampered_state_signature(
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
         accept = client.get(
             "/v1/invite/accept",
             params={"token": token},
@@ -1043,7 +1055,7 @@ def test_invite_callback_rejects_valid_signed_state_when_token_expired(
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         accept = client.get(
             "/v1/invite/accept",
@@ -1091,7 +1103,7 @@ def test_invite_callback_rejects_authenticated_email_mismatch(
             headers=internal_headers,
         )
         assert create.status_code == 201, create.text
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         accept = client.get(
             "/v1/invite/accept",
@@ -1139,7 +1151,7 @@ def test_user_identity_user_id_is_unique(
         payload = create.json()
         tenant_id = payload["tenant_id"]
         user_id = payload["user_id"]
-        token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        token = _invite_token_from_url(sent_invites)
 
         accept = client.get(
             "/v1/invite/accept",
@@ -1192,7 +1204,7 @@ def test_invite_callback_preserves_existing_team_assignment(
         create_payload = create.json()
         tenant_id = create_payload["tenant_id"]
         user_id = create_payload["user_id"]
-        first_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        first_token = _invite_token_from_url(sent_invites)
 
         first_accept = client.get(
             "/v1/invite/accept",
@@ -1229,7 +1241,7 @@ def test_invite_callback_preserves_existing_team_assignment(
             headers=internal_headers,
         )
         assert regenerate.status_code == 200, regenerate.text
-        second_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
+        second_token = _invite_token_from_url(sent_invites)
 
         second_accept = client.get(
             "/v1/invite/accept",
