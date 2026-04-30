@@ -138,3 +138,37 @@ def test_invite_email_from_required_when_resend_key_is_set(
     with pytest.raises(ValueError, match="SPARKPILOT_INVITE_EMAIL_FROM is required"):
         validate_runtime_settings(get_settings())
     _clear_settings_cache()
+
+
+@pytest.mark.parametrize(
+    ("env_var", "value", "match"),
+    [
+        (
+            "SPARKPILOT_INVITE_EMAIL_FROM",
+            "Alice <alice@example.invalid>oops",
+            "SPARKPILOT_INVITE_EMAIL_FROM",
+        ),
+        (
+            "SPARKPILOT_INVITE_EMAIL_REPLY_TO",
+            "reply@example.invalid>oops",
+            "SPARKPILOT_INVITE_EMAIL_REPLY_TO",
+        ),
+    ],
+)
+def test_invite_email_settings_reject_malformed_addresses(
+    monkeypatch: pytest.MonkeyPatch,
+    env_var: str,
+    value: str,
+    match: str,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
+    monkeypatch.setenv(env_var, value)
+    _clear_settings_cache()
+
+    with pytest.raises(ValueError, match=match):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()

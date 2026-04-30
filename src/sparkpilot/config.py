@@ -19,6 +19,10 @@ _DEFAULT_DATABASE_URL = (
     "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
 )
 _LOCALHOST_ORIGINS = {"localhost", "127.0.0.1", "::1"}
+EMAIL_ADDRESS_PATTERN = re.compile(r"^[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+$")
+FRIENDLY_EMAIL_ADDRESS_PATTERN = re.compile(
+    r"^.+<(?P<email>[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+)>$"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -382,11 +386,10 @@ def _validate_auth_settings(settings: Settings) -> None:
 def _extract_email_address(value: str) -> str:
     candidate = value.strip()
     if "<" in candidate or ">" in candidate:
-        start = candidate.rfind("<")
-        end = candidate.rfind(">")
-        if start < 0 or end <= start:
+        match = FRIENDLY_EMAIL_ADDRESS_PATTERN.fullmatch(candidate)
+        if match is None:
             return ""
-        candidate = candidate[start + 1 : end].strip()
+        candidate = match.group("email")
     return candidate
 
 
@@ -400,21 +403,13 @@ def _validate_invite_email_settings(settings: Settings) -> None:
         )
     if from_email:
         parsed_from = _extract_email_address(from_email)
-        if (
-            "@" not in parsed_from
-            or parsed_from.startswith("@")
-            or parsed_from.endswith("@")
-        ):
+        if EMAIL_ADDRESS_PATTERN.fullmatch(parsed_from) is None:
             raise ValueError(
                 "SPARKPILOT_INVITE_EMAIL_FROM must be an email address or friendly-name address."
             )
     if reply_to:
         parsed_reply_to = _extract_email_address(reply_to)
-        if (
-            "@" not in parsed_reply_to
-            or parsed_reply_to.startswith("@")
-            or parsed_reply_to.endswith("@")
-        ):
+        if EMAIL_ADDRESS_PATTERN.fullmatch(parsed_reply_to) is None:
             raise ValueError("SPARKPILOT_INVITE_EMAIL_REPLY_TO must be an email address.")
     if settings.invite_email_timeout_seconds <= 0:
         raise ValueError(
