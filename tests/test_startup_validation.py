@@ -255,6 +255,7 @@ def test_production_startup_logs_pass_fail_for_each_check(
         "internal_pool_oidc_jwks_reachable_json",
         "resend_api_key_present",
         "invite_email_from_present",
+        "cognito_hosted_ui_url_present",
         "bootstrap_secret_min_length",
         "cors_no_localhost",
         "dry_run_disabled",

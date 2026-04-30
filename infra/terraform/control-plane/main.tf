@@ -335,6 +335,20 @@ check "internal_oidc_configuration_complete" {
   }
 }
 
+check "invite_email_configuration_complete" {
+  assert {
+    condition = (
+      local.is_dev_environment ||
+      (
+        trimspace(var.cognito_hosted_ui_url) != "" &&
+        trimspace(var.resend_api_key_secret_arn) != "" &&
+        trimspace(var.invite_email_from) != ""
+      )
+    )
+    error_message = "For staging/prod, set cognito_hosted_ui_url, resend_api_key_secret_arn, and invite_email_from so internal admin invites can be delivered."
+  }
+}
+
 check "https_required_for_non_dev" {
   assert {
     condition     = local.is_dev_environment || local.alb_internal || local.https_enabled || var.cloudflare_proxied
