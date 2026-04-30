@@ -13,8 +13,11 @@
 #   OIDC_ISSUER             - OIDC issuer URL
 #   OIDC_AUDIENCE           - OIDC audience
 #   OIDC_JWKS_URI           - OIDC JWKS URI
+#   COGNITO_HOSTED_UI_URL   - Cognito Hosted UI authorize URL for invite accept redirects
 #   BOOTSTRAP_SECRET        - API bootstrap secret
 #   EMR_EXECUTION_ROLE_ARN  - EMR execution role ARN
+#   RESEND_API_KEY_SECRET_ARN - Secrets Manager ARN containing the Resend API key
+#   INVITE_EMAIL_FROM       - sender address for invite emails
 #
 # Outputs (via GITHUB_OUTPUT):
 #   skip=true   - deploy disabled, role missing, or environment not configured
@@ -76,6 +79,12 @@ fi
 [ -z "${OIDC_JWKS_URI:-}" ]           && MISSING+=("${ENV_UPPER}_OIDC_JWKS_URI")
 [ -z "${BOOTSTRAP_SECRET:-}" ]        && MISSING+=("${ENV_UPPER}_BOOTSTRAP_SECRET")
 [ -z "${EMR_EXECUTION_ROLE_ARN:-}" ]  && MISSING+=("${ENV_UPPER}_EMR_EXECUTION_ROLE_ARN")
+
+if [[ "${DEPLOY_ENV}" != "dev" ]]; then
+  [ -z "${COGNITO_HOSTED_UI_URL:-}" ]       && MISSING+=("${ENV_UPPER}_COGNITO_HOSTED_UI_URL")
+  [ -z "${RESEND_API_KEY_SECRET_ARN:-}" ] && MISSING+=("${ENV_UPPER}_RESEND_API_KEY_SECRET_ARN")
+  [ -z "${INVITE_EMAIL_FROM:-}" ]         && MISSING+=("${ENV_UPPER}_INVITE_EMAIL_FROM")
+fi
 
 if [ "${#MISSING[@]}" -gt 0 ]; then
   echo "::error::${DEPLOY_ENV} deploy preflight FAILED - role ARN is set but ${#MISSING[@]} required secret(s) are missing:"

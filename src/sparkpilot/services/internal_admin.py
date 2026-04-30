@@ -17,8 +17,10 @@ from sparkpilot.exceptions import (
     ConflictError,
     EntityNotFoundError,
     GoneError,
+    SparkPilotError,
     ValidationError,
 )
+from sparkpilot.invite_email import InviteEmailDelivery, send_invite_email
 from sparkpilot.models import MagicLinkLog, MagicLinkToken, Tenant, User, UserIdentity
 from sparkpilot.schemas import InternalTenantCreateRequest, TenantCreateRequest
 from sparkpilot.services.crud import create_tenant
@@ -32,7 +34,7 @@ INVITE_ACCEPT_PURPOSE = "invite_accept"
 class InternalTenantProvisionResult:
     tenant: Tenant
     user: User
-    magic_link_url: str
+    invite_email: InviteEmailDelivery
 
 
 @dataclass(frozen=True)
@@ -87,7 +89,7 @@ def _create_magic_link_token(
     return row, plain_token
 
 
-def _log_magic_link_stub(
+def _log_magic_link_issued(
     db: Session,
     *,
     user_id: str,
@@ -97,7 +99,7 @@ def _log_magic_link_stub(
 ) -> None:
     redacted_magic_link = magic_link_url.split("?", 1)[0]
     logger.info(
-        "Magic link issued (stub) user_id=%s tenant_id=%s purpose=%s created_by=%s",
+        "Invite magic link issued user_id=%s tenant_id=%s purpose=%s created_by=%s",
         user_id,
         tenant_id,
         INVITE_ACCEPT_PURPOSE,
@@ -112,6 +114,124 @@ def _log_magic_link_stub(
             created_by=created_by,
         )
     )
+
+
+def _send_invite_email_and_audit(
+    db: Session,
+    *,
+    tenant: Tenant,
+    user: User,
+    created_by: str,
+    source_ip: str | None,
+    invite_url: str,
+    ttl_hours: int,
+    idempotency_key: str,
+    failure_detail: str,
+) -> InviteEmailDelivery:
+    def _write_invite_email_audit_best_effort(
+        *,
+        action: str,
+        details: dict[str, str | None],
+        delivery: InviteEmailDelivery | None,
+    ) -> None:
+        try:
+            write_audit_event(
+                db,
+                actor=created_by,
+                source_ip=source_ip,
+                action=action,
+                entity_type="user",
+                entity_id=user.id,
+                tenant_id=tenant.id,
+                details=details,
+            )
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:  # pragma: no cover - defensive cleanup after failure
+                logger.exception(
+                    "Invite email audit rollback failed tenant_id=%s user_id=%s action=%s",
+                    tenant.id,
+                    user.id,
+                    action,
+                )
+            logger.exception(
+                "Invite email audit persistence failed tenant_id=%s user_id=%s action=%s provider_message_id=%s",
+                tenant.id,
+                user.id,
+                action,
+                delivery.provider_message_id if delivery else None,
+            )
+
+    try:
+        delivery = send_invite_email(
+            recipient_email=user.email,
+            tenant_name=tenant.name,
+            invite_url=invite_url,
+            tenant_id=tenant.id,
+            user_id=user.id,
+            ttl_hours=ttl_hours,
+            idempotency_key=idempotency_key,
+        )
+    except SparkPilotError as exc:
+        _write_invite_email_audit_best_effort(
+            action="user.invite_email_failed",
+            details={
+                "email": user.email,
+                "provider": "resend",
+                "error_type": exc.__class__.__name__,
+            },
+            delivery=None,
+        )
+        logger.warning(
+            "Invite email delivery failed provider=resend tenant_id=%s user_id=%s error_type=%s",
+            tenant.id,
+            user.id,
+            exc.__class__.__name__,
+        )
+        return InviteEmailDelivery(
+            provider="resend",
+            recipient_email=user.email,
+            status="failed",
+            provider_message_id=None,
+            failure_detail=failure_detail,
+        )
+
+    _write_invite_email_audit_best_effort(
+        action="user.invite_email_sent",
+        details={
+            "email": user.email,
+            "provider": delivery.provider,
+            "provider_message_id": delivery.provider_message_id,
+        },
+        delivery=delivery,
+    )
+    return delivery
+
+
+def _emit_tenant_lifecycle_event_safely(
+    *,
+    event_type: str,
+    tenant: Tenant,
+    user: User,
+    created_by: str,
+) -> None:
+    try:
+        emit_tenant_lifecycle_event(
+            event_type=event_type,
+            tenant_id=tenant.id,
+            tenant_name=tenant.name,
+            admin_email=user.email,
+            actor_email=created_by,
+        )
+    except Exception:  # pragma: no cover - defensive guard around integration stub
+        logger.exception(
+            "Tenant lifecycle webhook dispatch failed event_type=%s tenant_id=%s user_id=%s",
+            event_type,
+            tenant.id,
+            user.id,
+        )
 
 
 def _invalidate_unconsumed_user_invites(
@@ -172,15 +292,16 @@ def create_tenant_with_admin_invite(
     db.add(user)
     db.flush()
     expires_at = now + timedelta(hours=ttl_hours)
-    _, plain_token = _create_magic_link_token(
+    token_row, plain_token = _create_magic_link_token(
         db,
         user_id=user.id,
         tenant_id=tenant.id,
         created_by=created_by,
         expires_at=expires_at,
     )
+    token_id = token_row.id
     magic_link_url = f"{invite_accept_base_url}?token={plain_token}"
-    _log_magic_link_stub(
+    _log_magic_link_issued(
         db,
         user_id=user.id,
         tenant_id=tenant.id,
@@ -203,17 +324,30 @@ def create_tenant_with_admin_invite(
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
-    emit_tenant_lifecycle_event(
+    _emit_tenant_lifecycle_event_safely(
         event_type="tenant.created",
-        tenant_id=tenant.id,
-        tenant_name=tenant.name,
-        admin_email=user.email,
-        actor_email=created_by,
+        tenant=tenant,
+        user=user,
+        created_by=created_by,
+    )
+    invite_email = _send_invite_email_and_audit(
+        db,
+        tenant=tenant,
+        user=user,
+        created_by=created_by,
+        source_ip=source_ip,
+        invite_url=magic_link_url,
+        ttl_hours=ttl_hours,
+        idempotency_key=f"invite:{token_id}",
+        failure_detail=(
+            "Tenant was created, but invite email delivery failed. "
+            "Fix invite email configuration and regenerate the invite from tenant detail."
+        ),
     )
     return InternalTenantProvisionResult(
         tenant=tenant,
         user=user,
-        magic_link_url=magic_link_url,
+        invite_email=invite_email,
     )
 
 
@@ -238,15 +372,16 @@ def regenerate_user_invite(
     _invalidate_unconsumed_user_invites(db, user_id=user.id, now=now)
     user.invited_at = now
     expires_at = now + timedelta(hours=ttl_hours)
-    _, plain_token = _create_magic_link_token(
+    token_row, plain_token = _create_magic_link_token(
         db,
         user_id=user.id,
         tenant_id=tenant.id,
         created_by=created_by,
         expires_at=expires_at,
     )
+    token_id = token_row.id
     magic_link_url = f"{invite_accept_base_url}?token={plain_token}"
-    _log_magic_link_stub(
+    _log_magic_link_issued(
         db,
         user_id=user.id,
         tenant_id=tenant.id,
@@ -269,17 +404,30 @@ def regenerate_user_invite(
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
-    emit_tenant_lifecycle_event(
+    _emit_tenant_lifecycle_event_safely(
         event_type="tenant.invite_regenerated",
-        tenant_id=tenant.id,
-        tenant_name=tenant.name,
-        admin_email=user.email,
-        actor_email=created_by,
+        tenant=tenant,
+        user=user,
+        created_by=created_by,
+    )
+    invite_email = _send_invite_email_and_audit(
+        db,
+        tenant=tenant,
+        user=user,
+        created_by=created_by,
+        source_ip=source_ip,
+        invite_url=magic_link_url,
+        ttl_hours=ttl_hours,
+        idempotency_key=f"invite:{token_id}",
+        failure_detail=(
+            "Invite was regenerated, but invite email delivery failed. "
+            "Fix invite email configuration and regenerate the invite again."
+        ),
     )
     return InternalTenantProvisionResult(
         tenant=tenant,
         user=user,
-        magic_link_url=magic_link_url,
+        invite_email=invite_email,
     )
 
 
