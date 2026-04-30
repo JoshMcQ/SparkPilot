@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { type InternalTenantCreateResponse } from "@/lib/api";
 import { friendlyError } from "@/lib/format";
@@ -34,6 +34,7 @@ export default function ProvisionInternalTenantPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InternalTenantCreateResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const submittingRef = useRef(false);
   const showMetadata = form.federation_type !== "cognito_password";
   const metadataHelp = useMemo(
     () => _metadataHelp(form.federation_type),
@@ -42,7 +43,12 @@ export default function ProvisionInternalTenantPage() {
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (submitting || submittingRef.current) {
+      return;
+    }
+    submittingRef.current = true;
     setSubmitting(true);
+    setResult(null);
     setError(null);
     setCopied(false);
     try {
@@ -51,6 +57,7 @@ export default function ProvisionInternalTenantPage() {
     } catch (err: unknown) {
       setError(friendlyError(err, "Tenant provisioning failed"));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -62,6 +69,7 @@ export default function ProvisionInternalTenantPage() {
     try {
       await navigator.clipboard.writeText(result.magic_link_url);
       setCopied(true);
+      setError(null);
     } catch (err: unknown) {
       console.error("Failed to copy internal tenant magic link to clipboard.", err);
       setCopied(false);

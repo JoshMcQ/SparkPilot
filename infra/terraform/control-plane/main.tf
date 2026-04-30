@@ -296,9 +296,16 @@ check "cur_reconciliation_configuration_complete" {
 check "customer_oidc_configuration_complete" {
   assert {
     condition = (
-      local.customer_oidc_issuer_effective != "" &&
-      local.customer_oidc_audience_effective != "" &&
-      local.customer_oidc_jwks_uri_effective != ""
+      (
+        local.customer_oidc_issuer != "" &&
+        local.customer_oidc_audience != "" &&
+        local.customer_oidc_jwks_uri != ""
+      ) ||
+      (
+        local.legacy_oidc_issuer != "" &&
+        local.legacy_oidc_audience != "" &&
+        local.legacy_oidc_jwks_uri != ""
+      )
     )
     error_message = "Set customer_oidc_* variables (preferred) or legacy oidc_* aliases so customer auth config is complete."
   }

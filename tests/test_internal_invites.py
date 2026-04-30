@@ -60,9 +60,11 @@ def _auth_headers(
     if pool == "internal":
         issuer = TEST_INTERNAL_OIDC_ISSUER
         audience = TEST_INTERNAL_OIDC_AUDIENCE
-    else:
+    elif pool == "customer":
         issuer = TEST_CUSTOMER_OIDC_ISSUER
         audience = TEST_CUSTOMER_OIDC_AUDIENCE
+    else:
+        raise ValueError("pool must be 'internal' or 'customer'.")
     token = issue_test_token(
         subject,
         issuer=issuer,
