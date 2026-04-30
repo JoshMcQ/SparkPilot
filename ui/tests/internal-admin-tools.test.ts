@@ -80,11 +80,13 @@ test("build request validates required fields and metadata json", () => {
   );
 });
 
-test("provisionTenantFromForm calls API with normalized request and returns magic link", async () => {
+test("provisionTenantFromForm calls API with normalized request and returns email delivery", async () => {
   const expected: InternalTenantCreateResponse = {
     tenant_id: "t1",
     user_id: "u1",
-    magic_link_url: "https://example.invalid/invite?token=abc",
+    invite_email_sent_to: "admin@example.invalid",
+    invite_email_provider: "resend",
+    invite_email_provider_message_id: "email-123",
   };
   let captured: unknown = null;
   const result = await provisionTenantFromForm(
@@ -151,7 +153,9 @@ test("regenerate invite confirm flow respects cancel/confirm", async () => {
   const expected: InternalTenantCreateResponse = {
     tenant_id: "t1",
     user_id: "u1",
-    magic_link_url: "https://example.invalid/invite?token=xyz",
+    invite_email_sent_to: "person@example.invalid",
+    invite_email_provider: "resend",
+    invite_email_provider_message_id: "email-456",
   };
   const confirmed = await regenerateInviteWithConfirmation(
     "t1",

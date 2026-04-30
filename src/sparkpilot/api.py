@@ -301,6 +301,22 @@ def _validate_production_startup() -> None:
         internal_oidc_jwks_uri,
     )
 
+    resend_api_key = _env_value("SPARKPILOT_RESEND_API_KEY", "RESEND_API_KEY")
+    invite_email_from = _env_value(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "INVITE_EMAIL_FROM",
+    )
+    _record(
+        "resend_api_key_present",
+        bool(resend_api_key),
+        "SPARKPILOT_RESEND_API_KEY must be set for invite email delivery.",
+    )
+    _record(
+        "invite_email_from_present",
+        bool(invite_email_from),
+        "SPARKPILOT_INVITE_EMAIL_FROM must be set for invite email delivery.",
+    )
+
     bootstrap_secret = _env_value("SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET")
     _record(
         "bootstrap_secret_min_length",
@@ -1255,7 +1271,9 @@ def post_internal_tenant(
     return InternalTenantCreateResponse(
         tenant_id=result.tenant.id,
         user_id=result.user.id,
-        magic_link_url=result.magic_link_url,
+        invite_email_sent_to=result.invite_email.recipient_email,
+        invite_email_provider=result.invite_email.provider,
+        invite_email_provider_message_id=result.invite_email.provider_message_id,
     )
 
 
@@ -1292,7 +1310,9 @@ def post_internal_regenerate_invite(
     return InternalTenantCreateResponse(
         tenant_id=result.tenant.id,
         user_id=result.user.id,
-        magic_link_url=result.magic_link_url,
+        invite_email_sent_to=result.invite_email.recipient_email,
+        invite_email_provider=result.invite_email.provider,
+        invite_email_provider_message_id=result.invite_email.provider_message_id,
     )
 
 

@@ -95,6 +95,15 @@ cloudflare_proxied="$(normalize_bool "${CLOUDFLARE_PROXIED:-false}")"
 cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
 ui_image_uri="$(echo "${UI_IMAGE_URI:-}" | xargs)"
 ui_api_base_url="$(echo "${UI_API_BASE_URL:-}" | xargs)"
+resend_api_key_secret_arn="$(echo "${RESEND_API_KEY_SECRET_ARN:-}" | xargs)"
+invite_email_from="$(echo "${INVITE_EMAIL_FROM:-}" | xargs)"
+invite_email_reply_to="$(echo "${INVITE_EMAIL_REPLY_TO:-}" | xargs)"
+invite_email_timeout_seconds="$(echo "${INVITE_EMAIL_TIMEOUT_SECONDS:-10}" | xargs)"
+
+if ! jq -en --argjson timeout "${invite_email_timeout_seconds}" '$timeout > 0' >/dev/null 2>&1; then
+  echo "::error::INVITE_EMAIL_TIMEOUT_SECONDS must be a positive number." >&2
+  exit 1
+fi
 
 # Reject localhost CORS in non-dev environments: deploy would succeed but ECS tasks would
 # fail at runtime when the API's validate_runtime_settings() rejects localhost origins.
@@ -102,6 +111,14 @@ _env_lower="$(echo "${SPARKPILOT_ENVIRONMENT}" | tr '[:upper:]' '[:lower:]' | xa
 if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lower}" != "local" && "${_env_lower}" != "test" ]]; then
   if [[ -z "${CORS_ORIGINS:-}" ]] || echo "${cors_origins_raw}" | tr ',' '\n' | grep -qiE '(localhost|127\.0\.0\.1|::1)'; then
     echo "::error::CORS_ORIGINS must be set to a non-localhost value for non-dev environment '${SPARKPILOT_ENVIRONMENT}'. Set the CORS_ORIGINS variable (e.g. https://app.sparkpilot.cloud) before deploying." >&2
+    exit 1
+  fi
+  if [[ -z "${resend_api_key_secret_arn}" ]]; then
+    echo "::error::RESEND_API_KEY_SECRET_ARN must be set for non-dev invite email delivery." >&2
+    exit 1
+  fi
+  if [[ -z "${invite_email_from}" ]]; then
+    echo "::error::INVITE_EMAIL_FROM must be set for non-dev invite email delivery." >&2
     exit 1
   fi
 fi
@@ -178,6 +195,10 @@ jq -n \
   --argjson enable_ecs_exec "${enable_ecs_exec}" \
   --arg ui_image_uri "${ui_image_uri}" \
   --arg ui_api_base_url "${ui_api_base_url}" \
+  --arg resend_api_key_secret_arn "${resend_api_key_secret_arn}" \
+  --arg invite_email_from "${invite_email_from}" \
+  --arg invite_email_reply_to "${invite_email_reply_to}" \
+  --argjson invite_email_timeout_seconds "${invite_email_timeout_seconds}" \
   '{
     environment: $environment,
     region: $region,
@@ -210,7 +231,11 @@ jq -n \
     cors_origins: $cors_origins,
     enable_ecs_exec: $enable_ecs_exec,
     ui_image_uri: $ui_image_uri,
-    ui_api_base_url: $ui_api_base_url
+    ui_api_base_url: $ui_api_base_url,
+    resend_api_key_secret_arn: $resend_api_key_secret_arn,
+    invite_email_from: $invite_email_from,
+    invite_email_reply_to: $invite_email_reply_to,
+    invite_email_timeout_seconds: $invite_email_timeout_seconds
   }' > "${tfvars_file}"
 
 if ! jq -e 'type == "object"' "${tfvars_file}" >/dev/null 2>&1; then

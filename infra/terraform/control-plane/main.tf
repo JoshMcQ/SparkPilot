@@ -101,6 +101,7 @@ locals {
   internal_oidc_issuer_effective   = trimspace(var.internal_oidc_issuer)
   internal_oidc_audience_effective = trimspace(var.internal_oidc_audience)
   internal_oidc_jwks_uri_effective = trimspace(var.internal_oidc_jwks_uri)
+  resend_api_key_secret_arn        = trimspace(var.resend_api_key_secret_arn)
 
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
@@ -177,6 +178,9 @@ locals {
     { name = "SPARKPILOT_EMR_EXECUTION_ROLE_ARN", value = var.emr_execution_role_arn },
     { name = "SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", value = var.assume_role_external_id },
     { name = "SPARKPILOT_CRM_WEBHOOK_URL", value = var.crm_webhook_url },
+    { name = "SPARKPILOT_INVITE_EMAIL_FROM", value = trimspace(var.invite_email_from) },
+    { name = "SPARKPILOT_INVITE_EMAIL_REPLY_TO", value = trimspace(var.invite_email_reply_to) },
+    { name = "SPARKPILOT_INVITE_EMAIL_TIMEOUT_SECONDS", value = tostring(var.invite_email_timeout_seconds) },
     { name = "SPARKPILOT_CUR_ATHENA_DATABASE", value = var.cur_athena_database },
     { name = "SPARKPILOT_CUR_ATHENA_TABLE", value = var.cur_athena_table },
     { name = "SPARKPILOT_CUR_ATHENA_WORKGROUP", value = var.cur_athena_workgroup },
@@ -188,7 +192,7 @@ locals {
 
   # Sensitive values fetched from Secrets Manager at container start.
   # The ECS task execution role is granted GetSecretValue for these ARNs.
-  common_runtime_secrets = [
+  base_runtime_secrets = [
     {
       name      = "SPARKPILOT_DATABASE_URL"
       valueFrom = aws_secretsmanager_secret.database_url.arn
@@ -198,6 +202,14 @@ locals {
       valueFrom = aws_secretsmanager_secret.bootstrap.arn
     },
   ]
+  invite_email_runtime_secrets = local.resend_api_key_secret_arn == "" ? [] : [
+    {
+      name      = "SPARKPILOT_RESEND_API_KEY"
+      valueFrom = local.resend_api_key_secret_arn
+    },
+  ]
+  common_runtime_secrets     = concat(local.base_runtime_secrets, local.invite_email_runtime_secrets)
+  common_runtime_secret_arns = concat([for secret in local.base_runtime_secrets : secret.valueFrom], [for secret in local.invite_email_runtime_secrets : secret.valueFrom])
 
   worker_specs = {
     provisioner        = ["python", "-m", "sparkpilot.workers", "provisioner"]
@@ -803,10 +815,7 @@ data "aws_iam_policy_document" "ecs_task_execution_secrets" {
     actions = [
       "secretsmanager:GetSecretValue",
     ]
-    resources = [
-      aws_secretsmanager_secret.database_url.arn,
-      aws_secretsmanager_secret.bootstrap.arn,
-    ]
+    resources = local.common_runtime_secret_arns
   }
 
   statement {

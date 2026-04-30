@@ -408,6 +408,57 @@ variable "crm_webhook_url" {
   }
 }
 
+variable "resend_api_key_secret_arn" {
+  type        = string
+  description = "Optional Secrets Manager secret ARN containing the Resend API key."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.resend_api_key_secret_arn) == "" ||
+      can(regex("^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$", trimspace(var.resend_api_key_secret_arn)))
+    )
+    error_message = "resend_api_key_secret_arn must be empty or a valid Secrets Manager secret ARN."
+  }
+}
+
+variable "invite_email_from" {
+  type        = string
+  description = "Sender address for tenant admin invite emails. Friendly-name format is allowed."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.invite_email_from) == "" ||
+      can(regex("^[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+$", trimspace(var.invite_email_from))) ||
+      can(regex("^.+<[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+>$", trimspace(var.invite_email_from)))
+    )
+    error_message = "invite_email_from must be empty, an email address, or a friendly-name email address."
+  }
+}
+
+variable "invite_email_reply_to" {
+  type        = string
+  description = "Optional Reply-To address for tenant admin invite emails. Friendly-name format is allowed."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.invite_email_reply_to) == "" ||
+      can(regex("^[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+$", trimspace(var.invite_email_reply_to))) ||
+      can(regex("^.+<[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+>$", trimspace(var.invite_email_reply_to)))
+    )
+    error_message = "invite_email_reply_to must be empty, an email address, or a friendly-name email address."
+  }
+}
+
+variable "invite_email_timeout_seconds" {
+  type        = number
+  description = "Timeout in seconds for Resend invite email delivery requests."
+  default     = 10
+  validation {
+    condition     = var.invite_email_timeout_seconds > 0
+    error_message = "invite_email_timeout_seconds must be greater than 0."
+  }
+}
+
 variable "cors_origins" {
   type        = list(string)
   description = "Credentialed CORS origins for SparkPilot API."
