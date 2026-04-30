@@ -9,11 +9,13 @@ import json
 import logging
 import os
 import re
-from typing import Any, TypeVar
+import uuid
+from typing import Any, Literal, TypeVar
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import boto3
 import httpx
+import jwt
 from fastapi import (
     Depends,
     FastAPI,
@@ -28,10 +30,11 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, func, select, text
 from sqlalchemy.orm import Session
 
 from sparkpilot.aws_clients import parse_role_account_id_from_arn
+from sparkpilot.audit import write_audit_event
 from sparkpilot.config import (
     MIN_BOOTSTRAP_SECRET_LENGTH,
     get_settings,
@@ -40,13 +43,16 @@ from sparkpilot.config import (
 from sparkpilot.db import get_db, init_db
 from sparkpilot.exceptions import SparkPilotError
 from sparkpilot.idempotency import with_idempotency
+from sparkpilot.crm_webhook import emit_tenant_lifecycle_event
 from sparkpilot.models import (
     AuditEvent,
     Environment,
     InteractiveEndpoint,
     Job,
     JobTemplate,
+    MagicLinkToken,
     Run,
+    Tenant,
     TeamEnvironmentScope,
     User,
     UserIdentity,
@@ -156,6 +162,13 @@ _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 _FALSE_VALUES = {"0", "false", "no", "n", "off", ""}
 _INVITE_STATE_PREFIX = "sp_invite_v1"
 _INVITE_STATE_TTL_SECONDS = 10 * 60
+PoolSource = Literal["customer_pool", "internal_pool"]
+InternalAuditAction = Literal[
+    "tenant.create",
+    "tenant.list_view",
+    "tenant.detail_view",
+    "tenant.invite_regenerate",
+]
 
 
 def _env_value(*names: str, default: str = "") -> str:
@@ -211,40 +224,81 @@ def _validate_production_startup() -> None:
         "SPARKPILOT_AUTH_MODE must be 'oidc'.",
     )
 
-    oidc_issuer = _env_value("SPARKPILOT_OIDC_ISSUER", "OIDC_ISSUER")
-    _record(
-        "oidc_issuer_present",
-        bool(oidc_issuer),
-        "SPARKPILOT_OIDC_ISSUER must be set.",
+    customer_oidc_issuer = _env_value(
+        "SPARKPILOT_CUSTOMER_OIDC_ISSUER",
+        "CUSTOMER_OIDC_ISSUER",
+        "SPARKPILOT_OIDC_ISSUER",
+        "OIDC_ISSUER",
+    )
+    customer_oidc_audience = _env_value(
+        "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE",
+        "CUSTOMER_OIDC_AUDIENCE",
+        "SPARKPILOT_OIDC_AUDIENCE",
+        "OIDC_AUDIENCE",
+    )
+    customer_oidc_jwks_uri = _env_value(
+        "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI",
+        "CUSTOMER_OIDC_JWKS_URI",
+        "SPARKPILOT_OIDC_JWKS_URI",
+        "OIDC_JWKS_URI",
+    )
+    internal_oidc_issuer = _env_value(
+        "SPARKPILOT_INTERNAL_OIDC_ISSUER",
+        "INTERNAL_OIDC_ISSUER",
+    )
+    internal_oidc_audience = _env_value(
+        "SPARKPILOT_INTERNAL_OIDC_AUDIENCE",
+        "INTERNAL_OIDC_AUDIENCE",
+    )
+    internal_oidc_jwks_uri = _env_value(
+        "SPARKPILOT_INTERNAL_OIDC_JWKS_URI",
+        "INTERNAL_OIDC_JWKS_URI",
     )
 
-    oidc_audience = _env_value("SPARKPILOT_OIDC_AUDIENCE", "OIDC_AUDIENCE")
-    _record(
-        "oidc_audience_present",
-        bool(oidc_audience),
-        "SPARKPILOT_OIDC_AUDIENCE must be set.",
-    )
+    def _check_oidc_pool(
+        pool_key: str, issuer: str, audience: str, jwks_uri: str
+    ) -> None:
+        _record(
+            f"{pool_key}_oidc_issuer_present",
+            bool(issuer),
+            f"{pool_key} OIDC issuer must be set.",
+        )
+        _record(
+            f"{pool_key}_oidc_audience_present",
+            bool(audience),
+            f"{pool_key} OIDC audience must be set.",
+        )
+        _record(
+            f"{pool_key}_oidc_jwks_uri_present",
+            bool(jwks_uri),
+            f"{pool_key} OIDC JWKS URI must be set.",
+        )
+        jwks_check_ok = False
+        jwks_detail = f"{pool_key} JWKS endpoint must be reachable and return JSON."
+        if jwks_uri:
+            try:
+                _fetch_jwks_json(jwks_uri)
+                jwks_check_ok = True
+                jwks_detail = f"{pool_key} JWKS endpoint reachable and JSON parsed."
+            except (httpx.HTTPError, ValueError) as exc:
+                jwks_detail = f"JWKS check failed: {exc}"
+        _record(
+            f"{pool_key}_oidc_jwks_reachable_json",
+            jwks_check_ok,
+            jwks_detail,
+        )
 
-    oidc_jwks_uri = _env_value("SPARKPILOT_OIDC_JWKS_URI", "OIDC_JWKS_URI")
-    _record(
-        "oidc_jwks_uri_present",
-        bool(oidc_jwks_uri),
-        "SPARKPILOT_OIDC_JWKS_URI must be set.",
+    _check_oidc_pool(
+        "customer_pool",
+        customer_oidc_issuer,
+        customer_oidc_audience,
+        customer_oidc_jwks_uri,
     )
-
-    jwks_check_ok = False
-    jwks_detail = "JWKS endpoint must be reachable and return JSON."
-    if oidc_jwks_uri:
-        try:
-            _fetch_jwks_json(oidc_jwks_uri)
-            jwks_check_ok = True
-            jwks_detail = "JWKS endpoint reachable and JSON parsed."
-        except (httpx.HTTPError, ValueError) as exc:
-            jwks_detail = f"JWKS check failed: {exc}"
-    _record(
-        "oidc_jwks_reachable_json",
-        jwks_check_ok,
-        jwks_detail,
+    _check_oidc_pool(
+        "internal_pool",
+        internal_oidc_issuer,
+        internal_oidc_audience,
+        internal_oidc_jwks_uri,
     )
 
     bootstrap_secret = _env_value("SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET")
@@ -388,16 +442,56 @@ def _actor_and_ip(request: Request) -> tuple[str, str | None]:
 
 
 @lru_cache
-def _oidc_verifier() -> OIDCTokenVerifier:
+def _oidc_verifiers() -> dict[PoolSource, OIDCTokenVerifier]:
     runtime_settings = get_settings()
-    return OIDCTokenVerifier(
-        issuer=runtime_settings.oidc_issuer,
-        audience=runtime_settings.oidc_audience,
-        jwks_uri=runtime_settings.oidc_jwks_uri,
-    )
+    return {
+        "customer_pool": OIDCTokenVerifier(
+            issuer=runtime_settings.customer_oidc_issuer_effective,
+            audience=runtime_settings.customer_oidc_audience_effective,
+            jwks_uri=runtime_settings.customer_oidc_jwks_uri_effective,
+        ),
+        "internal_pool": OIDCTokenVerifier(
+            issuer=runtime_settings.internal_oidc_issuer_effective,
+            audience=runtime_settings.internal_oidc_audience_effective,
+            jwks_uri=runtime_settings.internal_oidc_jwks_uri_effective,
+        ),
+    }
 
 
-def _require_api_identity(request: Request) -> OIDCIdentity:
+@lru_cache
+def _oidc_verifier() -> OIDCTokenVerifier:
+    # Backward-compatible alias used by existing tests and helpers.
+    return _oidc_verifiers()["customer_pool"]
+
+
+@dataclass(frozen=True)
+class VerifiedOIDCIdentity:
+    identity: OIDCIdentity
+    pool_source: PoolSource
+
+
+def _unverified_token_issuer(token: str) -> str | None:
+    try:
+        claims = jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_exp": False,
+            },
+            algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
+        )
+    except jwt.PyJWTError:
+        return None
+    if not isinstance(claims, dict):
+        return None
+    issuer = str(claims.get("iss") or "").strip()
+    return issuer or None
+
+
+def _require_verified_identity(
+    request: Request, *, allowed_pools: set[PoolSource] | None = None
+) -> VerifiedOIDCIdentity:
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
     if scheme.lower() != "bearer" or not token:
@@ -406,24 +500,59 @@ def _require_api_identity(request: Request) -> OIDCIdentity:
             detail="Missing or invalid bearer token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    try:
-        identity = _oidc_verifier().verify_access_token(token)
-    except OIDCKeyRotationError as exc:
+
+    verifiers = _oidc_verifiers()
+    expected_pools = allowed_pools or {"customer_pool"}
+    unverified_issuer = _unverified_token_issuer(token)
+    candidate_pools: list[PoolSource] = []
+    if unverified_issuer:
+        for pool_source, verifier in verifiers.items():
+            if verifier.issuer == unverified_issuer:
+                candidate_pools.append(pool_source)
+    if not candidate_pools:
+        candidate_pools = list(verifiers.keys())
+
+    last_error: Exception | None = None
+    for pool_source in candidate_pools:
+        verifier = verifiers[pool_source]
+        try:
+            identity = verifier.verify_access_token(token)
+        except (OIDCValidationError, OIDCKeyRotationError) as exc:
+            last_error = exc
+            continue
+        if pool_source not in expected_pools:
+            raise _forbidden("Token issuer is not permitted for this endpoint.")
+        request.state.auth_pool_source = pool_source
+        request.state.auth_email = _normalized_email_from_identity(identity)
+        return VerifiedOIDCIdentity(identity=identity, pool_source=pool_source)
+
+    if isinstance(last_error, OIDCKeyRotationError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
+            detail=str(last_error),
             headers={
                 "WWW-Authenticate": "Bearer",
                 "X-SparkPilot-Auth-Hint": "key-rotation",
             },
-        ) from exc
-    except OIDCValidationError as exc:
+        ) from last_error
+    if isinstance(last_error, OIDCValidationError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
+            detail=str(last_error),
             headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-    return identity
+        ) from last_error
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid bearer token.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _require_api_identity(request: Request) -> OIDCIdentity:
+    verified = _require_verified_identity(
+        request, allowed_pools={"customer_pool"}
+    )
+    return verified.identity
 
 
 def _require_api_auth(request: Request) -> str:
@@ -443,6 +572,14 @@ class AccessContext:
 class InternalAdminContext:
     actor: str
     email: str
+
+
+@dataclass(frozen=True)
+class ApiIdentityContext:
+    actor: str
+    email: str | None
+    pool_source: PoolSource
+    is_internal_admin: bool
 
 
 @dataclass(frozen=True)
@@ -480,13 +617,68 @@ def _normalized_email_from_identity(identity: OIDCIdentity) -> str | None:
     return value or None
 
 
-def require_internal_admin(request: Request) -> InternalAdminContext:
-    identity = _require_api_identity(request)
+def _identity_context_for_request(
+    request: Request, *, allowed_pools: set[PoolSource]
+) -> ApiIdentityContext:
+    verified = _require_verified_identity(request, allowed_pools=allowed_pools)
+    identity = verified.identity
     email = _normalized_email_from_identity(identity)
     allowed = get_settings().internal_admin_email_set
-    if not email or email not in allowed:
+    is_internal_admin = (
+        verified.pool_source == "internal_pool"
+        and email is not None
+        and email in allowed
+    )
+    return ApiIdentityContext(
+        actor=identity.subject,
+        email=email,
+        pool_source=verified.pool_source,
+        is_internal_admin=is_internal_admin,
+    )
+
+
+def require_internal_admin(request: Request) -> InternalAdminContext:
+    context = _identity_context_for_request(request, allowed_pools={"internal_pool"})
+    if not context.email or not context.is_internal_admin:
         raise _forbidden("Internal admin access required")
-    return InternalAdminContext(actor=identity.subject, email=email)
+    return InternalAdminContext(actor=context.actor, email=context.email)
+
+
+def _request_id(request: Request) -> str:
+    raw = request.headers.get("X-Request-Id", "").strip()
+    if raw:
+        return raw
+    return str(uuid.uuid4())
+
+
+def _write_internal_admin_audit_event(
+    db: Session,
+    *,
+    request: Request,
+    internal_admin: InternalAdminContext,
+    action: InternalAuditAction,
+    target_tenant_id: str | None,
+    target_user_id: str | None,
+) -> None:
+    request_id = _request_id(request)
+    source_ip = request.client.host if request.client else None
+    write_audit_event(
+        db,
+        actor=internal_admin.email,
+        action=action,
+        entity_type="internal_tenant",
+        entity_id=target_user_id or target_tenant_id or request_id,
+        tenant_id=target_tenant_id,
+        source_ip=source_ip,
+        details={
+            "actor_email": internal_admin.email,
+            "actor_pool": "internal_pool",
+            "target_tenant_id": target_tenant_id,
+            "target_user_id": target_user_id,
+            "request_id": request_id,
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
 
 
 def _state_signing_key() -> bytes:
@@ -1051,6 +1243,15 @@ def post_internal_tenant(
         invite_accept_base_url=_invite_accept_base_url(request),
         ttl_hours=get_settings().magic_link_ttl_hours,
     )
+    _write_internal_admin_audit_event(
+        db,
+        request=request,
+        internal_admin=internal_admin,
+        action="tenant.create",
+        target_tenant_id=result.tenant.id,
+        target_user_id=result.user.id,
+    )
+    db.commit()
     return InternalTenantCreateResponse(
         tenant_id=result.tenant.id,
         user_id=result.user.id,
@@ -1079,6 +1280,15 @@ def post_internal_regenerate_invite(
         invite_accept_base_url=_invite_accept_base_url(request),
         ttl_hours=get_settings().magic_link_ttl_hours,
     )
+    _write_internal_admin_audit_event(
+        db,
+        request=request,
+        internal_admin=internal_admin,
+        action="tenant.invite_regenerate",
+        target_tenant_id=tenant_id,
+        target_user_id=user_id,
+    )
+    db.commit()
     return InternalTenantCreateResponse(
         tenant_id=result.tenant.id,
         user_id=result.user.id,
@@ -1088,14 +1298,25 @@ def post_internal_regenerate_invite(
 
 @app.get("/v1/internal/tenants", response_model=list[InternalTenantListItemResponse])
 def get_internal_tenants(
-    _internal_admin: InternalAdminContext = Depends(require_internal_admin),
+    request: Request,
+    internal_admin: InternalAdminContext = Depends(require_internal_admin),
     db: Session = Depends(get_db),
 ) -> list[InternalTenantListItemResponse]:
     summaries = list_internal_tenant_summaries(db)
+    _write_internal_admin_audit_event(
+        db,
+        request=request,
+        internal_admin=internal_admin,
+        action="tenant.list_view",
+        target_tenant_id=None,
+        target_user_id=None,
+    )
+    db.commit()
     return [
         InternalTenantListItemResponse(
             tenant_id=item.tenant.id,
             tenant_name=item.tenant.name,
+            federation_type=item.tenant.federation_type,
             admin_email=item.admin_email,
             created_at=item.tenant.created_at,
             last_login_at=item.admin_last_login_at,
@@ -1109,10 +1330,33 @@ def get_internal_tenants(
 )
 def get_internal_tenant_by_id(
     tenant_id: str,
-    _internal_admin: InternalAdminContext = Depends(require_internal_admin),
+    request: Request,
+    internal_admin: InternalAdminContext = Depends(require_internal_admin),
     db: Session = Depends(get_db),
 ) -> InternalTenantDetailResponse:
     detail = get_internal_tenant_detail(db, tenant_id=tenant_id)
+    invite_expires_by_user_id = dict(
+        db.execute(
+            select(MagicLinkToken.user_id, func.max(MagicLinkToken.expires_at))
+            .where(
+                and_(
+                    MagicLinkToken.tenant_id == tenant_id,
+                    MagicLinkToken.purpose == "invite_accept",
+                    MagicLinkToken.consumed_at.is_(None),
+                )
+            )
+            .group_by(MagicLinkToken.user_id)
+        ).all()
+    )
+    _write_internal_admin_audit_event(
+        db,
+        request=request,
+        internal_admin=internal_admin,
+        action="tenant.detail_view",
+        target_tenant_id=tenant_id,
+        target_user_id=None,
+    )
+    db.commit()
     return InternalTenantDetailResponse(
         tenant_id=detail.tenant.id,
         tenant_name=detail.tenant.name,
@@ -1121,7 +1365,11 @@ def get_internal_tenant_by_id(
         created_at=detail.tenant.created_at,
         updated_at=detail.tenant.updated_at,
         users=[
-            InternalTenantUserResponse(**model_to_dict(user)) for user in detail.users
+            InternalTenantUserResponse(
+                **model_to_dict(user),
+                invite_expires_at=invite_expires_by_user_id.get(user.id),
+            )
+            for user in detail.users
         ],
     )
 
@@ -1157,7 +1405,9 @@ def get_auth_callback(
     state: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> AuthCallbackResponse:
-    identity = _require_api_identity(request)
+    identity_context = _identity_context_for_request(
+        request, allowed_pools={"customer_pool"}
+    )
     invite_payload = _decode_invite_state(state)
     if invite_payload is None:
         if state and state.partition(".")[0] == _INVITE_STATE_PREFIX:
@@ -1168,11 +1418,11 @@ def get_auth_callback(
             )
         return AuthCallbackResponse(
             status="ok",
-            actor=identity.subject,
+            actor=identity_context.actor,
             invite_applied=False,
         )
 
-    identity_email = _normalized_email_from_identity(identity)
+    identity_email = identity_context.email
     invited_user = db.get(User, invite_payload.user_id)
     if invited_user is None or invited_user.tenant_id != invite_payload.tenant_id:
         raise HTTPException(
@@ -1198,14 +1448,27 @@ def get_auth_callback(
         db,
         tenant_id=invite_payload.tenant_id,
         user_id=invite_payload.user_id,
-        actor=identity.subject,
+        actor=identity_context.actor,
         source_ip=source_ip,
         commit=False,
     )
     db.commit()
+    tenant_name = (
+        db.execute(
+            select(Tenant.name).where(Tenant.id == invite_payload.tenant_id)
+        ).scalar_one_or_none()
+        or ""
+    )
+    emit_tenant_lifecycle_event(
+        event_type="tenant.admin_invite_consumed",
+        tenant_id=invite_payload.tenant_id,
+        tenant_name=tenant_name,
+        admin_email=invited_user.email,
+        actor_email=identity_email,
+    )
     return AuthCallbackResponse(
         status="ok",
-        actor=identity.subject,
+        actor=identity_context.actor,
         invite_applied=True,
         user_id=invite_payload.user_id,
         tenant_id=invite_payload.tenant_id,
@@ -1265,14 +1528,31 @@ def get_auth_me(
     from the OIDC subject without requiring the user to provide tenant UUIDs
     manually.
     """
-    actor, _ = _actor_and_ip(request)
-    access = _resolve_access_context(db, actor)
+    identity_context = _identity_context_for_request(
+        request,
+        allowed_pools={"customer_pool", "internal_pool"},
+    )
+    actor = identity_context.actor
+    access: AccessContext | None = None
+    try:
+        access = _resolve_access_context(db, actor)
+    except HTTPException:
+        if identity_context.pool_source != "internal_pool":
+            raise
     return AuthMeResponse(
-        actor=access.actor,
-        role=access.role,
-        tenant_id=access.tenant_id,
-        team_id=access.team_id,
-        scoped_environment_ids=sorted(access.scoped_environment_ids),
+        actor=actor,
+        role=(
+            access.role
+            if access is not None
+            else ("admin" if identity_context.is_internal_admin else "user")
+        ),
+        tenant_id=access.tenant_id if access is not None else None,
+        team_id=access.team_id if access is not None else None,
+        scoped_environment_ids=(
+            sorted(access.scoped_environment_ids) if access is not None else []
+        ),
+        email=identity_context.email,
+        is_internal_admin=identity_context.is_internal_admin,
     )
 
 

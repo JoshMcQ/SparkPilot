@@ -12,6 +12,7 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.orm import Session
 
 from sparkpilot.audit import write_audit_event
+from sparkpilot.crm_webhook import emit_tenant_lifecycle_event
 from sparkpilot.exceptions import (
     ConflictError,
     EntityNotFoundError,
@@ -202,6 +203,13 @@ def create_tenant_with_admin_invite(
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
+    emit_tenant_lifecycle_event(
+        event_type="tenant.created",
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+        admin_email=user.email,
+        actor_email=created_by,
+    )
     return InternalTenantProvisionResult(
         tenant=tenant,
         user=user,
@@ -261,6 +269,13 @@ def regenerate_user_invite(
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
+    emit_tenant_lifecycle_event(
+        event_type="tenant.invite_regenerated",
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+        admin_email=user.email,
+        actor_email=created_by,
+    )
     return InternalTenantProvisionResult(
         tenant=tenant,
         user=user,

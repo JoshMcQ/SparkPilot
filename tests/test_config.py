@@ -81,18 +81,42 @@ def test_auth_mode_must_be_oidc(monkeypatch) -> None:
 
 
 def test_oidc_issuer_is_required(monkeypatch) -> None:
+    monkeypatch.delenv("SPARKPILOT_CUSTOMER_OIDC_ISSUER", raising=False)
     monkeypatch.delenv("SPARKPILOT_OIDC_ISSUER", raising=False)
     _clear_settings_cache()
-    with pytest.raises(ValueError, match="OIDC_ISSUER is required"):
+    with pytest.raises(ValueError, match="SPARKPILOT_CUSTOMER_OIDC_ISSUER is required"):
         validate_runtime_settings(get_settings())
     _clear_settings_cache()
 
 
 def test_oidc_jwks_uri_must_be_valid(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", "not-a-valid-uri")
     monkeypatch.setenv("SPARKPILOT_OIDC_JWKS_URI", "not-a-valid-uri")
     _clear_settings_cache()
-    with pytest.raises(ValueError, match="OIDC_JWKS_URI must be a valid"):
+    with pytest.raises(
+        ValueError, match="SPARKPILOT_CUSTOMER_OIDC_JWKS_URI must be a valid"
+    ):
         validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
+def test_legacy_customer_oidc_aliases_are_accepted(monkeypatch) -> None:
+    monkeypatch.delenv("SPARKPILOT_CUSTOMER_OIDC_ISSUER", raising=False)
+    monkeypatch.delenv("SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", raising=False)
+    monkeypatch.delenv("SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", raising=False)
+    monkeypatch.setenv("SPARKPILOT_OIDC_ISSUER", "https://legacy-customer-issuer")
+    monkeypatch.setenv("SPARKPILOT_OIDC_AUDIENCE", "legacy-customer-audience")
+    monkeypatch.setenv("SPARKPILOT_OIDC_JWKS_URI", "file:///tmp/legacy-jwks.json")
+    _clear_settings_cache()
+    settings = get_settings()
+    assert settings.customer_oidc_issuer_effective == "https://legacy-customer-issuer"
+    assert settings.customer_oidc_audience_effective == "legacy-customer-audience"
+    assert settings.customer_oidc_jwks_uri_effective == "file:///tmp/legacy-jwks.json"
+    assert settings.legacy_customer_oidc_aliases_in_use == [
+        "SPARKPILOT_OIDC_ISSUER",
+        "SPARKPILOT_OIDC_AUDIENCE",
+        "SPARKPILOT_OIDC_JWKS_URI",
+    ]
     _clear_settings_cache()
 
 

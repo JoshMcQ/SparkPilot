@@ -1,5 +1,6 @@
 from functools import lru_cache
 import hashlib
+import logging
 import re
 from typing import Literal, cast
 from urllib.parse import urlparse
@@ -18,6 +19,7 @@ _DEFAULT_DATABASE_URL = (
     "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
 )
 _LOCALHOST_ORIGINS = {"localhost", "127.0.0.1", "::1"}
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -43,6 +45,42 @@ class Settings(BaseSettings):
     oidc_jwks_uri: str = Field(
         default="",
         validation_alias=AliasChoices("SPARKPILOT_OIDC_JWKS_URI", "OIDC_JWKS_URI"),
+    )
+    customer_oidc_issuer: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_CUSTOMER_OIDC_ISSUER", "CUSTOMER_OIDC_ISSUER"
+        ),
+    )
+    customer_oidc_audience: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", "CUSTOMER_OIDC_AUDIENCE"
+        ),
+    )
+    customer_oidc_jwks_uri: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", "CUSTOMER_OIDC_JWKS_URI"
+        ),
+    )
+    internal_oidc_issuer: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_INTERNAL_OIDC_ISSUER", "INTERNAL_OIDC_ISSUER"
+        ),
+    )
+    internal_oidc_audience: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_INTERNAL_OIDC_AUDIENCE", "INTERNAL_OIDC_AUDIENCE"
+        ),
+    )
+    internal_oidc_jwks_uri: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_INTERNAL_OIDC_JWKS_URI", "INTERNAL_OIDC_JWKS_URI"
+        ),
     )
     bootstrap_secret: str = Field(
         default="",
@@ -75,6 +113,13 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "SPARKPILOT_COGNITO_HOSTED_UI_URL",
             "COGNITO_HOSTED_UI_URL",
+        ),
+    )
+    crm_webhook_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_CRM_WEBHOOK_URL",
+            "CRM_WEBHOOK_URL",
         ),
     )
     magic_link_ttl_hours: int = 24
@@ -138,6 +183,41 @@ class Settings(BaseSettings):
             for email in self.internal_admins.split(",")
             if email.strip()
         }
+
+    @property
+    def customer_oidc_issuer_effective(self) -> str:
+        return self.customer_oidc_issuer.strip() or self.oidc_issuer.strip()
+
+    @property
+    def customer_oidc_audience_effective(self) -> str:
+        return self.customer_oidc_audience.strip() or self.oidc_audience.strip()
+
+    @property
+    def customer_oidc_jwks_uri_effective(self) -> str:
+        return self.customer_oidc_jwks_uri.strip() or self.oidc_jwks_uri.strip()
+
+    @property
+    def legacy_customer_oidc_aliases_in_use(self) -> list[str]:
+        aliases: list[str] = []
+        if not self.customer_oidc_issuer.strip() and self.oidc_issuer.strip():
+            aliases.append("SPARKPILOT_OIDC_ISSUER")
+        if not self.customer_oidc_audience.strip() and self.oidc_audience.strip():
+            aliases.append("SPARKPILOT_OIDC_AUDIENCE")
+        if not self.customer_oidc_jwks_uri.strip() and self.oidc_jwks_uri.strip():
+            aliases.append("SPARKPILOT_OIDC_JWKS_URI")
+        return aliases
+
+    @property
+    def internal_oidc_issuer_effective(self) -> str:
+        return self.internal_oidc_issuer.strip()
+
+    @property
+    def internal_oidc_audience_effective(self) -> str:
+        return self.internal_oidc_audience.strip()
+
+    @property
+    def internal_oidc_jwks_uri_effective(self) -> str:
+        return self.internal_oidc_jwks_uri.strip()
 
     @property
     def invite_state_signing_secret(self) -> str:
@@ -219,28 +299,47 @@ def _validate_numeric_runtime_settings(settings: Settings) -> None:
         )
 
 
+def _validate_oidc_triple(*, prefix: str, issuer: str, audience: str, jwks_uri: str) -> None:
+    issuer_value = issuer.strip()
+    if not issuer_value:
+        raise ValueError(f"{prefix}_OIDC_ISSUER is required.")
+    parsed_issuer = urlparse(issuer_value)
+    if parsed_issuer.scheme not in {"http", "https"} or not parsed_issuer.netloc:
+        raise ValueError(f"{prefix}_OIDC_ISSUER must be a valid http(s) URL.")
+    if not audience.strip():
+        raise ValueError(f"{prefix}_OIDC_AUDIENCE is required.")
+    jwks_value = jwks_uri.strip()
+    if not jwks_value:
+        raise ValueError(f"{prefix}_OIDC_JWKS_URI is required.")
+    parsed_jwks = urlparse(jwks_value)
+    if parsed_jwks.scheme == "file":
+        if not parsed_jwks.path:
+            raise ValueError(
+                f"{prefix}_OIDC_JWKS_URI file:// URL must include a file path."
+            )
+    elif parsed_jwks.scheme not in {"http", "https"} or not parsed_jwks.netloc:
+        raise ValueError(
+            f"{prefix}_OIDC_JWKS_URI must be a valid http(s) or file:// URL."
+        )
+
+
 def _validate_auth_settings(settings: Settings) -> None:
     if settings.auth_mode != "oidc":
         raise ValueError(
             "AUTH_MODE must be 'oidc'. No legacy auth modes are supported."
         )
-    issuer = settings.oidc_issuer.strip()
-    if not issuer:
-        raise ValueError("OIDC_ISSUER is required.")
-    parsed_issuer = urlparse(issuer)
-    if parsed_issuer.scheme not in {"http", "https"} or not parsed_issuer.netloc:
-        raise ValueError("OIDC_ISSUER must be a valid http(s) URL.")
-    if not settings.oidc_audience.strip():
-        raise ValueError("OIDC_AUDIENCE is required.")
-    jwks_uri = settings.oidc_jwks_uri.strip()
-    if not jwks_uri:
-        raise ValueError("OIDC_JWKS_URI is required.")
-    parsed_jwks = urlparse(jwks_uri)
-    if parsed_jwks.scheme == "file":
-        if not parsed_jwks.path:
-            raise ValueError("OIDC_JWKS_URI file:// URL must include a file path.")
-    elif parsed_jwks.scheme not in {"http", "https"} or not parsed_jwks.netloc:
-        raise ValueError("OIDC_JWKS_URI must be a valid http(s) or file:// URL.")
+    _validate_oidc_triple(
+        prefix="SPARKPILOT_CUSTOMER",
+        issuer=settings.customer_oidc_issuer_effective,
+        audience=settings.customer_oidc_audience_effective,
+        jwks_uri=settings.customer_oidc_jwks_uri_effective,
+    )
+    _validate_oidc_triple(
+        prefix="SPARKPILOT_INTERNAL",
+        issuer=settings.internal_oidc_issuer_effective,
+        audience=settings.internal_oidc_audience_effective,
+        jwks_uri=settings.internal_oidc_jwks_uri_effective,
+    )
     hosted_ui_url = settings.cognito_hosted_ui_url.strip()
     if hosted_ui_url:
         parsed_hosted_ui_url = urlparse(hosted_ui_url)
@@ -251,6 +350,14 @@ def _validate_auth_settings(settings: Settings) -> None:
             raise ValueError(
                 "SPARKPILOT_COGNITO_HOSTED_UI_URL must be a valid http(s) URL."
             )
+    crm_webhook_url = settings.crm_webhook_url.strip()
+    if crm_webhook_url:
+        parsed_crm_webhook_url = urlparse(crm_webhook_url)
+        if (
+            parsed_crm_webhook_url.scheme not in {"http", "https"}
+            or not parsed_crm_webhook_url.netloc
+        ):
+            raise ValueError("SPARKPILOT_CRM_WEBHOOK_URL must be a valid http(s) URL.")
 
 
 def _validate_security_runtime_settings(settings: Settings) -> None:
@@ -321,6 +428,12 @@ def validate_runtime_settings(settings: Settings) -> None:
     _validate_cost_center_policy(settings)
     _validate_auth_settings(settings)
     _validate_security_runtime_settings(settings)
+    if settings.legacy_customer_oidc_aliases_in_use:
+        logger.warning(
+            "Legacy OIDC env aliases in use for customer pool (%s). "
+            "Set SPARKPILOT_CUSTOMER_OIDC_* and keep legacy vars only for transition.",
+            ",".join(settings.legacy_customer_oidc_aliases_in_use),
+        )
     if settings.dry_run_mode:
         return
     _validate_live_mode_role_arn(settings)

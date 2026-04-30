@@ -829,6 +829,16 @@ export default function AccessPage() {
   const [authMe, setAuthMe] = useState<AuthMe | null>(null);
   const [gateLoading, setGateLoading] = useState(true);
   const [gateError, setGateError] = useState<string | null>(null);
+  const [accessNotice, setAccessNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("notice") === "internal-tools-denied") {
+      setAccessNotice("You don't have access to internal tools.");
+    } else {
+      setAccessNotice(null);
+    }
+  }, []);
 
   const loadGate = useCallback(async () => {
     setGateLoading(true);
@@ -868,6 +878,11 @@ export default function AccessPage() {
           <Link href="/contact" className="inline-link">Request access</Link>. This page is for workspace administrators.
         </div>
       </div>
+      {accessNotice ? (
+        <div className="card">
+          <div className="subtle">{accessNotice}</div>
+        </div>
+      ) : null}
 
       {gateLoading ? (
         <LoadingState message="Checking access status..." />

@@ -89,6 +89,18 @@ locals {
     trimspace(var.cur_athena_table) != "" &&
     trimspace(var.cur_athena_output_location) != ""
   )
+  customer_oidc_issuer             = trimspace(var.customer_oidc_issuer)
+  customer_oidc_audience           = trimspace(var.customer_oidc_audience)
+  customer_oidc_jwks_uri           = trimspace(var.customer_oidc_jwks_uri)
+  legacy_oidc_issuer               = trimspace(var.oidc_issuer)
+  legacy_oidc_audience             = trimspace(var.oidc_audience)
+  legacy_oidc_jwks_uri             = trimspace(var.oidc_jwks_uri)
+  customer_oidc_issuer_effective   = local.customer_oidc_issuer != "" ? local.customer_oidc_issuer : local.legacy_oidc_issuer
+  customer_oidc_audience_effective = local.customer_oidc_audience != "" ? local.customer_oidc_audience : local.legacy_oidc_audience
+  customer_oidc_jwks_uri_effective = local.customer_oidc_jwks_uri != "" ? local.customer_oidc_jwks_uri : local.legacy_oidc_jwks_uri
+  internal_oidc_issuer_effective   = trimspace(var.internal_oidc_issuer)
+  internal_oidc_audience_effective = trimspace(var.internal_oidc_audience)
+  internal_oidc_jwks_uri_effective = trimspace(var.internal_oidc_jwks_uri)
 
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
@@ -149,14 +161,22 @@ locals {
     { name = "SPARKPILOT_DRY_RUN_MODE", value = tostring(var.dry_run_mode) },
     { name = "SPARKPILOT_ENABLE_FULL_BYOC_MODE", value = tostring(var.enable_full_byoc_mode) },
     { name = "SPARKPILOT_AUTH_MODE", value = "oidc" },
-    { name = "SPARKPILOT_OIDC_ISSUER", value = var.oidc_issuer },
-    { name = "SPARKPILOT_OIDC_AUDIENCE", value = var.oidc_audience },
-    { name = "SPARKPILOT_OIDC_JWKS_URI", value = var.oidc_jwks_uri },
+    { name = "SPARKPILOT_CUSTOMER_OIDC_ISSUER", value = local.customer_oidc_issuer },
+    { name = "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", value = local.customer_oidc_audience },
+    { name = "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", value = local.customer_oidc_jwks_uri },
+    { name = "SPARKPILOT_INTERNAL_OIDC_ISSUER", value = local.internal_oidc_issuer_effective },
+    { name = "SPARKPILOT_INTERNAL_OIDC_AUDIENCE", value = local.internal_oidc_audience_effective },
+    { name = "SPARKPILOT_INTERNAL_OIDC_JWKS_URI", value = local.internal_oidc_jwks_uri_effective },
+    # Phase 1 expand-contract compatibility aliases (customer pool).
+    { name = "SPARKPILOT_OIDC_ISSUER", value = local.legacy_oidc_issuer },
+    { name = "SPARKPILOT_OIDC_AUDIENCE", value = local.legacy_oidc_audience },
+    { name = "SPARKPILOT_OIDC_JWKS_URI", value = local.legacy_oidc_jwks_uri },
     { name = "SPARKPILOT_AWS_REGION", value = var.region },
     { name = "SPARKPILOT_POLL_INTERVAL_SECONDS", value = tostring(var.poll_interval_seconds) },
     { name = "SPARKPILOT_CORS_ORIGINS", value = join(",", var.cors_origins) },
     { name = "SPARKPILOT_EMR_EXECUTION_ROLE_ARN", value = var.emr_execution_role_arn },
     { name = "SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", value = var.assume_role_external_id },
+    { name = "SPARKPILOT_CRM_WEBHOOK_URL", value = var.crm_webhook_url },
     { name = "SPARKPILOT_CUR_ATHENA_DATABASE", value = var.cur_athena_database },
     { name = "SPARKPILOT_CUR_ATHENA_TABLE", value = var.cur_athena_table },
     { name = "SPARKPILOT_CUR_ATHENA_WORKGROUP", value = var.cur_athena_workgroup },
@@ -270,6 +290,35 @@ check "cur_reconciliation_configuration_complete" {
   assert {
     condition     = (!local.cur_config_any) || local.cur_config_complete
     error_message = "Set all CUR Athena fields together (cur_athena_database, cur_athena_table, cur_athena_output_location), or leave all empty to disable reconciliation."
+  }
+}
+
+check "customer_oidc_configuration_complete" {
+  assert {
+    condition = (
+      (
+        local.customer_oidc_issuer != "" &&
+        local.customer_oidc_audience != "" &&
+        local.customer_oidc_jwks_uri != ""
+      ) ||
+      (
+        local.legacy_oidc_issuer != "" &&
+        local.legacy_oidc_audience != "" &&
+        local.legacy_oidc_jwks_uri != ""
+      )
+    )
+    error_message = "Set customer_oidc_* variables (preferred) or legacy oidc_* aliases so customer auth config is complete."
+  }
+}
+
+check "internal_oidc_configuration_complete" {
+  assert {
+    condition = (
+      local.internal_oidc_issuer_effective != "" &&
+      local.internal_oidc_audience_effective != "" &&
+      local.internal_oidc_jwks_uri_effective != ""
+    )
+    error_message = "Set internal_oidc_* variables so internal auth config is complete."
   }
 }
 

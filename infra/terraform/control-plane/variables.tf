@@ -258,28 +258,92 @@ variable "enable_full_byoc_mode" {
 
 variable "oidc_issuer" {
   type        = string
-  description = "OIDC issuer URL used by SparkPilot."
+  description = "DEPRECATED: customer OIDC issuer URL alias. Use customer_oidc_issuer."
+  default     = ""
   validation {
-    condition     = can(regex("^https?://", trimspace(var.oidc_issuer)))
-    error_message = "oidc_issuer must be an http(s) URL."
+    condition = (
+      trimspace(var.oidc_issuer) == "" ||
+      can(regex("^https://", trimspace(var.oidc_issuer)))
+    )
+    error_message = "oidc_issuer must be empty or an https URL."
   }
 }
 
 variable "oidc_audience" {
   type        = string
-  description = "OIDC audience expected by SparkPilot."
-  validation {
-    condition     = length(trimspace(var.oidc_audience)) > 0
-    error_message = "oidc_audience must be non-empty."
-  }
+  description = "DEPRECATED: customer OIDC audience alias. Use customer_oidc_audience."
+  default     = ""
 }
 
 variable "oidc_jwks_uri" {
   type        = string
-  description = "OIDC JWKS URI used to validate access tokens."
+  description = "DEPRECATED: customer OIDC JWKS URI alias. Use customer_oidc_jwks_uri."
+  default     = ""
   validation {
-    condition     = can(regex("^(https?://|file://)", trimspace(var.oidc_jwks_uri)))
-    error_message = "oidc_jwks_uri must start with http://, https://, or file://."
+    condition = (
+      trimspace(var.oidc_jwks_uri) == "" ||
+      can(regex("^(https://|file://)", trimspace(var.oidc_jwks_uri)))
+    )
+    error_message = "oidc_jwks_uri must be empty or start with https:// or file://."
+  }
+}
+
+variable "customer_oidc_issuer" {
+  type        = string
+  description = "Customer-pool OIDC issuer URL used by SparkPilot."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.customer_oidc_issuer) == "" ||
+      can(regex("^https://", trimspace(var.customer_oidc_issuer)))
+    )
+    error_message = "customer_oidc_issuer must be empty or an https URL."
+  }
+}
+
+variable "customer_oidc_audience" {
+  type        = string
+  description = "Customer-pool OIDC audience expected by SparkPilot."
+  default     = ""
+}
+
+variable "customer_oidc_jwks_uri" {
+  type        = string
+  description = "Customer-pool OIDC JWKS URI used to validate access tokens."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.customer_oidc_jwks_uri) == "" ||
+      can(regex("^(https://|file://)", trimspace(var.customer_oidc_jwks_uri)))
+    )
+    error_message = "customer_oidc_jwks_uri must be empty or start with https:// or file://."
+  }
+}
+
+variable "internal_oidc_issuer" {
+  type        = string
+  description = "Internal-pool OIDC issuer URL used by SparkPilot."
+  validation {
+    condition     = can(regex("^https://", trimspace(var.internal_oidc_issuer)))
+    error_message = "internal_oidc_issuer must be an https URL."
+  }
+}
+
+variable "internal_oidc_audience" {
+  type        = string
+  description = "Internal-pool OIDC audience expected by SparkPilot."
+  validation {
+    condition     = length(trimspace(var.internal_oidc_audience)) > 0
+    error_message = "internal_oidc_audience must be non-empty."
+  }
+}
+
+variable "internal_oidc_jwks_uri" {
+  type        = string
+  description = "Internal-pool OIDC JWKS URI used to validate access tokens."
+  validation {
+    condition     = can(regex("^(https://|file://)", trimspace(var.internal_oidc_jwks_uri)))
+    error_message = "internal_oidc_jwks_uri must start with https:// or file://."
   }
 }
 
@@ -328,6 +392,19 @@ variable "poll_interval_seconds" {
   validation {
     condition     = var.poll_interval_seconds >= 1
     error_message = "poll_interval_seconds must be at least 1 second."
+  }
+}
+
+variable "crm_webhook_url" {
+  type        = string
+  description = "Optional CRM webhook URL for tenant lifecycle events."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.crm_webhook_url) == "" ||
+      can(regex("^https://", trimspace(var.crm_webhook_url)))
+    )
+    error_message = "crm_webhook_url must be empty or an https URL."
   }
 }
 

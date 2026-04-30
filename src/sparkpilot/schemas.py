@@ -74,6 +74,7 @@ class InternalTenantUserResponse(BaseModel):
     role: Literal["admin", "member"]
     invited_at: datetime | None
     invite_consumed_at: datetime | None
+    invite_expires_at: datetime | None
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -82,6 +83,7 @@ class InternalTenantUserResponse(BaseModel):
 class InternalTenantListItemResponse(BaseModel):
     tenant_id: str
     tenant_name: str
+    federation_type: FederationType
     admin_email: str | None
     created_at: datetime
     last_login_at: datetime | None
@@ -145,6 +147,8 @@ class AuthMeResponse(BaseModel):
     tenant_id: str | None
     team_id: str | None
     scoped_environment_ids: list[str]
+    email: str | None
+    is_internal_admin: bool
 
 
 class BootstrapStatusResponse(BaseModel):

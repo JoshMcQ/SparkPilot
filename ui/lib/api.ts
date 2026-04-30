@@ -321,6 +321,55 @@ export type AuthMe = {
   tenant_id: string | null;
   team_id: string | null;
   scoped_environment_ids: string[];
+  email: string | null;
+  is_internal_admin: boolean;
+};
+
+export type InternalFederationType = "cognito_password" | "saml" | "oidc";
+
+export type InternalTenantListItem = {
+  tenant_id: string;
+  tenant_name: string;
+  federation_type: InternalFederationType;
+  admin_email: string | null;
+  created_at: string;
+  last_login_at: string | null;
+};
+
+export type InternalTenantCreateRequest = {
+  name: string;
+  admin_email: string;
+  federation_type: InternalFederationType;
+  idp_metadata?: Record<string, unknown> | null;
+};
+
+export type InternalTenantCreateResponse = {
+  tenant_id: string;
+  user_id: string;
+  magic_link_url: string;
+};
+
+export type InternalTenantUser = {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role: "admin" | "member";
+  invited_at: string | null;
+  invite_consumed_at: string | null;
+  invite_expires_at: string | null;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InternalTenantDetail = {
+  tenant_id: string;
+  tenant_name: string;
+  federation_type: InternalFederationType;
+  idp_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  users: InternalTenantUser[];
 };
 
 export type BootstrapStatus = {
@@ -346,6 +395,66 @@ export async function fetchAuthMe(): Promise<AuthMe | null> {
   } catch {
     return null;
   }
+}
+
+export async function fetchInternalTenants(): Promise<InternalTenantListItem[]> {
+  const response = await fetch(`${API_PREFIX}/v1/internal/tenants`, {
+    cache: "no-store",
+    headers: _headers(false),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load internal tenants"));
+  }
+  const payload = await response.json();
+  return _asObjectArray(payload, "Internal tenant list") as InternalTenantListItem[];
+}
+
+export async function fetchInternalTenantDetail(tenantId: string): Promise<InternalTenantDetail> {
+  const encodedTenantId = encodeURIComponent(tenantId);
+  const response = await fetch(`${API_PREFIX}/v1/internal/tenants/${encodedTenantId}`, {
+    cache: "no-store",
+    headers: _headers(false),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load tenant detail"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "Internal tenant detail") as InternalTenantDetail;
+}
+
+export async function createInternalTenant(
+  request: InternalTenantCreateRequest,
+): Promise<InternalTenantCreateResponse> {
+  const response = await fetch(`${API_PREFIX}/v1/internal/tenants`, {
+    method: "POST",
+    headers: _headers(true),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Tenant provisioning failed"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "Internal tenant create") as InternalTenantCreateResponse;
+}
+
+export async function regenerateInternalTenantInvite(
+  tenantId: string,
+  userId: string,
+): Promise<InternalTenantCreateResponse> {
+  const encodedTenantId = encodeURIComponent(tenantId);
+  const encodedUserId = encodeURIComponent(userId);
+  const response = await fetch(
+    `${API_PREFIX}/v1/internal/tenants/${encodedTenantId}/users/${encodedUserId}/regenerate-invite`,
+    {
+      method: "POST",
+      headers: _headers(true),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Invite regeneration failed"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "Invite regeneration") as InternalTenantCreateResponse;
 }
 
 export async function fetchBootstrapStatus(): Promise<BootstrapStatus> {
