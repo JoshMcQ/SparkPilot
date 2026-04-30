@@ -128,6 +128,42 @@ def _send_invite_email_and_audit(
     idempotency_key: str,
     failure_detail: str,
 ) -> InviteEmailDelivery:
+    def _write_invite_email_audit_best_effort(
+        *,
+        action: str,
+        details: dict[str, str | None],
+        delivery: InviteEmailDelivery | None,
+    ) -> None:
+        try:
+            write_audit_event(
+                db,
+                actor=created_by,
+                source_ip=source_ip,
+                action=action,
+                entity_type="user",
+                entity_id=user.id,
+                tenant_id=tenant.id,
+                details=details,
+            )
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:  # pragma: no cover - defensive cleanup after failure
+                logger.exception(
+                    "Invite email audit rollback failed tenant_id=%s user_id=%s action=%s",
+                    tenant.id,
+                    user.id,
+                    action,
+                )
+            logger.exception(
+                "Invite email audit persistence failed tenant_id=%s user_id=%s action=%s provider_message_id=%s",
+                tenant.id,
+                user.id,
+                action,
+                delivery.provider_message_id if delivery else None,
+            )
+
     try:
         delivery = send_invite_email(
             recipient_email=user.email,
@@ -139,21 +175,15 @@ def _send_invite_email_and_audit(
             idempotency_key=idempotency_key,
         )
     except SparkPilotError as exc:
-        write_audit_event(
-            db,
-            actor=created_by,
-            source_ip=source_ip,
+        _write_invite_email_audit_best_effort(
             action="user.invite_email_failed",
-            entity_type="user",
-            entity_id=user.id,
-            tenant_id=tenant.id,
             details={
                 "email": user.email,
                 "provider": "resend",
                 "error_type": exc.__class__.__name__,
             },
+            delivery=None,
         )
-        db.commit()
         logger.warning(
             "Invite email delivery failed provider=resend tenant_id=%s user_id=%s error_type=%s",
             tenant.id,
@@ -168,21 +198,15 @@ def _send_invite_email_and_audit(
             failure_detail=failure_detail,
         )
 
-    write_audit_event(
-        db,
-        actor=created_by,
-        source_ip=source_ip,
+    _write_invite_email_audit_best_effort(
         action="user.invite_email_sent",
-        entity_type="user",
-        entity_id=user.id,
-        tenant_id=tenant.id,
         details={
             "email": user.email,
             "provider": delivery.provider,
             "provider_message_id": delivery.provider_message_id,
         },
+        delivery=delivery,
     )
-    db.commit()
     return delivery
 
 

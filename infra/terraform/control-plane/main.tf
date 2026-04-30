@@ -177,6 +177,7 @@ locals {
     { name = "SPARKPILOT_CORS_ORIGINS", value = join(",", var.cors_origins) },
     { name = "SPARKPILOT_EMR_EXECUTION_ROLE_ARN", value = var.emr_execution_role_arn },
     { name = "SPARKPILOT_ASSUME_ROLE_EXTERNAL_ID", value = var.assume_role_external_id },
+    { name = "SPARKPILOT_COGNITO_HOSTED_UI_URL", value = trimspace(var.cognito_hosted_ui_url) },
     { name = "SPARKPILOT_CRM_WEBHOOK_URL", value = var.crm_webhook_url },
     { name = "SPARKPILOT_INVITE_EMAIL_FROM", value = trimspace(var.invite_email_from) },
     { name = "SPARKPILOT_INVITE_EMAIL_REPLY_TO", value = trimspace(var.invite_email_reply_to) },

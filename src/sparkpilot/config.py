@@ -397,6 +397,11 @@ def _validate_invite_email_settings(settings: Settings) -> None:
     resend_api_key = settings.resend_api_key.strip()
     from_email = settings.invite_email_from.strip()
     reply_to = settings.invite_email_reply_to.strip()
+    hosted_ui_url = settings.cognito_hosted_ui_url.strip()
+    if (resend_api_key or from_email) and not hosted_ui_url:
+        raise ValueError(
+            "SPARKPILOT_COGNITO_HOSTED_UI_URL is required when invite emails are enabled."
+        )
     if resend_api_key and not from_email:
         raise ValueError(
             "SPARKPILOT_INVITE_EMAIL_FROM is required when SPARKPILOT_RESEND_API_KEY is set."

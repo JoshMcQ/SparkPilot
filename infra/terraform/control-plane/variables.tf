@@ -408,6 +408,19 @@ variable "crm_webhook_url" {
   }
 }
 
+variable "cognito_hosted_ui_url" {
+  type        = string
+  description = "Cognito Hosted UI authorize URL used when invite acceptance redirects into customer login."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.cognito_hosted_ui_url) == "" ||
+      can(regex("^https://", trimspace(var.cognito_hosted_ui_url)))
+    )
+    error_message = "cognito_hosted_ui_url must be empty or an https URL."
+  }
+}
+
 variable "resend_api_key_secret_arn" {
   type        = string
   description = "Optional Secrets Manager secret ARN containing the Resend API key."
