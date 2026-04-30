@@ -58,7 +58,9 @@ def test_send_invite_email_posts_to_resend_with_idempotency(
 
     assert delivery.provider == "resend"
     assert delivery.recipient_email == "admin@example.invalid"
+    assert delivery.status == "sent"
     assert delivery.provider_message_id == "email_123"
+    assert delivery.failure_detail is None
     assert captured["url"] == RESEND_EMAILS_URL
     assert captured["timeout"] == 10.0
     headers = captured["headers"]

@@ -64,6 +64,7 @@ def _set_internal_admin_env(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, s
         return InviteEmailDelivery(
             provider="resend",
             recipient_email=recipient_email,
+            status="sent",
             provider_message_id=f"email-{len(sent_invites)}",
         )
 
@@ -180,9 +181,11 @@ def test_internal_tenant_invite_happy_path_end_to_end(
         created = create.json()
         tenant_id = created["tenant_id"]
         user_id = created["user_id"]
-        assert created["invite_email_sent_to"] == "admin@acme.example"
+        assert created["invite_email_recipient"] == "admin@acme.example"
         assert created["invite_email_provider"] == "resend"
+        assert created["invite_email_status"] == "sent"
         assert created["invite_email_provider_message_id"] == "email-1"
+        assert created["invite_email_failure_detail"] is None
         assert "magic_link_url" not in created
         assert len(sent_invites) == 1
         magic_link_url = sent_invites[0]["invite_url"]
@@ -364,8 +367,14 @@ def test_internal_tenant_create_persists_invite_and_audits_email_failure(
             },
             headers=internal_headers,
         )
-        assert response.status_code == 502, response.text
-        assert "provider rejected" not in response.text
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert payload["invite_email_recipient"] == "email-failure@tenant.example"
+        assert payload["invite_email_provider"] == "resend"
+        assert payload["invite_email_status"] == "failed"
+        assert payload["invite_email_provider_message_id"] is None
+        assert "provider rejected" not in payload["invite_email_failure_detail"]
+        assert "token=" not in payload["invite_email_failure_detail"]
         assert "token=" not in response.text
 
     deadline = time.time() + 1.0
@@ -430,7 +439,8 @@ def test_tenant_lifecycle_event_failure_does_not_block_invite_email(
         )
         assert response.status_code == 201, response.text
         payload = response.json()
-        assert payload["invite_email_sent_to"] == "webhook-failure@tenant.example"
+        assert payload["invite_email_recipient"] == "webhook-failure@tenant.example"
+        assert payload["invite_email_status"] == "sent"
 
     assert len(sent_invites) == 1
 
@@ -857,8 +867,9 @@ def test_regenerate_invite_after_consumption_invalidates_old_token_and_issues_ne
         )
         assert regenerate.status_code == 200, regenerate.text
         regenerated = regenerate.json()
-        assert regenerated["invite_email_sent_to"] == "regen@tenant.example"
+        assert regenerated["invite_email_recipient"] == "regen@tenant.example"
         assert regenerated["invite_email_provider"] == "resend"
+        assert regenerated["invite_email_status"] == "sent"
         assert "magic_link_url" not in regenerated
         new_token = _invite_token_from_url(sent_invites[-1]["invite_url"])
         assert new_token != old_token

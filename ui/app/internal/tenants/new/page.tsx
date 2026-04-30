@@ -160,9 +160,14 @@ export default function ProvisionInternalTenantPage() {
 
       {result ? (
         <div className="card">
-          <h3>Invite Email Sent</h3>
+          <h3>
+            {result.invite_email_status === "sent" ? "Invite Email Sent" : "Invite Email Failed"}
+          </h3>
           <div className="subtle">
-            The invite was sent to {result.invite_email_sent_to}.
+            {result.invite_email_status === "sent"
+              ? `The invite was sent to ${result.invite_email_recipient}.`
+              : (result.invite_email_failure_detail
+                ?? "Tenant was created, but the invite email was not sent.")}
           </div>
           <div className="button-row">
             <button

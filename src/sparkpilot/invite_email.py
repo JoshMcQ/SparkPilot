@@ -35,7 +35,9 @@ class InviteEmailDeliveryError(SparkPilotError):
 class InviteEmailDelivery:
     provider: Literal["resend"]
     recipient_email: str
+    status: Literal["sent", "failed"]
     provider_message_id: str | None
+    failure_detail: str | None = None
 
 
 def _invite_email_subject(tenant_name: str) -> str:
@@ -154,5 +156,6 @@ def send_invite_email(
     return InviteEmailDelivery(
         provider="resend",
         recipient_email=recipient_email,
+        status="sent",
         provider_message_id=provider_message_id,
     )
