@@ -167,3 +167,56 @@ output "ui_base_url" {
   value       = local.ui_enabled ? (local.https_enabled ? "https://${aws_lb.api.dns_name}" : "http://${aws_lb.api.dns_name}") : ""
   description = "UI base URL (same ALB as API, path-routed). Empty when UI is not deployed."
 }
+
+output "customer_pool_id" {
+  value       = aws_cognito_user_pool.customer.id
+  description = "Cognito user pool ID for customer (tenant admin / end-user) auth."
+}
+
+output "customer_pool_arn" {
+  value       = aws_cognito_user_pool.customer.arn
+  description = "Cognito user pool ARN for customer auth."
+}
+
+output "customer_pool_app_client_id" {
+  value       = aws_cognito_user_pool_client.customer_spa.id
+  description = "App client ID for customer SPA (PKCE / code flow). Used as STAGING_CUSTOMER_OIDC_AUDIENCE."
+}
+
+output "customer_pool_issuer" {
+  value       = "https://cognito-idp.us-east-1.amazonaws.com/${aws_cognito_user_pool.customer.id}"
+  description = "OIDC issuer URL for the customer pool. Used as STAGING_CUSTOMER_OIDC_ISSUER."
+}
+
+output "customer_pool_jwks_uri" {
+  value       = "https://cognito-idp.us-east-1.amazonaws.com/${aws_cognito_user_pool.customer.id}/.well-known/jwks.json"
+  description = "JWKS URI for the customer pool. Used as STAGING_CUSTOMER_OIDC_JWKS_URI."
+}
+
+output "customer_pool_hosted_ui_authorize_url" {
+  value       = "https://${aws_cognito_user_pool_domain.customer.domain}.auth.us-east-1.amazoncognito.com/oauth2/authorize"
+  description = "Hosted UI authorize endpoint for the customer pool. Used as STAGING_COGNITO_HOSTED_UI_URL."
+}
+
+output "internal_admin_app_client_id" {
+  value       = aws_cognito_user_pool_client.internal_admin.id
+  description = "App client ID on the unmanaged SparkPilotDevUsers pool for internal admin auth. Used as STAGING_INTERNAL_OIDC_AUDIENCE."
+}
+
+# The internal pool itself is unmanaged. These outputs document its OIDC
+# discovery values for convenience; they are derived from the literal pool
+# ID, not from a Terraform-managed resource.
+output "internal_pool_id" {
+  value       = "us-east-1_m6veGu9gU"
+  description = "Unmanaged Cognito pool ID used for internal admin auth (SparkPilotDevUsers)."
+}
+
+output "internal_pool_issuer" {
+  value       = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_m6veGu9gU"
+  description = "OIDC issuer URL for the unmanaged internal pool. Used as STAGING_INTERNAL_OIDC_ISSUER."
+}
+
+output "internal_pool_jwks_uri" {
+  value       = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_m6veGu9gU/.well-known/jwks.json"
+  description = "JWKS URI for the unmanaged internal pool. Used as STAGING_INTERNAL_OIDC_JWKS_URI."
+}

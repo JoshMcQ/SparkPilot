@@ -49,6 +49,9 @@ require_env "WORKER_IMAGE_URI"
 require_env "OIDC_ISSUER"
 require_env "OIDC_AUDIENCE"
 require_env "OIDC_JWKS_URI"
+require_env "INTERNAL_OIDC_ISSUER"
+require_env "INTERNAL_OIDC_AUDIENCE"
+require_env "INTERNAL_OIDC_JWKS_URI"
 require_env "BOOTSTRAP_SECRET"
 require_env "EMR_EXECUTION_ROLE_ARN"
 
@@ -95,6 +98,23 @@ cloudflare_proxied="$(normalize_bool "${CLOUDFLARE_PROXIED:-false}")"
 cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
 ui_image_uri="$(echo "${UI_IMAGE_URI:-}" | xargs)"
 ui_api_base_url="$(echo "${UI_API_BASE_URL:-}" | xargs)"
+customer_oidc_issuer="$(echo "${CUSTOMER_OIDC_ISSUER:-}" | xargs)"
+customer_oidc_audience="$(echo "${CUSTOMER_OIDC_AUDIENCE:-}" | xargs)"
+customer_oidc_jwks_uri="$(echo "${CUSTOMER_OIDC_JWKS_URI:-}" | xargs)"
+internal_oidc_issuer="$(echo "${INTERNAL_OIDC_ISSUER}" | xargs)"
+internal_oidc_audience="$(echo "${INTERNAL_OIDC_AUDIENCE}" | xargs)"
+internal_oidc_jwks_uri="$(echo "${INTERNAL_OIDC_JWKS_URI}" | xargs)"
+
+customer_oidc_any=false
+if [[ -n "${customer_oidc_issuer}" || -n "${customer_oidc_audience}" || -n "${customer_oidc_jwks_uri}" ]]; then
+  customer_oidc_any=true
+fi
+if [[ "${customer_oidc_any}" == "true" ]]; then
+  if [[ -z "${customer_oidc_issuer}" || -z "${customer_oidc_audience}" || -z "${customer_oidc_jwks_uri}" ]]; then
+    echo "::error::Customer OIDC configuration is partial. Set CUSTOMER_OIDC_ISSUER, CUSTOMER_OIDC_AUDIENCE, and CUSTOMER_OIDC_JWKS_URI together, or leave all empty to use legacy OIDC_* aliases." >&2
+    exit 1
+  fi
+fi
 
 # Reject localhost CORS in non-dev environments: deploy would succeed but ECS tasks would
 # fail at runtime when the API's validate_runtime_settings() rejects localhost origins.
@@ -157,6 +177,12 @@ jq -n \
   --arg oidc_issuer "${OIDC_ISSUER}" \
   --arg oidc_audience "${OIDC_AUDIENCE}" \
   --arg oidc_jwks_uri "${OIDC_JWKS_URI}" \
+  --arg customer_oidc_issuer "${customer_oidc_issuer}" \
+  --arg customer_oidc_audience "${customer_oidc_audience}" \
+  --arg customer_oidc_jwks_uri "${customer_oidc_jwks_uri}" \
+  --arg internal_oidc_issuer "${internal_oidc_issuer}" \
+  --arg internal_oidc_audience "${internal_oidc_audience}" \
+  --arg internal_oidc_jwks_uri "${internal_oidc_jwks_uri}" \
   --argjson dry_run_mode "${dry_run_mode}" \
   --argjson enable_full_byoc_mode "${enable_full_byoc_mode}" \
   --arg emr_execution_role_arn "${EMR_EXECUTION_ROLE_ARN}" \
@@ -190,6 +216,12 @@ jq -n \
     oidc_issuer: $oidc_issuer,
     oidc_audience: $oidc_audience,
     oidc_jwks_uri: $oidc_jwks_uri,
+    customer_oidc_issuer: $customer_oidc_issuer,
+    customer_oidc_audience: $customer_oidc_audience,
+    customer_oidc_jwks_uri: $customer_oidc_jwks_uri,
+    internal_oidc_issuer: $internal_oidc_issuer,
+    internal_oidc_audience: $internal_oidc_audience,
+    internal_oidc_jwks_uri: $internal_oidc_jwks_uri,
     dry_run_mode: $dry_run_mode,
     enable_full_byoc_mode: $enable_full_byoc_mode,
     emr_execution_role_arn: $emr_execution_role_arn,
