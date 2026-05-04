@@ -101,7 +101,6 @@ locals {
   internal_oidc_issuer_effective   = trimspace(var.internal_oidc_issuer)
   internal_oidc_audience_effective = trimspace(var.internal_oidc_audience)
   internal_oidc_jwks_uri_effective = trimspace(var.internal_oidc_jwks_uri)
-  resend_api_key_secret_arn        = aws_secretsmanager_secret.resend_api_key.arn
 
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
@@ -189,6 +188,7 @@ locals {
     { name = "SPARKPILOT_CUR_RUN_ID_COLUMN", value = var.cur_run_id_column },
     { name = "SPARKPILOT_CUR_COST_COLUMN", value = var.cur_cost_column },
     { name = "SPARKPILOT_COST_CENTER_POLICY_JSON", value = var.cost_center_policy_json },
+    { name = "SPARKPILOT_INTERNAL_ADMINS", value = var.internal_admins },
   ]
 
   # Sensitive values fetched from Secrets Manager at container start.
@@ -203,14 +203,20 @@ locals {
       valueFrom = aws_secretsmanager_secret.bootstrap.arn
     },
   ]
-  invite_email_runtime_secrets = [
-    {
-      name      = "SPARKPILOT_RESEND_API_KEY"
-      valueFrom = aws_secretsmanager_secret.resend_api_key.arn
-    },
-  ]
-  common_runtime_secrets     = concat(local.base_runtime_secrets, local.invite_email_runtime_secrets)
-  common_runtime_secret_arns = concat([for secret in local.base_runtime_secrets : secret.valueFrom], [for secret in local.invite_email_runtime_secrets : secret.valueFrom])
+  # Dev skips Resend injection so ECS does not bind an empty/unseeded Secrets Manager reference.
+  invite_email_runtime_secrets = (
+    local.is_dev_environment ? [] : [
+      {
+        name      = "SPARKPILOT_RESEND_API_KEY"
+        valueFrom = aws_secretsmanager_secret.resend_api_key.arn
+      },
+    ]
+  )
+  common_runtime_secrets = concat(local.base_runtime_secrets, local.invite_email_runtime_secrets)
+  common_runtime_secret_arns = concat(
+    [for secret in local.base_runtime_secrets : secret.valueFrom],
+    [for secret in local.invite_email_runtime_secrets : secret.valueFrom],
+  )
 
   worker_specs = {
     provisioner        = ["python", "-m", "sparkpilot.workers", "provisioner"]
@@ -352,6 +358,13 @@ check "https_required_for_non_dev" {
   assert {
     condition     = local.is_dev_environment || local.alb_internal || local.https_enabled || var.cloudflare_proxied
     error_message = "For internet-facing staging/prod deployments, either set acm_certificate_arn to enable HTTPS or set cloudflare_proxied=true (Cloudflare terminates TLS at the edge)."
+  }
+}
+
+check "internal_admins_nonempty_for_non_dev" {
+  assert {
+    condition     = local.is_dev_environment || trimspace(var.internal_admins) != ""
+    error_message = "internal_admins must be non-empty in staging/production (comma-separated operator emails matched to OIDC internal-pool tokens)."
   }
 }
 

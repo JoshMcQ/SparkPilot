@@ -146,6 +146,11 @@ if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lo
     echo "::error::INVITE_EMAIL_FROM must be set for non-dev invite email delivery." >&2
     exit 1
   fi
+  internal_admins_gate="$(echo "${INTERNAL_ADMINS:-}" | xargs)"
+  if [[ -z "${internal_admins_gate}" ]]; then
+    echo "::error::INTERNAL_ADMINS must be non-empty for non-dev so internal-admin API routes can authorize operators (comma-separated emails)." >&2
+    exit 1
+  fi
 fi
 
 # Convert comma-separated string to JSON array for Terraform
@@ -160,6 +165,7 @@ cur_run_id_column="$(echo "${CUR_RUN_ID_COLUMN:-resource_tags_user_sparkpilot_ru
 cur_cost_column="$(echo "${CUR_COST_COLUMN:-line_item_unblended_cost}" | xargs)"
 cost_center_policy_json="${COST_CENTER_POLICY_JSON:-}"
 assume_role_external_id="$(echo "${ASSUME_ROLE_EXTERNAL_ID:-}" | xargs)"
+internal_admins="$(echo "${INTERNAL_ADMINS:-}" | xargs)"
 
 if [[ -n "${cur_athena_database}" || -n "${cur_athena_table}" || -n "${cur_athena_output_location}" ]]; then
   if [[ -z "${cur_athena_database}" || -z "${cur_athena_table}" || -z "${cur_athena_output_location}" ]]; then
@@ -230,6 +236,7 @@ jq -n \
   --arg invite_email_from "${invite_email_from}" \
   --arg invite_email_reply_to "${invite_email_reply_to}" \
   --argjson invite_email_timeout_seconds "${invite_email_timeout_seconds}" \
+  --arg internal_admins "${internal_admins}" \
   '{
     environment: $environment,
     region: $region,
@@ -272,7 +279,8 @@ jq -n \
     cognito_hosted_ui_url: $cognito_hosted_ui_url,
     invite_email_from: $invite_email_from,
     invite_email_reply_to: $invite_email_reply_to,
-    invite_email_timeout_seconds: $invite_email_timeout_seconds
+    invite_email_timeout_seconds: $invite_email_timeout_seconds,
+    internal_admins: $internal_admins
   }' > "${tfvars_file}"
 
 if ! jq -e 'type == "object"' "${tfvars_file}" >/dev/null 2>&1; then

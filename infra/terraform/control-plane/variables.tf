@@ -459,6 +459,19 @@ variable "invite_email_timeout_seconds" {
   }
 }
 
+variable "internal_admins" {
+  type        = string
+  description = "Comma-separated emails allowed as internal admins (matched case-insensitively to OIDC email on the internal pool)."
+  default     = ""
+  validation {
+    condition = trimspace(var.internal_admins) == "" || (
+      length(var.internal_admins) <= 2048 &&
+      !can(regex("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]", var.internal_admins))
+    )
+    error_message = "internal_admins must be empty or a printable comma-separated string (max 2048 chars)."
+  }
+}
+
 variable "cors_origins" {
   type        = list(string)
   description = "Credentialed CORS origins for SparkPilot API."

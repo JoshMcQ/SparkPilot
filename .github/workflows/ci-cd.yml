@@ -353,6 +353,7 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.DEV_INVITE_EMAIL_FROM || secrets.DEV_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.DEV_INVITE_EMAIL_REPLY_TO || secrets.DEV_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.DEV_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
+          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS || '' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (dev)
@@ -553,6 +554,7 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.STAGING_INVITE_EMAIL_FROM || secrets.STAGING_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.STAGING_INVITE_EMAIL_REPLY_TO || secrets.STAGING_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.STAGING_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
+          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS || 'jmcqueary@sparkpilot.cloud' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (staging)
@@ -753,6 +755,7 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.PROD_INVITE_EMAIL_FROM || secrets.PROD_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.PROD_INVITE_EMAIL_REPLY_TO || secrets.PROD_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.PROD_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
+          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS || 'jmcqueary@sparkpilot.cloud' }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (prod)
