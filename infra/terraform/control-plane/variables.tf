@@ -421,19 +421,6 @@ variable "cognito_hosted_ui_url" {
   }
 }
 
-variable "resend_api_key_secret_arn" {
-  type        = string
-  description = "Optional Secrets Manager secret ARN containing the Resend API key."
-  default     = ""
-  validation {
-    condition = (
-      trimspace(var.resend_api_key_secret_arn) == "" ||
-      can(regex("^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$", trimspace(var.resend_api_key_secret_arn)))
-    )
-    error_message = "resend_api_key_secret_arn must be empty or a valid Secrets Manager secret ARN."
-  }
-}
-
 variable "invite_email_from" {
   type        = string
   description = "Sender address for tenant admin invite emails. Friendly-name format is allowed."

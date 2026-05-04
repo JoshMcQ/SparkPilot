@@ -22,7 +22,7 @@
 #   COGNITO_HOSTED_UI_URL   - Cognito Hosted UI authorize URL for invite accept redirects
 #   BOOTSTRAP_SECRET        - API bootstrap secret
 #   EMR_EXECUTION_ROLE_ARN  - EMR execution role ARN
-#   RESEND_API_KEY_SECRET_ARN - Secrets Manager ARN containing the Resend API key
+#   RESEND_API_KEY          - Resend API key (raw); deploy script writes to Terraform-managed Secrets Manager secret
 #   INVITE_EMAIL_FROM       - sender address for invite emails
 #
 # Outputs (via GITHUB_OUTPUT):
@@ -100,9 +100,9 @@ if [[ "${customer_oidc_any}" == "true" ]]; then
 fi
 
 if [[ "${DEPLOY_ENV}" != "dev" ]]; then
-  [ -z "${COGNITO_HOSTED_UI_URL:-}" ]       && MISSING+=("${ENV_UPPER}_COGNITO_HOSTED_UI_URL")
-  [ -z "${RESEND_API_KEY_SECRET_ARN:-}" ] && MISSING+=("${ENV_UPPER}_RESEND_API_KEY_SECRET_ARN")
-  [ -z "${INVITE_EMAIL_FROM:-}" ]         && MISSING+=("${ENV_UPPER}_INVITE_EMAIL_FROM")
+  [ -z "${COGNITO_HOSTED_UI_URL:-}" ] && MISSING+=("${ENV_UPPER}_COGNITO_HOSTED_UI_URL")
+  [ -z "${RESEND_API_KEY:-}" ]        && MISSING+=("${ENV_UPPER}_RESEND_API_KEY")
+  [ -z "${INVITE_EMAIL_FROM:-}" ]     && MISSING+=("${ENV_UPPER}_INVITE_EMAIL_FROM")
 fi
 
 if [ "${#MISSING[@]}" -gt 0 ]; then

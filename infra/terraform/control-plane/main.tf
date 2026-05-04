@@ -101,7 +101,7 @@ locals {
   internal_oidc_issuer_effective   = trimspace(var.internal_oidc_issuer)
   internal_oidc_audience_effective = trimspace(var.internal_oidc_audience)
   internal_oidc_jwks_uri_effective = trimspace(var.internal_oidc_jwks_uri)
-  resend_api_key_secret_arn        = trimspace(var.resend_api_key_secret_arn)
+  resend_api_key_secret_arn        = aws_secretsmanager_secret.resend_api_key.arn
 
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
@@ -203,10 +203,10 @@ locals {
       valueFrom = aws_secretsmanager_secret.bootstrap.arn
     },
   ]
-  invite_email_runtime_secrets = local.resend_api_key_secret_arn == "" ? [] : [
+  invite_email_runtime_secrets = [
     {
       name      = "SPARKPILOT_RESEND_API_KEY"
-      valueFrom = local.resend_api_key_secret_arn
+      valueFrom = aws_secretsmanager_secret.resend_api_key.arn
     },
   ]
   common_runtime_secrets     = concat(local.base_runtime_secrets, local.invite_email_runtime_secrets)
@@ -341,11 +341,10 @@ check "invite_email_configuration_complete" {
       local.is_dev_environment ||
       (
         trimspace(var.cognito_hosted_ui_url) != "" &&
-        trimspace(var.resend_api_key_secret_arn) != "" &&
         trimspace(var.invite_email_from) != ""
       )
     )
-    error_message = "For staging/prod, set cognito_hosted_ui_url, resend_api_key_secret_arn, and invite_email_from so internal admin invites can be delivered."
+    error_message = "For staging/prod, set cognito_hosted_ui_url and invite_email_from so internal admin invites can be delivered. The Resend API key Secrets Manager container is created by Terraform; the deploy script writes the value from the RESEND_API_KEY env var."
   }
 }
 
@@ -385,6 +384,13 @@ resource "aws_secretsmanager_secret" "database_url" {
 
 resource "aws_secretsmanager_secret" "bootstrap" {
   name                    = "${local.name_prefix}-bootstrap-secret"
+  kms_key_id              = aws_kms_key.control_plane.arn
+  recovery_window_in_days = local.is_dev_environment ? 0 : 7
+  tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret" "resend_api_key" {
+  name                    = "${local.name_prefix}-resend-api-key"
   kms_key_id              = aws_kms_key.control_plane.arn
   recovery_window_in_days = local.is_dev_environment ? 0 : 7
   tags                    = local.tags

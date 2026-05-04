@@ -113,6 +113,11 @@ output "bootstrap_secret_arn" {
   description = "Secrets Manager ARN for the SPARKPILOT_BOOTSTRAP_SECRET secret. The deploy script writes the actual value here after apply."
 }
 
+output "resend_api_key_secret_arn" {
+  value       = aws_secretsmanager_secret.resend_api_key.arn
+  description = "Secrets Manager ARN for the SPARKPILOT_RESEND_API_KEY secret. The deploy script writes the value (from the RESEND_API_KEY env var) after apply."
+}
+
 output "postgres_db_name" {
   value       = var.db_name
   description = "RDS database name (used by deploy script to construct the database URL)."
