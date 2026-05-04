@@ -408,6 +408,57 @@ variable "crm_webhook_url" {
   }
 }
 
+variable "cognito_hosted_ui_url" {
+  type        = string
+  description = "Cognito Hosted UI authorize URL used when invite acceptance redirects into customer login."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.cognito_hosted_ui_url) == "" ||
+      can(regex("^https://", trimspace(var.cognito_hosted_ui_url)))
+    )
+    error_message = "cognito_hosted_ui_url must be empty or an https URL."
+  }
+}
+
+variable "invite_email_from" {
+  type        = string
+  description = "Sender address for tenant admin invite emails. Friendly-name format is allowed."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.invite_email_from) == "" ||
+      can(regex("^[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+$", trimspace(var.invite_email_from))) ||
+      can(regex("^.+<[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+>$", trimspace(var.invite_email_from)))
+    )
+    error_message = "invite_email_from must be empty, an email address, or a friendly-name email address."
+  }
+}
+
+variable "invite_email_reply_to" {
+  type        = string
+  description = "Optional Reply-To address for tenant admin invite emails. Friendly-name format is allowed."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.invite_email_reply_to) == "" ||
+      can(regex("^[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+$", trimspace(var.invite_email_reply_to))) ||
+      can(regex("^.+<[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+>$", trimspace(var.invite_email_reply_to)))
+    )
+    error_message = "invite_email_reply_to must be empty, an email address, or a friendly-name email address."
+  }
+}
+
+variable "invite_email_timeout_seconds" {
+  type        = number
+  description = "Timeout in seconds for Resend invite email delivery requests."
+  default     = 10
+  validation {
+    condition     = var.invite_email_timeout_seconds > 0
+    error_message = "invite_email_timeout_seconds must be greater than 0."
+  }
+}
+
 variable "cors_origins" {
   type        = list(string)
   description = "Credentialed CORS origins for SparkPilot API."

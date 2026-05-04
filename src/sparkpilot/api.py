@@ -301,6 +301,31 @@ def _validate_production_startup() -> None:
         internal_oidc_jwks_uri,
     )
 
+    resend_api_key = _env_value("SPARKPILOT_RESEND_API_KEY", "RESEND_API_KEY")
+    invite_email_from = _env_value(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "INVITE_EMAIL_FROM",
+    )
+    cognito_hosted_ui_url = _env_value(
+        "SPARKPILOT_COGNITO_HOSTED_UI_URL",
+        "COGNITO_HOSTED_UI_URL",
+    )
+    _record(
+        "resend_api_key_present",
+        bool(resend_api_key),
+        "SPARKPILOT_RESEND_API_KEY must be set for invite email delivery.",
+    )
+    _record(
+        "invite_email_from_present",
+        bool(invite_email_from),
+        "SPARKPILOT_INVITE_EMAIL_FROM must be set for invite email delivery.",
+    )
+    _record(
+        "cognito_hosted_ui_url_present",
+        bool(cognito_hosted_ui_url),
+        "SPARKPILOT_COGNITO_HOSTED_UI_URL must be set for invite email redirects.",
+    )
+
     bootstrap_secret = _env_value("SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET")
     _record(
         "bootstrap_secret_min_length",
@@ -679,6 +704,47 @@ def _write_internal_admin_audit_event(
             "timestamp": datetime.now(UTC).isoformat(),
         },
     )
+
+
+def _commit_internal_admin_audit_best_effort(
+    db: Session,
+    *,
+    request: Request,
+    internal_admin: InternalAdminContext,
+    action: InternalAuditAction,
+    target_tenant_id: str | None,
+    target_user_id: str | None,
+) -> None:
+    # Used after durable side effects (tenant create, invite regenerate, list/detail
+    # reads) where an audit-only failure must not surface as a 500 the client would
+    # retry — a retry would compound the original side effect (double tenant create,
+    # duplicate invite send).
+    try:
+        _write_internal_admin_audit_event(
+            db,
+            request=request,
+            internal_admin=internal_admin,
+            action=action,
+            target_tenant_id=target_tenant_id,
+            target_user_id=target_user_id,
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:  # pragma: no cover - defensive cleanup after commit failure
+            logger.exception(
+                "Internal admin audit rollback failed action=%s tenant_id=%s user_id=%s",
+                action,
+                target_tenant_id,
+                target_user_id,
+            )
+        logger.exception(
+            "Internal admin audit persistence failed action=%s tenant_id=%s user_id=%s",
+            action,
+            target_tenant_id,
+            target_user_id,
+        )
 
 
 def _state_signing_key() -> bytes:
@@ -1243,7 +1309,7 @@ def post_internal_tenant(
         invite_accept_base_url=_invite_accept_base_url(request),
         ttl_hours=get_settings().magic_link_ttl_hours,
     )
-    _write_internal_admin_audit_event(
+    _commit_internal_admin_audit_best_effort(
         db,
         request=request,
         internal_admin=internal_admin,
@@ -1251,11 +1317,14 @@ def post_internal_tenant(
         target_tenant_id=result.tenant.id,
         target_user_id=result.user.id,
     )
-    db.commit()
     return InternalTenantCreateResponse(
         tenant_id=result.tenant.id,
         user_id=result.user.id,
-        magic_link_url=result.magic_link_url,
+        invite_email_recipient=result.invite_email.recipient_email,
+        invite_email_provider=result.invite_email.provider,
+        invite_email_status=result.invite_email.status,
+        invite_email_provider_message_id=result.invite_email.provider_message_id,
+        invite_email_failure_detail=result.invite_email.failure_detail,
     )
 
 
@@ -1280,7 +1349,7 @@ def post_internal_regenerate_invite(
         invite_accept_base_url=_invite_accept_base_url(request),
         ttl_hours=get_settings().magic_link_ttl_hours,
     )
-    _write_internal_admin_audit_event(
+    _commit_internal_admin_audit_best_effort(
         db,
         request=request,
         internal_admin=internal_admin,
@@ -1288,11 +1357,14 @@ def post_internal_regenerate_invite(
         target_tenant_id=tenant_id,
         target_user_id=user_id,
     )
-    db.commit()
     return InternalTenantCreateResponse(
         tenant_id=result.tenant.id,
         user_id=result.user.id,
-        magic_link_url=result.magic_link_url,
+        invite_email_recipient=result.invite_email.recipient_email,
+        invite_email_provider=result.invite_email.provider,
+        invite_email_status=result.invite_email.status,
+        invite_email_provider_message_id=result.invite_email.provider_message_id,
+        invite_email_failure_detail=result.invite_email.failure_detail,
     )
 
 
@@ -1303,7 +1375,7 @@ def get_internal_tenants(
     db: Session = Depends(get_db),
 ) -> list[InternalTenantListItemResponse]:
     summaries = list_internal_tenant_summaries(db)
-    _write_internal_admin_audit_event(
+    _commit_internal_admin_audit_best_effort(
         db,
         request=request,
         internal_admin=internal_admin,
@@ -1311,7 +1383,6 @@ def get_internal_tenants(
         target_tenant_id=None,
         target_user_id=None,
     )
-    db.commit()
     return [
         InternalTenantListItemResponse(
             tenant_id=item.tenant.id,
@@ -1348,7 +1419,7 @@ def get_internal_tenant_by_id(
             .group_by(MagicLinkToken.user_id)
         ).all()
     )
-    _write_internal_admin_audit_event(
+    _commit_internal_admin_audit_best_effort(
         db,
         request=request,
         internal_admin=internal_admin,
@@ -1356,7 +1427,6 @@ def get_internal_tenant_by_id(
         target_tenant_id=tenant_id,
         target_user_id=None,
     )
-    db.commit()
     return InternalTenantDetailResponse(
         tenant_id=detail.tenant.id,
         tenant_name=detail.tenant.name,

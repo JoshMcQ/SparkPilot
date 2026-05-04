@@ -104,6 +104,16 @@ customer_oidc_jwks_uri="$(echo "${CUSTOMER_OIDC_JWKS_URI:-}" | xargs)"
 internal_oidc_issuer="$(echo "${INTERNAL_OIDC_ISSUER}" | xargs)"
 internal_oidc_audience="$(echo "${INTERNAL_OIDC_AUDIENCE}" | xargs)"
 internal_oidc_jwks_uri="$(echo "${INTERNAL_OIDC_JWKS_URI}" | xargs)"
+cognito_hosted_ui_url="$(echo "${COGNITO_HOSTED_UI_URL:-}" | xargs)"
+resend_api_key="${RESEND_API_KEY:-}"
+invite_email_from="$(echo "${INVITE_EMAIL_FROM:-}" | xargs)"
+invite_email_reply_to="$(echo "${INVITE_EMAIL_REPLY_TO:-}" | xargs)"
+invite_email_timeout_seconds="$(echo "${INVITE_EMAIL_TIMEOUT_SECONDS:-10}" | xargs)"
+
+if ! jq -en --argjson timeout "${invite_email_timeout_seconds}" '$timeout > 0' >/dev/null 2>&1; then
+  echo "::error::INVITE_EMAIL_TIMEOUT_SECONDS must be a positive number." >&2
+  exit 1
+fi
 
 customer_oidc_any=false
 if [[ -n "${customer_oidc_issuer}" || -n "${customer_oidc_audience}" || -n "${customer_oidc_jwks_uri}" ]]; then
@@ -122,6 +132,18 @@ _env_lower="$(echo "${SPARKPILOT_ENVIRONMENT}" | tr '[:upper:]' '[:lower:]' | xa
 if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lower}" != "local" && "${_env_lower}" != "test" ]]; then
   if [[ -z "${CORS_ORIGINS:-}" ]] || echo "${cors_origins_raw}" | tr ',' '\n' | grep -qiE '(localhost|127\.0\.0\.1|::1)'; then
     echo "::error::CORS_ORIGINS must be set to a non-localhost value for non-dev environment '${SPARKPILOT_ENVIRONMENT}'. Set the CORS_ORIGINS variable (e.g. https://app.sparkpilot.cloud) before deploying." >&2
+    exit 1
+  fi
+  if [[ -z "${resend_api_key}" ]]; then
+    echo "::error::RESEND_API_KEY must be set for non-dev invite email delivery." >&2
+    exit 1
+  fi
+  if [[ -z "${cognito_hosted_ui_url}" ]]; then
+    echo "::error::COGNITO_HOSTED_UI_URL must be set for non-dev invite email redirects." >&2
+    exit 1
+  fi
+  if [[ -z "${invite_email_from}" ]]; then
+    echo "::error::INVITE_EMAIL_FROM must be set for non-dev invite email delivery." >&2
     exit 1
   fi
 fi
@@ -204,6 +226,10 @@ jq -n \
   --argjson enable_ecs_exec "${enable_ecs_exec}" \
   --arg ui_image_uri "${ui_image_uri}" \
   --arg ui_api_base_url "${ui_api_base_url}" \
+  --arg cognito_hosted_ui_url "${cognito_hosted_ui_url}" \
+  --arg invite_email_from "${invite_email_from}" \
+  --arg invite_email_reply_to "${invite_email_reply_to}" \
+  --argjson invite_email_timeout_seconds "${invite_email_timeout_seconds}" \
   '{
     environment: $environment,
     region: $region,
@@ -242,7 +268,11 @@ jq -n \
     cors_origins: $cors_origins,
     enable_ecs_exec: $enable_ecs_exec,
     ui_image_uri: $ui_image_uri,
-    ui_api_base_url: $ui_api_base_url
+    ui_api_base_url: $ui_api_base_url,
+    cognito_hosted_ui_url: $cognito_hosted_ui_url,
+    invite_email_from: $invite_email_from,
+    invite_email_reply_to: $invite_email_reply_to,
+    invite_email_timeout_seconds: $invite_email_timeout_seconds
   }' > "${tfvars_file}"
 
 if ! jq -e 'type == "object"' "${tfvars_file}" >/dev/null 2>&1; then
@@ -274,6 +304,7 @@ db_name="$(terraform -chdir="${terraform_root}" output -raw postgres_db_name 2>/
 db_username="$(terraform -chdir="${terraform_root}" output -raw postgres_db_username 2>/dev/null || true)"
 database_url_secret_arn="$(terraform -chdir="${terraform_root}" output -raw database_url_secret_arn 2>/dev/null || true)"
 bootstrap_secret_arn="$(terraform -chdir="${terraform_root}" output -raw bootstrap_secret_arn 2>/dev/null || true)"
+resend_api_key_secret_arn="$(terraform -chdir="${terraform_root}" output -raw resend_api_key_secret_arn 2>/dev/null || true)"
 ecs_cluster_name="$(terraform -chdir="${terraform_root}" output -raw ecs_cluster_name 2>/dev/null || true)"
 ecs_worker_service_names_json="$(terraform -chdir="${terraform_root}" output -json ecs_worker_service_names 2>/dev/null || echo '{}')"
 ecs_api_service_name="$(terraform -chdir="${terraform_root}" output -raw ecs_api_service_name 2>/dev/null || true)"
@@ -295,6 +326,10 @@ if [[ -z "${database_url_secret_arn}" ]]; then
 fi
 if [[ -z "${bootstrap_secret_arn}" ]]; then
   echo "::error::Terraform output 'bootstrap_secret_arn' is empty." >&2
+  exit 1
+fi
+if [[ -z "${resend_api_key_secret_arn}" ]]; then
+  echo "::error::Terraform output 'resend_api_key_secret_arn' is empty." >&2
   exit 1
 fi
 if [[ -z "${postgres_address}" ]]; then
@@ -366,6 +401,17 @@ aws secretsmanager put-secret-value \
   --secret-string "${BOOTSTRAP_SECRET}" \
   --region "${AWS_REGION}" \
   --output json > /dev/null
+
+if [[ -n "${resend_api_key}" ]]; then
+  echo "Writing Resend API key to Secrets Manager..."
+  aws secretsmanager put-secret-value \
+    --secret-id "${resend_api_key_secret_arn}" \
+    --secret-string "${resend_api_key}" \
+    --region "${AWS_REGION}" \
+    --output json > /dev/null
+else
+  echo "::notice::RESEND_API_KEY not set; skipping put-secret-value for Resend (dev environment)."
+fi
 
 echo "Running database migrations..."
 # ---------------------------------------------------------------------------
