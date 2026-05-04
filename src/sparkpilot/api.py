@@ -1284,9 +1284,23 @@ def _configured_cognito_hosted_ui_url() -> str:
     return hosted_ui_url
 
 
-def _cognito_invite_redirect_url(state: str) -> str:
-    hosted_ui_url = _configured_cognito_hosted_ui_url()
-    return _append_query_params(hosted_ui_url, {"state": state})
+def _invite_login_redirect_url(request: Request, state: str) -> str:
+    # Keep the hosted UI setting as the production readiness gate, but route
+    # users through the UI-owned PKCE flow so /auth/callback can persist the
+    # browser session before applying the invite mapping.
+    _configured_cognito_hosted_ui_url()
+    request_parts = urlsplit(str(request.url))
+    login_url = urlunsplit(
+        (request_parts.scheme, request_parts.netloc, "/login", "", "")
+    )
+    return _append_query_params(
+        login_url,
+        {
+            "pool": "customer",
+            "invite_state": state,
+            "next": "/onboarding/aws",
+        },
+    )
 
 
 @app.post(
@@ -1446,6 +1460,7 @@ def get_internal_tenant_by_id(
 
 @app.get("/v1/invite/accept", name="accept_invite")
 def accept_invite(
+    request: Request,
     token: str = Query(min_length=10),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -1463,7 +1478,7 @@ def accept_invite(
             ),
         )
     )
-    redirect_url = _cognito_invite_redirect_url(state)
+    redirect_url = _invite_login_redirect_url(request, state)
     return RedirectResponse(
         url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
     )
@@ -1543,6 +1558,15 @@ def get_auth_callback(
         user_id=invite_payload.user_id,
         tenant_id=invite_payload.tenant_id,
     )
+
+
+@app.get("/v1/invite/callback", response_model=AuthCallbackResponse)
+def get_invite_callback(
+    request: Request,
+    state: str = Query(min_length=10),
+    db: Session = Depends(get_db),
+) -> AuthCallbackResponse:
+    return get_auth_callback(request=request, state=state, db=db)
 
 
 @app.get("/v1/user-identities", response_model=list[UserIdentityResponse])

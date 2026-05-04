@@ -3,6 +3,9 @@ const required = [
   "NEXT_PUBLIC_OIDC_ISSUER",
   "NEXT_PUBLIC_OIDC_CLIENT_ID",
   "NEXT_PUBLIC_OIDC_REDIRECT_URI",
+  "NEXT_PUBLIC_INTERNAL_OIDC_ISSUER",
+  "NEXT_PUBLIC_INTERNAL_OIDC_CLIENT_ID",
+  "NEXT_PUBLIC_INTERNAL_OIDC_REDIRECT_URI",
 ];
 
 const missing = required.filter((name) => !(process.env[name] ?? "").trim());

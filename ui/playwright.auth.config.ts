@@ -15,11 +15,13 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command: "npm run start -- --hostname 127.0.0.1 --port 3130",
+    command: "node .next/standalone/server.js",
     url: "http://127.0.0.1:3130/",
     reuseExistingServer: true,
     timeout: 120_000,
     env: {
+      PORT: "3130",
+      HOSTNAME: "127.0.0.1",
       SPARKPILOT_API: "http://127.0.0.1:9999",
       SPARKPILOT_UI_ENFORCE_AUTH: "true",
       NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE: "false",
@@ -27,6 +29,10 @@ export default defineConfig({
       NEXT_PUBLIC_OIDC_CLIENT_ID: "sparkpilot-ui",
       NEXT_PUBLIC_OIDC_REDIRECT_URI: "http://127.0.0.1:3130/auth/callback",
       NEXT_PUBLIC_OIDC_AUDIENCE: "sparkpilot-api",
+      NEXT_PUBLIC_INTERNAL_OIDC_ISSUER: "https://internal-issuer.example.com",
+      NEXT_PUBLIC_INTERNAL_OIDC_CLIENT_ID: "sparkpilot-internal-ui",
+      NEXT_PUBLIC_INTERNAL_OIDC_REDIRECT_URI: "http://127.0.0.1:3130/auth/callback",
+      NEXT_PUBLIC_INTERNAL_OIDC_AUDIENCE: "sparkpilot-internal-api",
     },
   },
   projects: [

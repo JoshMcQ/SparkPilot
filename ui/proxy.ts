@@ -14,10 +14,13 @@ function isManualTokenModeEnabled(): boolean {
   return manualMode && process.env.NODE_ENV !== "production";
 }
 
-function loginRedirect(request: NextRequest): NextResponse {
+function loginRedirect(request: NextRequest, pool: "customer" | "internal"): NextResponse {
   const loginUrl = new URL("/login", request.url);
   const target = `${request.nextUrl.pathname}${request.nextUrl.search}`;
   loginUrl.searchParams.set("next", target);
+  if (pool === "internal") {
+    loginUrl.searchParams.set("pool", "internal");
+  }
   return NextResponse.redirect(loginUrl);
 }
 
@@ -31,7 +34,8 @@ export function proxy(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
 
-  return loginRedirect(request);
+  const pool = request.nextUrl.pathname.startsWith("/internal") ? "internal" : "customer";
+  return loginRedirect(request, pool);
 }
 
 export const config = {

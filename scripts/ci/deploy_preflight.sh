@@ -24,6 +24,7 @@
 #   EMR_EXECUTION_ROLE_ARN  - EMR execution role ARN
 #   RESEND_API_KEY          - Resend API key (raw); deploy script writes to Terraform-managed Secrets Manager secret
 #   INVITE_EMAIL_FROM       - sender address for invite emails
+#   UI_APP_BASE_URL         - public app URL used for OIDC callback build args when UI is deployed
 #
 # Outputs (via GITHUB_OUTPUT):
 #   skip=true   - deploy disabled, role missing, or environment not configured
@@ -88,6 +89,11 @@ fi
 [ -z "${INTERNAL_OIDC_JWKS_URI:-}" ]  && MISSING+=("${ENV_UPPER}_INTERNAL_OIDC_JWKS_URI")
 [ -z "${BOOTSTRAP_SECRET:-}" ]        && MISSING+=("${ENV_UPPER}_BOOTSTRAP_SECRET")
 [ -z "${EMR_EXECUTION_ROLE_ARN:-}" ]  && MISSING+=("${ENV_UPPER}_EMR_EXECUTION_ROLE_ARN")
+
+ui_desired_count="${TF_VAR_ui_desired_count:-0}"
+if [[ "${ui_desired_count}" != "0" && -z "${UI_APP_BASE_URL:-}" ]]; then
+  MISSING+=("${ENV_UPPER}_UI_APP_BASE_URL")
+fi
 
 customer_oidc_any=false
 [ -n "${CUSTOMER_OIDC_ISSUER:-}" ] && customer_oidc_any=true
