@@ -328,9 +328,13 @@ if [[ -z "${bootstrap_secret_arn}" ]]; then
   echo "::error::Terraform output 'bootstrap_secret_arn' is empty." >&2
   exit 1
 fi
-if [[ -z "${resend_api_key_secret_arn}" ]]; then
-  echo "::error::Terraform output 'resend_api_key_secret_arn' is empty." >&2
-  exit 1
+# resend_api_key_secret_arn is intentionally empty in dev (invite emails disabled
+# by Terraform's local.is_dev_environment gate). Only required in non-dev.
+if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lower}" != "local" && "${_env_lower}" != "test" ]]; then
+  if [[ -z "${resend_api_key_secret_arn}" ]]; then
+    echo "::error::Terraform output 'resend_api_key_secret_arn' is empty for non-dev environment '${SPARKPILOT_ENVIRONMENT}'." >&2
+    exit 1
+  fi
 fi
 if [[ -z "${postgres_address}" ]]; then
   echo "::error::Terraform output 'postgres_address' is empty." >&2
@@ -402,7 +406,7 @@ aws secretsmanager put-secret-value \
   --region "${AWS_REGION}" \
   --output json > /dev/null
 
-if [[ -n "${resend_api_key}" ]]; then
+if [[ -n "${resend_api_key_secret_arn}" && -n "${resend_api_key}" ]]; then
   echo "Writing Resend API key to Secrets Manager..."
   aws secretsmanager put-secret-value \
     --secret-id "${resend_api_key_secret_arn}" \
@@ -410,7 +414,10 @@ if [[ -n "${resend_api_key}" ]]; then
     --region "${AWS_REGION}" \
     --output json > /dev/null
 else
-  echo "::notice::RESEND_API_KEY not set; skipping put-secret-value for Resend (dev environment)."
+  # Dev environments don't ship invite emails: Terraform skips the secret
+  # container, ECS task definition skips the SPARKPILOT_RESEND_API_KEY entry,
+  # and we have nothing to write here.
+  echo "::notice::Resend API key Secrets Manager wiring skipped (dev environment or RESEND_API_KEY unset)."
 fi
 
 echo "Running database migrations..."

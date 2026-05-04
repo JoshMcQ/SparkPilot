@@ -12,6 +12,18 @@ from sparkpilot.invite_email import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _reset_settings_cache():
+    # Clear before AND after every test so a failing assertion can't leave
+    # cached env-backed settings visible to subsequent tests. Mid-test
+    # _clear_settings_cache() calls below are still legitimate — tests use
+    # them to force a settings reload after monkeypatch.setenv during the
+    # test body.
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 

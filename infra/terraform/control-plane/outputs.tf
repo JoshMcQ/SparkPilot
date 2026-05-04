@@ -114,8 +114,8 @@ output "bootstrap_secret_arn" {
 }
 
 output "resend_api_key_secret_arn" {
-  value       = aws_secretsmanager_secret.resend_api_key.arn
-  description = "Secrets Manager ARN for the SPARKPILOT_RESEND_API_KEY secret. The deploy script writes the value (from the RESEND_API_KEY env var) after apply."
+  value       = local.is_dev_environment ? "" : aws_secretsmanager_secret.resend_api_key[0].arn
+  description = "Secrets Manager ARN for the SPARKPILOT_RESEND_API_KEY secret. Empty in dev (invite emails disabled). For non-dev, the deploy script writes the value (from the RESEND_API_KEY env var) after apply."
 }
 
 output "postgres_db_name" {

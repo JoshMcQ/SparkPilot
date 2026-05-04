@@ -101,7 +101,7 @@ locals {
   internal_oidc_issuer_effective   = trimspace(var.internal_oidc_issuer)
   internal_oidc_audience_effective = trimspace(var.internal_oidc_audience)
   internal_oidc_jwks_uri_effective = trimspace(var.internal_oidc_jwks_uri)
-  resend_api_key_secret_arn        = aws_secretsmanager_secret.resend_api_key.arn
+  resend_api_key_secret_arn        = local.is_dev_environment ? "" : aws_secretsmanager_secret.resend_api_key[0].arn
 
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
@@ -203,10 +203,10 @@ locals {
       valueFrom = aws_secretsmanager_secret.bootstrap.arn
     },
   ]
-  invite_email_runtime_secrets = [
+  invite_email_runtime_secrets = local.is_dev_environment ? [] : [
     {
       name      = "SPARKPILOT_RESEND_API_KEY"
-      valueFrom = aws_secretsmanager_secret.resend_api_key.arn
+      valueFrom = aws_secretsmanager_secret.resend_api_key[0].arn
     },
   ]
   common_runtime_secrets     = concat(local.base_runtime_secrets, local.invite_email_runtime_secrets)
@@ -390,9 +390,13 @@ resource "aws_secretsmanager_secret" "bootstrap" {
 }
 
 resource "aws_secretsmanager_secret" "resend_api_key" {
+  # Dev environments don't send invite emails (preflight skips RESEND_API_KEY),
+  # so we don't create the container there — otherwise ECS would reference an
+  # empty secret at task launch and fail to inject SPARKPILOT_RESEND_API_KEY.
+  count                   = local.is_dev_environment ? 0 : 1
   name                    = "${local.name_prefix}-resend-api-key"
   kms_key_id              = aws_kms_key.control_plane.arn
-  recovery_window_in_days = local.is_dev_environment ? 0 : 7
+  recovery_window_in_days = 7
   tags                    = local.tags
 }
 
