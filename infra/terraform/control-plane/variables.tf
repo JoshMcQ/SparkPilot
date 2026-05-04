@@ -421,6 +421,19 @@ variable "cognito_hosted_ui_url" {
   }
 }
 
+variable "app_base_url" {
+  type        = string
+  description = "Public SparkPilot UI base URL used for invite accept redirects into UI login."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.app_base_url) == "" ||
+      can(regex("^https://[^?#]+$", trimspace(var.app_base_url)))
+    )
+    error_message = "app_base_url must be empty or an https URL without query or fragment."
+  }
+}
+
 variable "invite_email_from" {
   type        = string
   description = "Sender address for tenant admin invite emails. Friendly-name format is allowed."

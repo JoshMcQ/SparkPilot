@@ -29,9 +29,11 @@ These values map to GitHub-secret variables on the staging environment as:
 
 ```
 STAGING_CUSTOMER_OIDC_ISSUER     = https://cognito-idp.us-east-1.amazonaws.com/us-east-1_zwItYYA5g
+STAGING_CUSTOMER_OIDC_CLIENT_ID  = 6vs8uei47gdc8r367ov95ca12h
 STAGING_CUSTOMER_OIDC_AUDIENCE   = 6vs8uei47gdc8r367ov95ca12h
 STAGING_CUSTOMER_OIDC_JWKS_URI   = https://cognito-idp.us-east-1.amazonaws.com/us-east-1_zwItYYA5g/.well-known/jwks.json
 STAGING_COGNITO_HOSTED_UI_URL    = https://sparkpilot-customers.auth.us-east-1.amazoncognito.com/oauth2/authorize
+STAGING_UI_APP_BASE_URL          = https://app.sparkpilot.cloud
 ```
 
 The deployed UI default login must use the same customer client:
@@ -71,6 +73,7 @@ These values map to GitHub-secret variables on the staging environment as:
 
 ```
 STAGING_INTERNAL_OIDC_ISSUER    = https://cognito-idp.us-east-1.amazonaws.com/us-east-1_m6veGu9gU
+STAGING_INTERNAL_OIDC_CLIENT_ID = dgtn1v094t1iurbojmltl7hth
 STAGING_INTERNAL_OIDC_AUDIENCE  = dgtn1v094t1iurbojmltl7hth
 STAGING_INTERNAL_OIDC_JWKS_URI  = https://cognito-idp.us-east-1.amazonaws.com/us-east-1_m6veGu9gU/.well-known/jwks.json
 ```

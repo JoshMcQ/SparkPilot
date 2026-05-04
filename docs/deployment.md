@@ -89,6 +89,8 @@ Required secrets per environment:
 - `<ENV>_OIDC_ISSUER`
 - `<ENV>_OIDC_AUDIENCE`
 - `<ENV>_OIDC_JWKS_URI`
+- `<ENV>_CUSTOMER_OIDC_CLIENT_ID` (UI PKCE app client ID; falls back to customer audience only during transition)
+- `<ENV>_INTERNAL_OIDC_CLIENT_ID` (internal UI PKCE app client ID; falls back to internal audience only during transition)
 - `<ENV>_BOOTSTRAP_SECRET` (minimum 16 characters)
 - `<ENV>_EMR_EXECUTION_ROLE_ARN`
 
@@ -100,6 +102,7 @@ Required variables per environment:
 
 - `<ENV>_DRY_RUN_MODE` (`true`/`false`)
 - `<ENV>_ENABLE_FULL_BYOC_MODE` (`true`/`false`)
+- `<ENV>_UI_APP_BASE_URL` when deploying the UI or invite emails (for example, `https://app.sparkpilot.cloud`)
 
 Optional break-glass variables per environment:
 
@@ -156,6 +159,7 @@ export ASSUME_ROLE_EXTERNAL_ID=<external-id-used-in-customer-role-trust-policy>
 export DRY_RUN_MODE=false
 export ENABLE_FULL_BYOC_MODE=false
 export EMR_EXECUTION_ROLE_ARN=<iam-role-arn>
+export APP_BASE_URL=https://app.sparkpilot.cloud
 bash scripts/terraform/deploy_control_plane.sh
 ```
 

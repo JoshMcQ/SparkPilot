@@ -310,6 +310,12 @@ def _validate_production_startup() -> None:
         "SPARKPILOT_COGNITO_HOSTED_UI_URL",
         "COGNITO_HOSTED_UI_URL",
     )
+    app_base_url = _env_value(
+        "SPARKPILOT_APP_BASE_URL",
+        "APP_BASE_URL",
+        "SPARKPILOT_UI_APP_BASE_URL",
+        "UI_APP_BASE_URL",
+    )
     _record(
         "resend_api_key_present",
         bool(resend_api_key),
@@ -324,6 +330,11 @@ def _validate_production_startup() -> None:
         "cognito_hosted_ui_url_present",
         bool(cognito_hosted_ui_url),
         "SPARKPILOT_COGNITO_HOSTED_UI_URL must be set for invite email redirects.",
+    )
+    _record(
+        "app_base_url_present",
+        bool(app_base_url),
+        "SPARKPILOT_APP_BASE_URL must be set for invite login redirects.",
     )
 
     bootstrap_secret = _env_value("SPARKPILOT_BOOTSTRAP_SECRET", "BOOTSTRAP_SECRET")
@@ -1284,15 +1295,32 @@ def _configured_cognito_hosted_ui_url() -> str:
     return hosted_ui_url
 
 
+def _configured_app_base_url_for_invite_redirect(request: Request) -> str:
+    runtime_settings = get_settings()
+    app_base_url = runtime_settings.app_base_url.strip().rstrip("/")
+    if app_base_url:
+        return app_base_url
+
+    environment_name = runtime_settings.environment.strip().lower()
+    if environment_name in {"dev", "development", "local", "test"}:
+        request_parts = urlsplit(str(request.url))
+        return urlunsplit((request_parts.scheme, request_parts.netloc, "", "", ""))
+
+    logger.error(
+        "App base URL is not configured; invite accept cannot redirect to UI login."
+    )
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="App base URL is not configured.",
+    )
+
+
 def _invite_login_redirect_url(request: Request, state: str) -> str:
     # Keep the hosted UI setting as the production readiness gate, but route
     # users through the UI-owned PKCE flow so /auth/callback can persist the
     # browser session before applying the invite mapping.
     _configured_cognito_hosted_ui_url()
-    request_parts = urlsplit(str(request.url))
-    login_url = urlunsplit(
-        (request_parts.scheme, request_parts.netloc, "/login", "", "")
-    )
+    login_url = f"{_configured_app_base_url_for_invite_redirect(request)}/login"
     return _append_query_params(
         login_url,
         {

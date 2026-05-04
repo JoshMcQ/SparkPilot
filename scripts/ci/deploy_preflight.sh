@@ -14,9 +14,11 @@
 #   OIDC_AUDIENCE           - legacy/customer OIDC audience
 #   OIDC_JWKS_URI           - legacy/customer OIDC JWKS URI
 #   CUSTOMER_OIDC_ISSUER    - optional customer OIDC issuer URL
+#   CUSTOMER_OIDC_CLIENT_ID - customer UI OIDC app client ID
 #   CUSTOMER_OIDC_AUDIENCE  - optional customer OIDC audience
 #   CUSTOMER_OIDC_JWKS_URI  - optional customer OIDC JWKS URI
 #   INTERNAL_OIDC_ISSUER    - internal OIDC issuer URL
+#   INTERNAL_OIDC_CLIENT_ID - internal UI OIDC app client ID
 #   INTERNAL_OIDC_AUDIENCE  - internal OIDC audience
 #   INTERNAL_OIDC_JWKS_URI  - internal OIDC JWKS URI
 #   COGNITO_HOSTED_UI_URL   - Cognito Hosted UI authorize URL for invite accept redirects
@@ -24,7 +26,7 @@
 #   EMR_EXECUTION_ROLE_ARN  - EMR execution role ARN
 #   RESEND_API_KEY          - Resend API key (raw); deploy script writes to Terraform-managed Secrets Manager secret
 #   INVITE_EMAIL_FROM       - sender address for invite emails
-#   UI_APP_BASE_URL         - public app URL used for OIDC callback build args when UI is deployed
+#   UI_APP_BASE_URL         - public app URL used for OIDC callbacks and invite login redirects
 #
 # Outputs (via GITHUB_OUTPUT):
 #   skip=true   - deploy disabled, role missing, or environment not configured
@@ -91,8 +93,17 @@ fi
 [ -z "${EMR_EXECUTION_ROLE_ARN:-}" ]  && MISSING+=("${ENV_UPPER}_EMR_EXECUTION_ROLE_ARN")
 
 ui_desired_count="${TF_VAR_ui_desired_count:-0}"
-if [[ "${ui_desired_count}" != "0" && -z "${UI_APP_BASE_URL:-}" ]]; then
+ui_app_base_url_trimmed="$(echo "${UI_APP_BASE_URL:-}" | xargs)"
+customer_oidc_client_id_trimmed="$(echo "${CUSTOMER_OIDC_CLIENT_ID:-}" | xargs)"
+internal_oidc_client_id_trimmed="$(echo "${INTERNAL_OIDC_CLIENT_ID:-}" | xargs)"
+if [[ "${ui_desired_count}" != "0" && -z "${ui_app_base_url_trimmed}" ]]; then
   MISSING+=("${ENV_UPPER}_UI_APP_BASE_URL")
+fi
+if [[ "${ui_desired_count}" != "0" && -z "${customer_oidc_client_id_trimmed}" ]]; then
+  MISSING+=("${ENV_UPPER}_CUSTOMER_OIDC_CLIENT_ID")
+fi
+if [[ "${ui_desired_count}" != "0" && -z "${internal_oidc_client_id_trimmed}" ]]; then
+  MISSING+=("${ENV_UPPER}_INTERNAL_OIDC_CLIENT_ID")
 fi
 
 customer_oidc_any=false
@@ -106,9 +117,14 @@ if [[ "${customer_oidc_any}" == "true" ]]; then
 fi
 
 if [[ "${DEPLOY_ENV}" != "dev" ]]; then
+  internal_admins_trimmed="$(echo "${INTERNAL_ADMINS:-}" | xargs)"
   [ -z "${COGNITO_HOSTED_UI_URL:-}" ] && MISSING+=("${ENV_UPPER}_COGNITO_HOSTED_UI_URL")
+  if [[ "${ui_desired_count}" == "0" && -z "${ui_app_base_url_trimmed}" ]]; then
+    MISSING+=("${ENV_UPPER}_UI_APP_BASE_URL")
+  fi
   [ -z "${RESEND_API_KEY:-}" ]        && MISSING+=("${ENV_UPPER}_RESEND_API_KEY")
   [ -z "${INVITE_EMAIL_FROM:-}" ]     && MISSING+=("${ENV_UPPER}_INVITE_EMAIL_FROM")
+  [ -z "${internal_admins_trimmed}" ] && MISSING+=("${ENV_UPPER}_INTERNAL_ADMINS")
 fi
 
 if [ "${#MISSING[@]}" -gt 0 ]; then

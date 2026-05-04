@@ -73,6 +73,7 @@ def _set_internal_admin_env(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, s
     monkeypatch.setenv(
         "SPARKPILOT_COGNITO_HOSTED_UI_URL", "https://auth.example.com/oauth2/authorize"
     )
+    monkeypatch.setenv("SPARKPILOT_APP_BASE_URL", "https://app.example.invalid")
     monkeypatch.setenv("SPARKPILOT_MAGIC_LINK_TTL_HOURS", "24")
     monkeypatch.setenv(
         "SPARKPILOT_INVITE_STATE_SECRET",
@@ -131,6 +132,8 @@ def _invite_token_from_url(
 def _invite_state_from_login_redirect(location: str) -> str:
     parsed = urlsplit(location)
     query = parse_qs(parsed.query)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "app.example.invalid"
     assert parsed.path == "/login"
     assert query["pool"] == ["customer"]
     assert query["next"] == ["/onboarding/aws"]

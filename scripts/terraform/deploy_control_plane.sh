@@ -98,6 +98,7 @@ cloudflare_proxied="$(normalize_bool "${CLOUDFLARE_PROXIED:-false}")"
 cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
 ui_image_uri="$(echo "${UI_IMAGE_URI:-}" | xargs)"
 ui_api_base_url="$(echo "${UI_API_BASE_URL:-}" | xargs)"
+app_base_url="$(echo "${APP_BASE_URL:-${UI_APP_BASE_URL:-}}" | xargs)"
 customer_oidc_issuer="$(echo "${CUSTOMER_OIDC_ISSUER:-}" | xargs)"
 customer_oidc_audience="$(echo "${CUSTOMER_OIDC_AUDIENCE:-}" | xargs)"
 customer_oidc_jwks_uri="$(echo "${CUSTOMER_OIDC_JWKS_URI:-}" | xargs)"
@@ -140,6 +141,10 @@ if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lo
   fi
   if [[ -z "${cognito_hosted_ui_url}" ]]; then
     echo "::error::COGNITO_HOSTED_UI_URL must be set for non-dev invite email redirects." >&2
+    exit 1
+  fi
+  if [[ -z "${app_base_url}" ]]; then
+    echo "::error::APP_BASE_URL must be set for non-dev invite login redirects." >&2
     exit 1
   fi
   if [[ -z "${invite_email_from}" ]]; then
@@ -232,6 +237,7 @@ jq -n \
   --argjson enable_ecs_exec "${enable_ecs_exec}" \
   --arg ui_image_uri "${ui_image_uri}" \
   --arg ui_api_base_url "${ui_api_base_url}" \
+  --arg app_base_url "${app_base_url}" \
   --arg cognito_hosted_ui_url "${cognito_hosted_ui_url}" \
   --arg invite_email_from "${invite_email_from}" \
   --arg invite_email_reply_to "${invite_email_reply_to}" \
@@ -276,6 +282,7 @@ jq -n \
     enable_ecs_exec: $enable_ecs_exec,
     ui_image_uri: $ui_image_uri,
     ui_api_base_url: $ui_api_base_url,
+    app_base_url: $app_base_url,
     cognito_hosted_ui_url: $cognito_hosted_ui_url,
     invite_email_from: $invite_email_from,
     invite_email_reply_to: $invite_email_reply_to,

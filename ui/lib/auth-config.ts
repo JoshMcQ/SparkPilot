@@ -9,29 +9,46 @@ export type OidcClientConfig = {
   identityProvider: string;
 };
 
-function _env(name: string): string {
-  return (process.env[name] ?? "").trim();
-}
+const CUSTOMER_OIDC_ISSUER = (process.env.NEXT_PUBLIC_OIDC_ISSUER ?? "").trim();
+const CUSTOMER_OIDC_CLIENT_ID = (process.env.NEXT_PUBLIC_OIDC_CLIENT_ID ?? "").trim();
+const CUSTOMER_OIDC_REDIRECT_URI = (process.env.NEXT_PUBLIC_OIDC_REDIRECT_URI ?? "").trim();
+const CUSTOMER_OIDC_AUDIENCE = (process.env.NEXT_PUBLIC_OIDC_AUDIENCE ?? "").trim();
+const CUSTOMER_COGNITO_IDENTITY_PROVIDER = (
+  process.env.NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER ?? ""
+).trim();
+
+const INTERNAL_OIDC_ISSUER = (process.env.NEXT_PUBLIC_INTERNAL_OIDC_ISSUER ?? "").trim();
+const INTERNAL_OIDC_CLIENT_ID = (
+  process.env.NEXT_PUBLIC_INTERNAL_OIDC_CLIENT_ID ?? ""
+).trim();
+const INTERNAL_OIDC_REDIRECT_URI = (
+  process.env.NEXT_PUBLIC_INTERNAL_OIDC_REDIRECT_URI ?? ""
+).trim();
+const INTERNAL_OIDC_AUDIENCE = (
+  process.env.NEXT_PUBLIC_INTERNAL_OIDC_AUDIENCE ?? ""
+).trim();
+const INTERNAL_COGNITO_IDENTITY_PROVIDER = (
+  process.env.NEXT_PUBLIC_INTERNAL_COGNITO_IDENTITY_PROVIDER ?? ""
+).trim();
 
 export function oidcClientConfig(pool: OidcPool = "customer"): OidcClientConfig {
-  const customerRedirectUri = _env("NEXT_PUBLIC_OIDC_REDIRECT_URI");
   if (pool === "internal") {
     return {
       pool,
-      issuer: _env("NEXT_PUBLIC_INTERNAL_OIDC_ISSUER"),
-      clientId: _env("NEXT_PUBLIC_INTERNAL_OIDC_CLIENT_ID"),
-      redirectUri: _env("NEXT_PUBLIC_INTERNAL_OIDC_REDIRECT_URI") || customerRedirectUri,
-      audience: _env("NEXT_PUBLIC_INTERNAL_OIDC_AUDIENCE"),
-      identityProvider: _env("NEXT_PUBLIC_INTERNAL_COGNITO_IDENTITY_PROVIDER"),
+      issuer: INTERNAL_OIDC_ISSUER,
+      clientId: INTERNAL_OIDC_CLIENT_ID,
+      redirectUri: INTERNAL_OIDC_REDIRECT_URI || CUSTOMER_OIDC_REDIRECT_URI,
+      audience: INTERNAL_OIDC_AUDIENCE,
+      identityProvider: INTERNAL_COGNITO_IDENTITY_PROVIDER,
     };
   }
   return {
     pool,
-    issuer: _env("NEXT_PUBLIC_OIDC_ISSUER"),
-    clientId: _env("NEXT_PUBLIC_OIDC_CLIENT_ID"),
-    redirectUri: customerRedirectUri,
-    audience: _env("NEXT_PUBLIC_OIDC_AUDIENCE"),
-    identityProvider: _env("NEXT_PUBLIC_COGNITO_IDENTITY_PROVIDER"),
+    issuer: CUSTOMER_OIDC_ISSUER,
+    clientId: CUSTOMER_OIDC_CLIENT_ID,
+    redirectUri: CUSTOMER_OIDC_REDIRECT_URI,
+    audience: CUSTOMER_OIDC_AUDIENCE,
+    identityProvider: CUSTOMER_COGNITO_IDENTITY_PROVIDER,
   };
 }
 

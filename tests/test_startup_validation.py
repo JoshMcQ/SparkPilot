@@ -44,6 +44,7 @@ def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "SPARKPILOT_COGNITO_HOSTED_UI_URL",
         "https://auth.example.invalid/oauth2/authorize",
     )
+    monkeypatch.setenv("SPARKPILOT_APP_BASE_URL", "https://app.sparkpilot.cloud")
     monkeypatch.setenv("SPARKPILOT_CORS_ORIGINS", "https://app.sparkpilot.cloud")
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
     monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "false")
@@ -107,6 +108,11 @@ def test_production_startup_fails_when_required_oidc_env_missing(
             "SPARKPILOT_COGNITO_HOSTED_UI_URL",
             "COGNITO_HOSTED_UI_URL",
             "cognito_hosted_ui_url_present",
+        ),
+        (
+            "SPARKPILOT_APP_BASE_URL",
+            "APP_BASE_URL",
+            "app_base_url_present",
         ),
     ],
 )
@@ -256,6 +262,7 @@ def test_production_startup_logs_pass_fail_for_each_check(
         "resend_api_key_present",
         "invite_email_from_present",
         "cognito_hosted_ui_url_present",
+        "app_base_url_present",
         "bootstrap_secret_min_length",
         "cors_no_localhost",
         "dry_run_disabled",

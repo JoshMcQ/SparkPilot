@@ -211,7 +211,7 @@ export async function startLoginFlow(options?: string | LoginFlowOptions): Promi
   const codeChallenge = await _sha256Base64url(codeVerifier);
   const state = buildOidcState(csrfState, normalized.inviteState);
 
-  sessionStorage.setItem(PKCE_STATE_KEY, csrfState);
+  sessionStorage.setItem(PKCE_STATE_KEY, state);
   sessionStorage.setItem(PKCE_VERIFIER_KEY, codeVerifier);
   sessionStorage.setItem(PKCE_POOL_KEY, normalized.pool);
   if (normalized.returnTo && normalized.returnTo.startsWith("/") && !normalized.returnTo.startsWith("//")) {
@@ -255,10 +255,11 @@ export async function handleCallback(code: string, state: string): Promise<strin
   sessionStorage.removeItem(PKCE_POOL_KEY);
   sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
 
-  const parsedState = parseOidcState(state);
-  if (!savedState || savedState !== parsedState.csrfState) {
+  const returnedState = state.trim();
+  if (!savedState || savedState !== returnedState) {
     throw new Error("OIDC state mismatch. The login request may have been tampered with or expired.");
   }
+  const parsedState = parseOidcState(returnedState);
   if (!codeVerifier) {
     throw new Error("PKCE code verifier not found in session. Please start the login flow again.");
   }
@@ -304,10 +305,10 @@ export async function handleCallback(code: string, state: string): Promise<strin
     throw new Error("Token endpoint response did not include an access_token.");
   }
 
-  await storeUserAccessToken(accessToken);
   if (parsedState.inviteState) {
     await _applyInviteCallback(parsedState.inviteState, accessToken);
   }
+  await storeUserAccessToken(accessToken);
   if (postLoginRedirect && postLoginRedirect.startsWith("/") && !postLoginRedirect.startsWith("//")) {
     return postLoginRedirect;
   }
