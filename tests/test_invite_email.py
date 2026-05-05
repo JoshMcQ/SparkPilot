@@ -300,6 +300,9 @@ def test_invite_email_requires_app_base_url_when_enabled(
         "https://auth.example.invalid/oauth2/authorize",
     )
     monkeypatch.delenv("SPARKPILOT_APP_BASE_URL", raising=False)
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+    monkeypatch.delenv("SPARKPILOT_UI_APP_BASE_URL", raising=False)
+    monkeypatch.delenv("UI_APP_BASE_URL", raising=False)
     _clear_settings_cache()
 
     with pytest.raises(ValueError, match="SPARKPILOT_APP_BASE_URL"):

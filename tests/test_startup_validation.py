@@ -128,6 +128,8 @@ def test_production_startup_fails_when_invite_email_env_missing(
     )
     monkeypatch.delenv(env_var, raising=False)
     monkeypatch.delenv(legacy_alias, raising=False)
+    monkeypatch.delenv("SPARKPILOT_UI_APP_BASE_URL", raising=False)
+    monkeypatch.delenv("UI_APP_BASE_URL", raising=False)
     get_settings.cache_clear()
 
     _expect_startup_failure(expected_check)
