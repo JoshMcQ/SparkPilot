@@ -26,6 +26,7 @@
 #   EMR_EXECUTION_ROLE_ARN  - EMR execution role ARN
 #   RESEND_API_KEY          - Resend API key (raw); deploy script writes to Terraform-managed Secrets Manager secret
 #   INVITE_EMAIL_FROM       - sender address for invite emails
+#   INTERNAL_ADMINS         - comma-separated internal-admin emails (required for DEPLOY_ENV != dev when role is configured)
 #   UI_APP_BASE_URL         - public app URL used for OIDC callbacks and invite login redirects
 #
 # Outputs (via GITHUB_OUTPUT):
