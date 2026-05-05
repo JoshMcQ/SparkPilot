@@ -38,7 +38,7 @@ API Request → Bearer token → OIDCTokenVerifier → verify claims → authori
 ```bash
 SPARKPILOT_AUTH_MODE=oidc
 SPARKPILOT_OIDC_ISSUER=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXX
-SPARKPILOT_OIDC_AUDIENCE=sparkpilot-api
+SPARKPILOT_OIDC_AUDIENCE=<cognito-app-client-id>
 SPARKPILOT_OIDC_JWKS_URI=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXX/.well-known/jwks.json
 ```
 
@@ -48,7 +48,7 @@ SPARKPILOT_OIDC_JWKS_URI=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_X
 NEXT_PUBLIC_OIDC_ISSUER=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXX
 NEXT_PUBLIC_OIDC_CLIENT_ID=<cognito-app-client-id>
 NEXT_PUBLIC_OIDC_REDIRECT_URI=https://app.example.com/auth/callback
-NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api
+NEXT_PUBLIC_OIDC_AUDIENCE=<cognito-app-client-id>
 ```
 
 ### CSP connect-src (`ui/next.config.mjs`)

@@ -240,6 +240,7 @@ def test_invite_email_from_required_when_resend_key_is_set(
         "SPARKPILOT_COGNITO_HOSTED_UI_URL",
         "https://auth.example.invalid/oauth2/authorize",
     )
+    monkeypatch.setenv("SPARKPILOT_APP_BASE_URL", "https://app.example.invalid")
     _clear_settings_cache()
 
     with pytest.raises(ValueError, match="SPARKPILOT_INVITE_EMAIL_FROM is required"):
@@ -277,9 +278,33 @@ def test_invite_email_settings_reject_malformed_addresses(
         "SPARKPILOT_COGNITO_HOSTED_UI_URL",
         "https://auth.example.invalid/oauth2/authorize",
     )
+    monkeypatch.setenv("SPARKPILOT_APP_BASE_URL", "https://app.example.invalid")
     monkeypatch.setenv(env_var, value)
     _clear_settings_cache()
 
     with pytest.raises(ValueError, match=match):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
+def test_invite_email_requires_app_base_url_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
+    monkeypatch.setenv(
+        "SPARKPILOT_COGNITO_HOSTED_UI_URL",
+        "https://auth.example.invalid/oauth2/authorize",
+    )
+    monkeypatch.delenv("SPARKPILOT_APP_BASE_URL", raising=False)
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+    monkeypatch.delenv("SPARKPILOT_UI_APP_BASE_URL", raising=False)
+    monkeypatch.delenv("UI_APP_BASE_URL", raising=False)
+    _clear_settings_cache()
+
+    with pytest.raises(ValueError, match="SPARKPILOT_APP_BASE_URL"):
         validate_runtime_settings(get_settings())
     _clear_settings_cache()

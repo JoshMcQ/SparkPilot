@@ -101,7 +101,9 @@ locals {
   internal_oidc_issuer_effective   = trimspace(var.internal_oidc_issuer)
   internal_oidc_audience_effective = trimspace(var.internal_oidc_audience)
   internal_oidc_jwks_uri_effective = trimspace(var.internal_oidc_jwks_uri)
-  resend_api_key_secret_arn        = aws_secretsmanager_secret.resend_api_key.arn
+  app_base_url                     = trimspace(var.app_base_url)
+  internal_admins_list             = compact([for admin in split(",", var.internal_admins) : trimspace(admin)])
+  internal_admins_normalized       = join(",", local.internal_admins_list)
 
   alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
   alb_internal   = length(var.public_subnet_ids) == 0
@@ -162,6 +164,7 @@ locals {
     { name = "SPARKPILOT_DRY_RUN_MODE", value = tostring(var.dry_run_mode) },
     { name = "SPARKPILOT_ENABLE_FULL_BYOC_MODE", value = tostring(var.enable_full_byoc_mode) },
     { name = "SPARKPILOT_AUTH_MODE", value = "oidc" },
+    { name = "SPARKPILOT_APP_BASE_URL", value = local.app_base_url },
     { name = "SPARKPILOT_CUSTOMER_OIDC_ISSUER", value = local.customer_oidc_issuer },
     { name = "SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", value = local.customer_oidc_audience },
     { name = "SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", value = local.customer_oidc_jwks_uri },
@@ -189,6 +192,7 @@ locals {
     { name = "SPARKPILOT_CUR_RUN_ID_COLUMN", value = var.cur_run_id_column },
     { name = "SPARKPILOT_CUR_COST_COLUMN", value = var.cur_cost_column },
     { name = "SPARKPILOT_COST_CENTER_POLICY_JSON", value = var.cost_center_policy_json },
+    { name = "SPARKPILOT_INTERNAL_ADMINS", value = local.internal_admins_normalized },
   ]
 
   # Sensitive values fetched from Secrets Manager at container start.
@@ -203,14 +207,20 @@ locals {
       valueFrom = aws_secretsmanager_secret.bootstrap.arn
     },
   ]
-  invite_email_runtime_secrets = [
-    {
-      name      = "SPARKPILOT_RESEND_API_KEY"
-      valueFrom = aws_secretsmanager_secret.resend_api_key.arn
-    },
-  ]
-  common_runtime_secrets     = concat(local.base_runtime_secrets, local.invite_email_runtime_secrets)
-  common_runtime_secret_arns = concat([for secret in local.base_runtime_secrets : secret.valueFrom], [for secret in local.invite_email_runtime_secrets : secret.valueFrom])
+  # Dev skips Resend injection so ECS does not bind an empty/unseeded Secrets Manager reference.
+  invite_email_runtime_secrets = (
+    local.is_dev_environment ? [] : [
+      {
+        name      = "SPARKPILOT_RESEND_API_KEY"
+        valueFrom = aws_secretsmanager_secret.resend_api_key.arn
+      },
+    ]
+  )
+  common_runtime_secrets = concat(local.base_runtime_secrets, local.invite_email_runtime_secrets)
+  common_runtime_secret_arns = concat(
+    [for secret in local.base_runtime_secrets : secret.valueFrom],
+    [for secret in local.invite_email_runtime_secrets : secret.valueFrom],
+  )
 
   worker_specs = {
     provisioner        = ["python", "-m", "sparkpilot.workers", "provisioner"]
@@ -341,10 +351,11 @@ check "invite_email_configuration_complete" {
       local.is_dev_environment ||
       (
         trimspace(var.cognito_hosted_ui_url) != "" &&
+        local.app_base_url != "" &&
         trimspace(var.invite_email_from) != ""
       )
     )
-    error_message = "For staging/prod, set cognito_hosted_ui_url and invite_email_from so internal admin invites can be delivered. The Resend API key Secrets Manager container is created by Terraform; the deploy script writes the value from the RESEND_API_KEY env var."
+    error_message = "For staging/prod, set cognito_hosted_ui_url, app_base_url, and invite_email_from so internal admin invites can be delivered. The Resend API key Secrets Manager container is created by Terraform; the deploy script writes the value from the RESEND_API_KEY env var."
   }
 }
 
@@ -352,6 +363,13 @@ check "https_required_for_non_dev" {
   assert {
     condition     = local.is_dev_environment || local.alb_internal || local.https_enabled || var.cloudflare_proxied
     error_message = "For internet-facing staging/prod deployments, either set acm_certificate_arn to enable HTTPS or set cloudflare_proxied=true (Cloudflare terminates TLS at the edge)."
+  }
+}
+
+check "internal_admins_nonempty_for_non_dev" {
+  assert {
+    condition     = local.is_dev_environment || length(local.internal_admins_list) > 0
+    error_message = "internal_admins must be non-empty in staging/production (comma-separated operator emails matched to OIDC internal-pool tokens)."
   }
 }
 

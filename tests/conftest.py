@@ -172,6 +172,17 @@ starlette_testclient.TestClient = PatchedTestClient
 fastapi_testclient.TestClient = PatchedTestClient
 
 
+def _unset_app_base_url_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Host env often sets APP_BASE_URL / UI_APP_BASE_URL; clear all aliases."""
+    for key in (
+        "SPARKPILOT_APP_BASE_URL",
+        "APP_BASE_URL",
+        "SPARKPILOT_UI_APP_BASE_URL",
+        "UI_APP_BASE_URL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
 @pytest.fixture(autouse=True)
 def clear_settings_cache(
     monkeypatch: pytest.MonkeyPatch,
@@ -195,6 +206,7 @@ def clear_settings_cache(
     monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_FLOW", "enabled")
     monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "true")
     monkeypatch.setenv("SPARKPILOT_ENABLE_FULL_BYOC_MODE", "true")
+    _unset_app_base_url_env(monkeypatch)
     get_settings.cache_clear()
     _oidc_verifier.cache_clear()
     _oidc_verifiers.cache_clear()

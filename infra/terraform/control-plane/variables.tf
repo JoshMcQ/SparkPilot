@@ -421,6 +421,19 @@ variable "cognito_hosted_ui_url" {
   }
 }
 
+variable "app_base_url" {
+  type        = string
+  description = "Public SparkPilot UI base URL used for invite accept redirects into UI login."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.app_base_url) == "" ||
+      can(regex("^https://[^?#]+$", trimspace(var.app_base_url)))
+    )
+    error_message = "app_base_url must be empty or an https URL without query or fragment."
+  }
+}
+
 variable "invite_email_from" {
   type        = string
   description = "Sender address for tenant admin invite emails. Friendly-name format is allowed."
@@ -456,6 +469,19 @@ variable "invite_email_timeout_seconds" {
   validation {
     condition     = var.invite_email_timeout_seconds > 0
     error_message = "invite_email_timeout_seconds must be greater than 0."
+  }
+}
+
+variable "internal_admins" {
+  type        = string
+  description = "Comma-separated emails allowed as internal admins (matched case-insensitively to OIDC email on the internal pool)."
+  default     = ""
+  validation {
+    condition = trimspace(var.internal_admins) == "" || (
+      length(var.internal_admins) <= 2048 &&
+      !can(regex("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]", var.internal_admins))
+    )
+    error_message = "internal_admins must be empty or a printable comma-separated string (max 2048 chars)."
   }
 }
 

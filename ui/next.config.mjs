@@ -35,19 +35,24 @@ const nextConfig = {
       : "script-src 'self' 'unsafe-inline'";
 
     // #59: Allowlist external OIDC issuer origins in CSP connect-src.
-    // Driven by NEXT_PUBLIC_OIDC_ISSUER env var; deny-by-default for unknown origins.
-    const oidcIssuer = (process.env.NEXT_PUBLIC_OIDC_ISSUER ?? "").trim().replace(/\/+$/, "");
+    // Driven by customer/internal OIDC issuer env vars; deny-by-default for unknown origins.
+    const oidcIssuers = [
+      process.env.NEXT_PUBLIC_OIDC_ISSUER,
+      process.env.NEXT_PUBLIC_INTERNAL_OIDC_ISSUER,
+    ]
+      .map((issuer) => (issuer ?? "").trim().replace(/\/+$/, ""))
+      .filter(Boolean);
     const connectSrcParts = ["'self'"];
-    if (oidcIssuer) {
+    for (const oidcIssuer of oidcIssuers) {
       try {
         const issuerUrl = new URL(oidcIssuer);
         const issuerOrigin = issuerUrl.origin;
-        if (issuerOrigin && issuerOrigin !== "null") {
+        if (issuerOrigin && issuerOrigin !== "null" && !connectSrcParts.includes(issuerOrigin)) {
           connectSrcParts.push(issuerOrigin);
         }
         // Cognito often serves discovery on cognito-idp.* while token exchange
         // uses the hosted auth domain (*.amazoncognito.com).
-        if (issuerUrl.hostname.includes("cognito-idp.")) {
+        if (issuerUrl.hostname.includes("cognito-idp.") && !connectSrcParts.includes("https://*.amazoncognito.com")) {
           connectSrcParts.push("https://*.amazoncognito.com");
         }
       } catch {

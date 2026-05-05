@@ -10,8 +10,11 @@ test.describe("auth route guards", () => {
     await page.goto("/onboarding/aws");
     await expect(page).toHaveURL(/\/login\?next=%2Fonboarding%2Faws$/);
 
+    await page.goto("/internal/tenants");
+    await expect(page).toHaveURL(/\/login\?next=%2Finternal%2Ftenants&pool=internal$/);
+
     await page.goto("/getting-started");
-    await expect(page).toHaveURL(/\/getting-started$/);
+    await expect(page).toHaveURL("https://sparkpilot.cloud/getting-started/");
   });
 
   test("authenticated session can enter protected product routes", async ({ page }) => {
@@ -29,7 +32,7 @@ test.describe("auth route guards", () => {
     await page.goto("/onboarding/aws");
     await expect(page).toHaveURL(/\/onboarding\/aws$/);
 
-    await page.goto("/integrations");
-    await expect(page).toHaveURL(/\/integrations$/);
+    await page.goto("/settings");
+    await expect(page).toHaveURL(/\/settings$/);
   });
 });

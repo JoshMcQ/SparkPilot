@@ -73,6 +73,7 @@ def _set_internal_admin_env(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, s
     monkeypatch.setenv(
         "SPARKPILOT_COGNITO_HOSTED_UI_URL", "https://auth.example.com/oauth2/authorize"
     )
+    monkeypatch.setenv("SPARKPILOT_APP_BASE_URL", "https://app.example.invalid")
     monkeypatch.setenv("SPARKPILOT_MAGIC_LINK_TTL_HOURS", "24")
     monkeypatch.setenv(
         "SPARKPILOT_INVITE_STATE_SECRET",
@@ -126,6 +127,17 @@ def _invite_token_from_url(
         )
     assert sent_invites, "no invites have been captured in sent_invites"
     return parse_qs(urlsplit(sent_invites[-1]["invite_url"]).query)["token"][0]
+
+
+def _invite_state_from_login_redirect(location: str) -> str:
+    parsed = urlsplit(location)
+    query = parse_qs(parsed.query)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "app.example.invalid"
+    assert parsed.path == "/login"
+    assert query["pool"] == ["customer"]
+    assert query["next"] == ["/onboarding/aws"]
+    return query["invite_state"][0]
 
 
 def test_issue_test_token_rejects_reserved_claim_overrides() -> None:
@@ -241,7 +253,7 @@ def test_internal_tenant_invite_happy_path_end_to_end(
         )
         assert accept.status_code == 307
         location = accept.headers["location"]
-        state = parse_qs(urlsplit(location).query)["state"][0]
+        state = _invite_state_from_login_redirect(location)
 
         invited_headers = _auth_headers(
             "cognito-user-subject-1",
@@ -249,7 +261,7 @@ def test_internal_tenant_invite_happy_path_end_to_end(
             pool="customer",
         )
         callback = client.get(
-            "/auth/callback",
+            "/v1/invite/callback",
             params={"state": state},
             headers=invited_headers,
         )
@@ -755,7 +767,7 @@ def test_tenant_admin_invite_consumed_webhook_fires_when_configured(
             follow_redirects=False,
         )
         assert accept.status_code == 307
-        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        state = _invite_state_from_login_redirect(accept.headers["location"])
         invited_headers = _auth_headers(
             "consumed-webhook-subject",
             "consumed-webhook@tenant.example",
@@ -976,7 +988,7 @@ def test_invite_callback_rejects_reused_state_for_consumed_token(
             params={"token": token},
             follow_redirects=False,
         )
-        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        state = _invite_state_from_login_redirect(accept.headers["location"])
         invited_headers = _auth_headers(
             "invite-user-sub", "replay@tenant.example", pool="customer"
         )
@@ -1021,7 +1033,7 @@ def test_invite_callback_rejects_tampered_state_signature(
             params={"token": token},
             follow_redirects=False,
         )
-        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        state = _invite_state_from_login_redirect(accept.headers["location"])
         prefix, body, _ = state.split(".")
         tampered_state = f"{prefix}.{body}.tampered-signature"
         invited_headers = _auth_headers(
@@ -1062,7 +1074,7 @@ def test_invite_callback_rejects_valid_signed_state_when_token_expired(
             params={"token": token},
             follow_redirects=False,
         )
-        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        state = _invite_state_from_login_redirect(accept.headers["location"])
 
         with SessionLocal() as db:
             row = db.execute(
@@ -1110,7 +1122,7 @@ def test_invite_callback_rejects_authenticated_email_mismatch(
             params={"token": token},
             follow_redirects=False,
         )
-        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        state = _invite_state_from_login_redirect(accept.headers["location"])
 
         mismatch_headers = _auth_headers(
             "invite-user-sub", "wrong@tenant.example", pool="customer"
@@ -1158,7 +1170,7 @@ def test_user_identity_user_id_is_unique(
             params={"token": token},
             follow_redirects=False,
         )
-        state = parse_qs(urlsplit(accept.headers["location"]).query)["state"][0]
+        state = _invite_state_from_login_redirect(accept.headers["location"])
         invited_headers = _auth_headers(
             "invite-user-sub", "unique@tenant.example", pool="customer"
         )
@@ -1211,9 +1223,9 @@ def test_invite_callback_preserves_existing_team_assignment(
             params={"token": first_token},
             follow_redirects=False,
         )
-        first_state = parse_qs(urlsplit(first_accept.headers["location"]).query)[
-            "state"
-        ][0]
+        first_state = _invite_state_from_login_redirect(
+            first_accept.headers["location"]
+        )
         invited_headers = _auth_headers(
             "team-preserve-subject",
             "team-preserve@tenant.example",
@@ -1248,9 +1260,9 @@ def test_invite_callback_preserves_existing_team_assignment(
             params={"token": second_token},
             follow_redirects=False,
         )
-        second_state = parse_qs(urlsplit(second_accept.headers["location"]).query)[
-            "state"
-        ][0]
+        second_state = _invite_state_from_login_redirect(
+            second_accept.headers["location"]
+        )
         second_callback = client.get(
             "/auth/callback",
             params={"state": second_state},

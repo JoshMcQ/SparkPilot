@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SPARKPILOT_", case_sensitive=False)
 
     app_name: str = "SparkPilot API"
+    app_base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_APP_BASE_URL",
+            "APP_BASE_URL",
+            "SPARKPILOT_UI_APP_BASE_URL",
+            "UI_APP_BASE_URL",
+        ),
+    )
     environment: str = "dev"
     database_url: str = _DEFAULT_DATABASE_URL
     dry_run_mode: bool = False
@@ -398,9 +407,25 @@ def _validate_invite_email_settings(settings: Settings) -> None:
     from_email = settings.invite_email_from.strip()
     reply_to = settings.invite_email_reply_to.strip()
     hosted_ui_url = settings.cognito_hosted_ui_url.strip()
+    app_base_url = settings.app_base_url.strip().rstrip("/")
+    if app_base_url:
+        parsed_app_base_url = urlparse(app_base_url)
+        if (
+            parsed_app_base_url.scheme not in {"http", "https"}
+            or not parsed_app_base_url.netloc
+            or parsed_app_base_url.query
+            or parsed_app_base_url.fragment
+        ):
+            raise ValueError(
+                "SPARKPILOT_APP_BASE_URL must be a valid http(s) URL without query or fragment."
+            )
     if (resend_api_key or from_email) and not hosted_ui_url:
         raise ValueError(
             "SPARKPILOT_COGNITO_HOSTED_UI_URL is required when invite emails are enabled."
+        )
+    if (resend_api_key or from_email) and not app_base_url:
+        raise ValueError(
+            "SPARKPILOT_APP_BASE_URL is required when invite emails are enabled."
         )
     if resend_api_key and not from_email:
         raise ValueError(

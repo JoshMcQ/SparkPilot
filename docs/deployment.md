@@ -89,6 +89,8 @@ Required secrets per environment:
 - `<ENV>_OIDC_ISSUER`
 - `<ENV>_OIDC_AUDIENCE`
 - `<ENV>_OIDC_JWKS_URI`
+- `<ENV>_CUSTOMER_OIDC_CLIENT_ID` (UI PKCE app client ID; falls back to customer audience only during transition)
+- `<ENV>_INTERNAL_OIDC_CLIENT_ID` (internal UI PKCE app client ID; falls back to internal audience only during transition)
 - `<ENV>_BOOTSTRAP_SECRET` (minimum 16 characters)
 - `<ENV>_EMR_EXECUTION_ROLE_ARN`
 
@@ -100,6 +102,7 @@ Required variables per environment:
 
 - `<ENV>_DRY_RUN_MODE` (`true`/`false`)
 - `<ENV>_ENABLE_FULL_BYOC_MODE` (`true`/`false`)
+- `<ENV>_UI_APP_BASE_URL` when deploying the UI or invite emails (for example, `https://app.sparkpilot.cloud`)
 
 Optional break-glass variables per environment:
 
@@ -156,6 +159,7 @@ export ASSUME_ROLE_EXTERNAL_ID=<external-id-used-in-customer-role-trust-policy>
 export DRY_RUN_MODE=false
 export ENABLE_FULL_BYOC_MODE=false
 export EMR_EXECUTION_ROLE_ARN=<iam-role-arn>
+export APP_BASE_URL=https://app.sparkpilot.cloud
 bash scripts/terraform/deploy_control_plane.sh
 ```
 
@@ -207,15 +211,21 @@ npm install
 SPARKPILOT_API=https://api.sparkpilot.cloud \
 SPARKPILOT_UI_ENFORCE_AUTH=true \
 NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE=false \
-NEXT_PUBLIC_OIDC_ISSUER=https://auth.sparkpilot.cloud \
-NEXT_PUBLIC_OIDC_AUDIENCE=sparkpilot-api \
-NEXT_PUBLIC_OIDC_CLIENT_ID=<ui-public-client-id> \
+NEXT_PUBLIC_OIDC_ISSUER=<customer-pool-issuer> \
+NEXT_PUBLIC_OIDC_AUDIENCE=<customer-app-client-id> \
+NEXT_PUBLIC_OIDC_CLIENT_ID=<customer-app-client-id> \
 NEXT_PUBLIC_OIDC_REDIRECT_URI=https://app.sparkpilot.cloud/auth/callback \
+NEXT_PUBLIC_INTERNAL_OIDC_ISSUER=<internal-pool-issuer> \
+NEXT_PUBLIC_INTERNAL_OIDC_AUDIENCE=<internal-admin-app-client-id> \
+NEXT_PUBLIC_INTERNAL_OIDC_CLIENT_ID=<internal-admin-app-client-id> \
+NEXT_PUBLIC_INTERNAL_OIDC_REDIRECT_URI=https://app.sparkpilot.cloud/auth/callback \
 npm run build
-npm run start
+PORT=3000 HOSTNAME=0.0.0.0 node .next/standalone/server.js
 ```
 
 The UI uses Authorization Code + PKCE. Do not set a browser client secret.
+The default `/login` flow uses the customer pool. Internal routes redirect to
+`/login?pool=internal` and use the internal-admin pool.
 `SPARKPILOT_UI_ENFORCE_AUTH` defaults to `true` when omitted.
 `NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE` is for non-production development only.
 
@@ -228,7 +238,9 @@ Copy-Item .env.production.example .env.production.local
 npm ci
 npm run verify:prod-env
 npm run build
-npm run start -- --hostname 0.0.0.0 --port 3000
+$env:PORT = "3000"
+$env:HOSTNAME = "0.0.0.0"
+node .next/standalone/server.js
 ```
 
 Or use the helper script:
@@ -239,6 +251,8 @@ pwsh ./scripts/run-prod-local.ps1 `
   -OidcIssuer "https://auth.sparkpilot.cloud" `
   -OidcClientId "sparkpilot-ui" `
   -OidcRedirectUri "https://app.sparkpilot.cloud/auth/callback" `
+  -InternalOidcIssuer "https://internal-auth.sparkpilot.cloud" `
+  -InternalOidcClientId "sparkpilot-internal-ui" `
   -OidcAudience "sparkpilot-api" `
   -Port 3000
 ```
@@ -246,7 +260,8 @@ pwsh ./scripts/run-prod-local.ps1 `
 Route intent:
 
 - Public pre-access routes: `/`, `/about`, `/contact`, `/pricing`, `/why-not-diy`, `/why-not-serverless`, `/login`, `/auth/callback`, `/getting-started`
-- Authenticated product routes: `/dashboard`, `/onboarding/*`, `/environments/*`, `/runs`, `/integrations`, `/costs`, `/policies`, `/access`, `/settings`
+- Authenticated product routes: `/dashboard`, `/onboarding/*`, `/environments/*`, `/runs`, `/costs`, `/policies`, `/access`, `/settings`
+- Internal admin routes: `/internal/*` (internal-admin pool only)
 
 ## Recommended Rollout
 

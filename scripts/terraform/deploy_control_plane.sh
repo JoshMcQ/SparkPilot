@@ -98,6 +98,7 @@ cloudflare_proxied="$(normalize_bool "${CLOUDFLARE_PROXIED:-false}")"
 cors_origins_raw="$(echo "${CORS_ORIGINS:-http://localhost:3000}" | xargs)"
 ui_image_uri="$(echo "${UI_IMAGE_URI:-}" | xargs)"
 ui_api_base_url="$(echo "${UI_API_BASE_URL:-}" | xargs)"
+app_base_url="$(echo "${APP_BASE_URL:-${UI_APP_BASE_URL:-}}" | xargs)"
 customer_oidc_issuer="$(echo "${CUSTOMER_OIDC_ISSUER:-}" | xargs)"
 customer_oidc_audience="$(echo "${CUSTOMER_OIDC_AUDIENCE:-}" | xargs)"
 customer_oidc_jwks_uri="$(echo "${CUSTOMER_OIDC_JWKS_URI:-}" | xargs)"
@@ -142,8 +143,17 @@ if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lo
     echo "::error::COGNITO_HOSTED_UI_URL must be set for non-dev invite email redirects." >&2
     exit 1
   fi
+  if [[ -z "${app_base_url}" ]]; then
+    echo "::error::APP_BASE_URL must be set for non-dev invite login redirects." >&2
+    exit 1
+  fi
   if [[ -z "${invite_email_from}" ]]; then
     echo "::error::INVITE_EMAIL_FROM must be set for non-dev invite email delivery." >&2
+    exit 1
+  fi
+  internal_admins_gate="$(echo "${INTERNAL_ADMINS:-}" | xargs)"
+  if [[ -z "${internal_admins_gate}" ]]; then
+    echo "::error::INTERNAL_ADMINS must be non-empty for non-dev so internal-admin API routes can authorize operators (comma-separated emails)." >&2
     exit 1
   fi
 fi
@@ -160,6 +170,7 @@ cur_run_id_column="$(echo "${CUR_RUN_ID_COLUMN:-resource_tags_user_sparkpilot_ru
 cur_cost_column="$(echo "${CUR_COST_COLUMN:-line_item_unblended_cost}" | xargs)"
 cost_center_policy_json="${COST_CENTER_POLICY_JSON:-}"
 assume_role_external_id="$(echo "${ASSUME_ROLE_EXTERNAL_ID:-}" | xargs)"
+internal_admins="$(echo "${INTERNAL_ADMINS:-}" | xargs)"
 
 if [[ -n "${cur_athena_database}" || -n "${cur_athena_table}" || -n "${cur_athena_output_location}" ]]; then
   if [[ -z "${cur_athena_database}" || -z "${cur_athena_table}" || -z "${cur_athena_output_location}" ]]; then
@@ -226,10 +237,12 @@ jq -n \
   --argjson enable_ecs_exec "${enable_ecs_exec}" \
   --arg ui_image_uri "${ui_image_uri}" \
   --arg ui_api_base_url "${ui_api_base_url}" \
+  --arg app_base_url "${app_base_url}" \
   --arg cognito_hosted_ui_url "${cognito_hosted_ui_url}" \
   --arg invite_email_from "${invite_email_from}" \
   --arg invite_email_reply_to "${invite_email_reply_to}" \
   --argjson invite_email_timeout_seconds "${invite_email_timeout_seconds}" \
+  --arg internal_admins "${internal_admins}" \
   '{
     environment: $environment,
     region: $region,
@@ -269,10 +282,12 @@ jq -n \
     enable_ecs_exec: $enable_ecs_exec,
     ui_image_uri: $ui_image_uri,
     ui_api_base_url: $ui_api_base_url,
+    app_base_url: $app_base_url,
     cognito_hosted_ui_url: $cognito_hosted_ui_url,
     invite_email_from: $invite_email_from,
     invite_email_reply_to: $invite_email_reply_to,
-    invite_email_timeout_seconds: $invite_email_timeout_seconds
+    invite_email_timeout_seconds: $invite_email_timeout_seconds,
+    internal_admins: $internal_admins
   }' > "${tfvars_file}"
 
 if ! jq -e 'type == "object"' "${tfvars_file}" >/dev/null 2>&1; then
