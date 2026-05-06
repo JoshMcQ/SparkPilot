@@ -15,9 +15,10 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { href: "/settings", label: "Settings" },
 ];
 
+const INTERNAL_ADMIN_NAV_ITEMS: NavItem[] = [
+  { href: "/internal/tenants", label: "Tenants" },
+];
+
 export function buildTopNavItems(isInternalAdmin: boolean): NavItem[] {
-  if (!isInternalAdmin) {
-    return BASE_NAV_ITEMS;
-  }
-  return [...BASE_NAV_ITEMS, { href: "/internal/tenants", label: "Internal" }];
+  return isInternalAdmin ? INTERNAL_ADMIN_NAV_ITEMS : BASE_NAV_ITEMS;
 }

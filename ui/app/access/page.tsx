@@ -844,12 +844,14 @@ export default function AccessPage() {
     setGateLoading(true);
     setGateError(null);
     try {
-      const [statusRow, authRow] = await Promise.all([
-        fetchBootstrapStatus(),
-        fetchAuthMe(),
-      ]);
-      setBootstrapStatus(statusRow);
+      const authRow = await fetchAuthMe();
       setAuthMe(authRow);
+      if (authRow?.is_internal_admin) {
+        setBootstrapStatus(null);
+        return;
+      }
+      const statusRow = await fetchBootstrapStatus();
+      setBootstrapStatus(statusRow);
     } catch (err: unknown) {
       setGateError(accessError(err, "Failed to load access status"));
     } finally {
@@ -862,6 +864,7 @@ export default function AccessPage() {
   }, [loadGate]);
 
   const bootstrapRequired = bootstrapStatus?.bootstrap_required === true;
+  const isInternalAdmin = authMe?.is_internal_admin === true;
   const isAdmin = authMe?.role === "admin";
   const actorLabel = bootstrapStatus?.actor ?? authMe?.actor ?? "unknown";
 
@@ -878,7 +881,7 @@ export default function AccessPage() {
           <Link href="/contact" className="inline-link">Request access</Link>. This page is for workspace administrators.
         </div>
       </div>
-      {accessNotice ? (
+      {accessNotice && !isInternalAdmin ? (
         <div className="card">
           <div className="subtle">{accessNotice}</div>
         </div>
@@ -888,6 +891,18 @@ export default function AccessPage() {
         <LoadingState message="Checking access status..." />
       ) : gateError ? (
         <ErrorState message={gateError} onRetry={() => void loadGate()} />
+      ) : isInternalAdmin ? (
+        <div className="card">
+          <h3>Internal Admin Tools</h3>
+          <div className="subtle">
+            You are signed in as a SparkPilot internal admin. Customer workspace access is managed from tenant provisioning.
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href="/internal/tenants" className="button button-sm">
+              Open tenant provisioning
+            </Link>
+          </div>
+        </div>
       ) : bootstrapRequired ? (
         <BootstrapClaimCard actor={actorLabel} onClaimed={() => void loadGate()} />
       ) : isAdmin ? (
