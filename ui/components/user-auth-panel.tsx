@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   USER_ACCESS_TOKEN_STORAGE_KEY,
   USER_ACCESS_TOKEN_CHANGED_EVENT,
@@ -12,8 +13,8 @@ import {
   fetchAuthMe,
   type AuthMe,
 } from "@/lib/api";
-import { isOidcConfigured, startLoginFlow, decodeJwtForDisplay } from "@/lib/oidc-client";
-import { isManualTokenModeEnabled } from "@/lib/auth-config";
+import { startLoginFlow, decodeJwtForDisplay } from "@/lib/oidc-client";
+import { isManualTokenModeEnabled, isOidcClientConfigured, type OidcPool } from "@/lib/auth-config";
 
 function _formatExpiry(exp: number | null): string {
   if (exp === null) return "";
@@ -27,6 +28,8 @@ function _formatExpiry(exp: number | null): string {
 }
 
 export function UserAuthPanel() {
+  const pathname = usePathname();
+  const authPool: OidcPool = pathname.startsWith("/internal") ? "internal" : "customer";
   const [value, setValue] = useState("");
   const [active, setActive] = useState(false);
   const [applyPending, setApplyPending] = useState(false);
@@ -35,7 +38,7 @@ export function UserAuthPanel() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [keyRotationDetected, setKeyRotationDetected] = useState(false);
   const [authMe, setAuthMe] = useState<AuthMe | null>(null);
-  const oidcConfigured = isOidcConfigured();
+  const oidcConfigured = isOidcClientConfigured(authPool);
   const manualTokenModeEnabled = !oidcConfigured && isManualTokenModeEnabled();
 
   useEffect(() => {
@@ -136,7 +139,7 @@ export function UserAuthPanel() {
     setLoginPending(true);
     setLoginError(null);
     try {
-      await startLoginFlow();
+      await startLoginFlow({ pool: authPool, returnTo: pathname });
       // startLoginFlow() redirects the page; nothing to do after this point.
     } catch (err: unknown) {
       setLoginError(err instanceof Error ? err.message : "Login failed.");
@@ -147,9 +150,16 @@ export function UserAuthPanel() {
   // Decode the current token for display (no verification — display only).
   const tokenInfo = active ? decodeJwtForDisplay(value) : null;
   // Derive display name: prefer authMe.actor, fall back to JWT decode
-  const displaySubject = authMe?.actor ?? tokenInfo?.email ?? tokenInfo?.name ?? tokenInfo?.sub ?? null;
+  const displaySubject = authMe?.email ?? tokenInfo?.email ?? tokenInfo?.name ?? authMe?.actor ?? tokenInfo?.sub ?? null;
   const expiryText = tokenInfo ? _formatExpiry(tokenInfo.exp) : "";
-  const roleLabel = authMe ? authMe.role : null;
+  const roleLabel = authMe ? (authMe.is_internal_admin ? "internal admin" : authMe.role) : null;
+  const authStatus = active
+    ? authMe
+      ? authMe.is_internal_admin
+        ? "Internal admin access enabled."
+        : `${authMe.scoped_environment_ids.length} environment(s) accessible.`
+      : "Requests are sent with your OIDC token."
+    : "Sign in to authenticate your requests.";
 
   return (
     <div className="auth-panel">
@@ -212,13 +222,7 @@ export function UserAuthPanel() {
               {loginError}
             </div>
           ) : null}
-          <div className="subtle auth-status">
-            {active
-              ? authMe
-                ? `${authMe.scoped_environment_ids.length} environment(s) accessible.`
-                : "Requests are sent with your OIDC token."
-              : "Sign in to authenticate your requests."}
-          </div>
+          <div className="subtle auth-status">{authStatus}</div>
         </>
       ) : manualTokenModeEnabled ? (
         <>

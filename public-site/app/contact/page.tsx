@@ -10,11 +10,14 @@ type FormState = "idle" | "submitting" | "success" | "error";
 const USE_CASES = [
   "Pilot evaluation",
   "Production rollout planning",
-  "Multi-tenant Spark governance",
+  "EMR on EKS governance",
+  "EMR Serverless governance",
   "Cost attribution and FinOps",
   "Airflow or Dagster integration",
   "Other",
 ];
+
+const CONTACT_EMAIL = "hello@sparkpilot.cloud";
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", company: "", useCase: "", message: "" });
@@ -32,7 +35,7 @@ export default function ContactPage() {
     const body = encodeURIComponent(
       `Name: ${form.name}\nEmail: ${form.email}\nCompany: ${form.company}\nUse case: ${form.useCase}\n\n${form.message}`
     );
-    window.location.href = `mailto:hello@sparkpilot.io?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
     setState("success");
   }
 
@@ -65,7 +68,7 @@ export default function ContactPage() {
           <div className="contact-info-block">
             <h3>Good conversations to have</h3>
             <ul className="contact-expect-list">
-              <li>You run EMR on EKS and need governed self-service for data teams</li>
+              <li>You run EMR on EKS or EMR Serverless and need governed self-service for data teams</li>
               <li>You need per-team cost attribution reconciled against CUR</li>
               <li>You want a pilot path before committing to a larger rollout</li>
               <li>You have a specific preflight or policy requirement</li>
@@ -74,8 +77,8 @@ export default function ContactPage() {
 
           <div className="contact-info-block">
             <h3>Direct email</h3>
-            <a href="mailto:hello@sparkpilot.io" className="contact-email-link">
-              hello@sparkpilot.io
+            <a href={`mailto:${CONTACT_EMAIL}`} className="contact-email-link">
+              {CONTACT_EMAIL}
             </a>
           </div>
         </div>
@@ -85,7 +88,7 @@ export default function ContactPage() {
             <div className="contact-success">
               <div className="contact-success-icon" aria-hidden="true">OK</div>
               <h3>Your email draft is ready.</h3>
-              <p>Check your email client. Your message was pre-filled. If it did not open, email us directly at <a href="mailto:hello@sparkpilot.io" className="login-link">hello@sparkpilot.io</a>.</p>
+              <p>Check your email client. Your message was pre-filled. If it did not open, email us directly at <a href={`mailto:${CONTACT_EMAIL}`} className="login-link">{CONTACT_EMAIL}</a>.</p>
               <Link href="/" className="landing-btn landing-btn-secondary contact-success-back">
                 Back to home
               </Link>

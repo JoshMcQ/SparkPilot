@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { TopNav } from "@/components/top-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserAuthPanel } from "@/components/user-auth-panel";
+import { useInternalAdmin } from "@/lib/use-internal-admin";
 
 /**
  * Wraps the internal app chrome (header, nav, auth panel).
@@ -18,13 +19,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  return <AppChrome pathname={pathname}>{children}</AppChrome>;
+}
+
+function AppChrome({ children, pathname }: { children: React.ReactNode; pathname: string }) {
+  const { isInternalAdmin } = useInternalAdmin();
+  const isInternalArea = isInternalAdmin || pathname.startsWith("/internal");
+
   return (
     <>
       <header className="header">
         <div>
           <h1>SparkPilot</h1>
-          <div className="subtle">AWS-first BYOC Spark runtime control plane</div>
-          <div className="subtle">Authenticated product area</div>
+          <div className="subtle">
+            {isInternalArea ? "Internal tenant administration" : "AWS-first BYOC Spark runtime control plane"}
+          </div>
+          <div className="subtle">
+            {isInternalArea ? "Operator-only control surface" : "Authenticated product area"}
+          </div>
         </div>
         <div className="header-actions">
           <TopNav />
