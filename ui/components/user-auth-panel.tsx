@@ -127,12 +127,21 @@ export function UserAuthPanel() {
     }
   }
 
-  function clearToken() {
+  async function clearSessionState(feedback: string): Promise<void> {
     setValue("");
-    storeUserAccessToken("");
+    await storeUserAccessToken("");
     setActive(false);
     setAuthMe(null);
-    setApplyFeedback("Token cleared.");
+    setApplyFeedback(feedback);
+  }
+
+  async function signOut() {
+    await clearSessionState("Signed out.");
+    const params = new URLSearchParams({ next: pathname });
+    if (authPool === "internal") {
+      params.set("pool", "internal");
+    }
+    window.location.assign(`/login?${params.toString()}`);
   }
 
   async function handleSignIn() {
@@ -185,8 +194,7 @@ export function UserAuthPanel() {
                 className="button button-sm"
                 onClick={() => {
                   setKeyRotationDetected(false);
-                  clearToken();
-                  void handleSignIn();
+                  void clearSessionState("Token cleared.").then(() => handleSignIn());
                 }}
                 disabled={loginPending}
               >
@@ -201,7 +209,7 @@ export function UserAuthPanel() {
                 {roleLabel ? ` (${roleLabel})` : ""}
                 {expiryText}
               </span>
-              <button type="button" className="button button-sm button-secondary" onClick={clearToken}>
+              <button type="button" className="button button-sm button-secondary" onClick={() => void signOut()}>
                 Sign out
               </button>
             </div>
@@ -245,7 +253,11 @@ export function UserAuthPanel() {
             <button type="button" className="button button-sm" onClick={() => void saveToken()} disabled={applyPending}>
               {applyPending ? "Applying..." : "Apply"}
             </button>
-            <button type="button" className="button button-sm button-secondary" onClick={clearToken}>
+            <button
+              type="button"
+              className="button button-sm button-secondary"
+              onClick={() => void clearSessionState("Token cleared.")}
+            >
               Clear
             </button>
           </div>
