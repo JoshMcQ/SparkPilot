@@ -29,9 +29,11 @@ export function LandingNav() {
           Docs
         </Link>
         <ThemeToggle />
-        <Link href="/login" className="landing-btn landing-btn-ghost landing-nav-cta">
-          Log in
-        </Link>
+        {pathname !== "/login" ? (
+          <Link href="/login" className="landing-btn landing-btn-ghost landing-nav-cta">
+            Log in
+          </Link>
+        ) : null}
         <Link href="/getting-started" className="landing-btn landing-btn-primary landing-nav-cta">
           Start Here
         </Link>
