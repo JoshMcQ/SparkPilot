@@ -8,7 +8,7 @@ test("internal nav link is hidden for non-internal users", () => {
   assert.equal(items.some((item) => item.href === "/internal/tenants"), false);
 });
 
-test("internal nav link is shown for internal admins", () => {
+test("internal admins only see tenant provisioning navigation", () => {
   const items = buildTopNavItems(true);
-  assert.equal(items.some((item) => item.href === "/internal/tenants"), true);
+  assert.deepEqual(items, [{ href: "/internal/tenants", label: "Tenants" }]);
 });

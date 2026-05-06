@@ -63,6 +63,11 @@ type OIDCDiscovery = {
   token_endpoint: string;
 };
 
+export type TokenEndpointPayload = {
+  access_token?: unknown;
+  id_token?: unknown;
+};
+
 async function _discover(config: OidcClientConfig): Promise<OIDCDiscovery> {
   const issuer = config.issuer.replace(/\/+$/, "");
   const response = await fetch(`${issuer}/.well-known/openid-configuration`, {
@@ -104,6 +109,40 @@ function _base64urlDecodeText(input: string): string {
     bytes[index] = binary.charCodeAt(index);
   }
   return new TextDecoder().decode(bytes);
+}
+
+function _decodeJwtClaims(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(_base64urlDecodeText(parts[1]));
+    return payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function _tokenHasEmailClaim(token: string): boolean {
+  const claims = _decodeJwtClaims(token);
+  return typeof claims?.email === "string" && claims.email.trim().includes("@");
+}
+
+export function selectApiBearerToken(payload: TokenEndpointPayload): string {
+  const accessToken = typeof payload?.access_token === "string" ? payload.access_token.trim() : "";
+  const idToken = typeof payload?.id_token === "string" ? payload.id_token.trim() : "";
+  if (!accessToken) {
+    throw new Error("Token endpoint response did not include an access_token.");
+  }
+
+  // Cognito access tokens do not include standard profile claims such as email.
+  // SparkPilot's internal-admin allowlist and customer invite binding both need
+  // a verified email claim, so prefer the OIDC ID token when it carries email.
+  if (idToken && _tokenHasEmailClaim(idToken)) {
+    return idToken;
+  }
+  return accessToken;
 }
 
 export function buildOidcState(csrfState: string, inviteState?: string | null): string {
@@ -161,12 +200,12 @@ function _normalizeLoginOptions(input?: string | LoginFlowOptions): Required<Log
   };
 }
 
-async function _applyInviteCallback(inviteState: string, accessToken: string): Promise<void> {
+async function _applyInviteCallback(inviteState: string, bearerToken: string): Promise<void> {
   const response = await fetch(`/api/sparkpilot/v1/invite/callback?state=${encodeURIComponent(inviteState)}`, {
     cache: "no-store",
     headers: {
       "Accept": "application/json",
-      "Authorization": `Bearer ${accessToken}`,
+      "Authorization": `Bearer ${bearerToken}`,
     },
   });
   if (!response.ok) {
@@ -300,15 +339,12 @@ export async function handleCallback(code: string, state: string): Promise<strin
   }
 
   const payload = await response.json();
-  const accessToken = typeof payload?.access_token === "string" ? payload.access_token.trim() : "";
-  if (!accessToken) {
-    throw new Error("Token endpoint response did not include an access_token.");
-  }
+  const apiBearerToken = selectApiBearerToken(payload);
 
   if (parsedState.inviteState) {
-    await _applyInviteCallback(parsedState.inviteState, accessToken);
+    await _applyInviteCallback(parsedState.inviteState, apiBearerToken);
   }
-  await storeUserAccessToken(accessToken);
+  await storeUserAccessToken(apiBearerToken);
   if (postLoginRedirect && postLoginRedirect.startsWith("/") && !postLoginRedirect.startsWith("//")) {
     return postLoginRedirect;
   }
@@ -328,11 +364,8 @@ export type JwtDisplayInfo = {
 
 export function decodeJwtForDisplay(token: string): JwtDisplayInfo | null {
   try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const json = atob(padded.padEnd(padded.length + ((4 - (padded.length % 4)) % 4), "="));
-    const claims = JSON.parse(json);
+    const claims = _decodeJwtClaims(token);
+    if (!claims) return null;
     return {
       sub: typeof claims.sub === "string" ? claims.sub : null,
       exp: typeof claims.exp === "number" ? claims.exp : null,
