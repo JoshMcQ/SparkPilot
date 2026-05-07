@@ -17,7 +17,7 @@ const USE_CASES = [
   "Other",
 ];
 
-const CONTACT_EMAIL = "hello@sparkpilot.cloud";
+const CONTACT_EMAIL = "jmcqueary@sparkpilot.cloud";
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", company: "", useCase: "", message: "" });
