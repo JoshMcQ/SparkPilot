@@ -532,6 +532,20 @@
   cursor: pointer;
 }
 
+.contact-error {
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--text-strong);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 12px 14px;
+}
+
+.contact-honeypot {
+  display: none;
+}
+
 .contact-submit {
   width: 100%;
   margin-top: 4px;

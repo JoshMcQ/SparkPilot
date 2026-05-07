@@ -35,6 +35,7 @@ def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_internal/.well-known/jwks.json",
     )
     monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_SECRET", "0123456789abcdef")
+    monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_TOKEN", "c" * 32)
     monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
     monkeypatch.setenv(
         "SPARKPILOT_INVITE_EMAIL_FROM",

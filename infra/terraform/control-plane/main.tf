@@ -156,6 +156,8 @@ locals {
     "4096" = [for memory in range(8192, 30720 + 1024, 1024) : memory]
   }
 
+  contact_submit_token_secret_name = trimspace(var.contact_submit_token_secret_name) != "" ? trimspace(var.contact_submit_token_secret_name) : "${local.name_prefix}-contact-submit-token"
+
   # Non-sensitive runtime environment variables — credentials are injected via
   # Secrets Manager references in common_runtime_secrets so they never appear in
   # plaintext in the ECS task definition or the ECS console.
@@ -185,6 +187,7 @@ locals {
     { name = "SPARKPILOT_INVITE_EMAIL_FROM", value = trimspace(var.invite_email_from) },
     { name = "SPARKPILOT_INVITE_EMAIL_REPLY_TO", value = trimspace(var.invite_email_reply_to) },
     { name = "SPARKPILOT_INVITE_EMAIL_TIMEOUT_SECONDS", value = tostring(var.invite_email_timeout_seconds) },
+    { name = "SPARKPILOT_CONTACT_EMAIL_RECIPIENT", value = trimspace(var.contact_email_recipient) },
     { name = "SPARKPILOT_CUR_ATHENA_DATABASE", value = var.cur_athena_database },
     { name = "SPARKPILOT_CUR_ATHENA_TABLE", value = var.cur_athena_table },
     { name = "SPARKPILOT_CUR_ATHENA_WORKGROUP", value = var.cur_athena_workgroup },
@@ -205,6 +208,10 @@ locals {
     {
       name      = "SPARKPILOT_BOOTSTRAP_SECRET"
       valueFrom = aws_secretsmanager_secret.bootstrap.arn
+    },
+    {
+      name      = "SPARKPILOT_CONTACT_SUBMIT_TOKEN"
+      valueFrom = data.aws_secretsmanager_secret.contact_submit_token.arn
     },
   ]
   # Dev skips Resend injection so ECS does not bind an empty/unseeded Secrets Manager reference.
@@ -405,6 +412,10 @@ resource "aws_secretsmanager_secret" "bootstrap" {
   kms_key_id              = aws_kms_key.control_plane.arn
   recovery_window_in_days = local.is_dev_environment ? 0 : 7
   tags                    = local.tags
+}
+
+data "aws_secretsmanager_secret" "contact_submit_token" {
+  name = local.contact_submit_token_secret_name
 }
 
 resource "aws_secretsmanager_secret" "resend_api_key" {
@@ -1124,6 +1135,12 @@ resource "aws_ecs_task_definition" "ui" {
         { name = "HOSTNAME", value = "0.0.0.0" },
         { name = "SPARKPILOT_API", value = trimspace(var.ui_api_base_url) != "" ? var.ui_api_base_url : local.https_enabled ? "https://${aws_lb.api.dns_name}" : "http://${aws_lb.api.dns_name}" },
         { name = "SPARKPILOT_UI_ENFORCE_AUTH", value = "true" },
+      ]
+      secrets = [
+        {
+          name      = "SPARKPILOT_CONTACT_SUBMIT_TOKEN"
+          valueFrom = data.aws_secretsmanager_secret.contact_submit_token.arn
+        },
       ]
       logConfiguration = {
         logDriver = "awslogs"

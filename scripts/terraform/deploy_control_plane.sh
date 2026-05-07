@@ -110,9 +110,17 @@ resend_api_key="${RESEND_API_KEY:-}"
 invite_email_from="$(echo "${INVITE_EMAIL_FROM:-}" | xargs)"
 invite_email_reply_to="$(echo "${INVITE_EMAIL_REPLY_TO:-}" | xargs)"
 invite_email_timeout_seconds="$(echo "${INVITE_EMAIL_TIMEOUT_SECONDS:-10}" | xargs)"
+contact_email_recipient="$(echo "${CONTACT_EMAIL_RECIPIENT:-}" | xargs)"
+contact_submit_token="$(echo "${CONTACT_SUBMIT_TOKEN:-}" | xargs)"
+project_name_for_contact_secret="$(echo "${TF_VAR_project_name:-sparkpilot}" | xargs)"
+contact_submit_token_secret_name="$(echo "${CONTACT_SUBMIT_TOKEN_SECRET_NAME:-${project_name_for_contact_secret}-${SPARKPILOT_ENVIRONMENT}-contact-submit-token}" | xargs)"
 
 if ! jq -en --argjson timeout "${invite_email_timeout_seconds}" '$timeout > 0' >/dev/null 2>&1; then
   echo "::error::INVITE_EMAIL_TIMEOUT_SECONDS must be a positive number." >&2
+  exit 1
+fi
+if [[ -n "${contact_submit_token}" && "${#contact_submit_token}" -lt 32 ]]; then
+  echo "::error::CONTACT_SUBMIT_TOKEN must be at least 32 characters when set." >&2
   exit 1
 fi
 
@@ -183,8 +191,9 @@ fi
 backend_file="$(mktemp "${TMPDIR:-/tmp}/sparkpilot-backend-XXXXXX.hcl")"
 tfvars_file="$(mktemp "${TMPDIR:-/tmp}/sparkpilot-vars-XXXXXX.tfvars.json")"
 plan_file="$(mktemp "${TMPDIR:-/tmp}/sparkpilot-plan-XXXXXX.tfplan")"
+contact_secret_error_file="$(mktemp "${TMPDIR:-/tmp}/sparkpilot-contact-secret-XXXXXX.err")"
 cleanup() {
-  rm -f "${backend_file}" "${tfvars_file}" "${plan_file}"
+  rm -f "${backend_file}" "${tfvars_file}" "${plan_file}" "${contact_secret_error_file}"
 }
 trap cleanup EXIT
 
@@ -242,6 +251,8 @@ jq -n \
   --arg invite_email_from "${invite_email_from}" \
   --arg invite_email_reply_to "${invite_email_reply_to}" \
   --argjson invite_email_timeout_seconds "${invite_email_timeout_seconds}" \
+  --arg contact_email_recipient "${contact_email_recipient}" \
+  --arg contact_submit_token_secret_name "${contact_submit_token_secret_name}" \
   --arg internal_admins "${internal_admins}" \
   '{
     environment: $environment,
@@ -287,6 +298,8 @@ jq -n \
     invite_email_from: $invite_email_from,
     invite_email_reply_to: $invite_email_reply_to,
     invite_email_timeout_seconds: $invite_email_timeout_seconds,
+    contact_email_recipient: $contact_email_recipient,
+    contact_submit_token_secret_name: $contact_submit_token_secret_name,
     internal_admins: $internal_admins
   }' > "${tfvars_file}"
 
@@ -297,6 +310,77 @@ fi
 
 echo "Deploying control-plane Terraform for environment '${SPARKPILOT_ENVIRONMENT}'"
 echo "Terraform root: ${terraform_root}"
+
+contact_secret_exists=false
+if aws secretsmanager describe-secret \
+  --secret-id "${contact_submit_token_secret_name}" \
+  --region "${AWS_REGION}" \
+  --output json > /dev/null 2>"${contact_secret_error_file}"; then
+  contact_secret_exists=true
+else
+  if grep -q "ResourceNotFoundException" "${contact_secret_error_file}"; then
+    contact_secret_exists=false
+  else
+    echo "::error::Unable to describe contact submit token secret '${contact_submit_token_secret_name}'." >&2
+    cat "${contact_secret_error_file}" >&2
+    exit 1
+  fi
+fi
+if [[ -z "${contact_submit_token}" && "${contact_secret_exists}" == "true" ]]; then
+  if ! existing_contact_submit_token="$(
+    aws secretsmanager get-secret-value \
+      --secret-id "${contact_submit_token_secret_name}" \
+      --region "${AWS_REGION}" \
+      --query SecretString \
+      --output text 2>"${contact_secret_error_file}"
+  )"; then
+    echo "::error::Unable to read existing contact submit token secret '${contact_submit_token_secret_name}'." >&2
+    cat "${contact_secret_error_file}" >&2
+    exit 1
+  fi
+  if [[ -n "${existing_contact_submit_token}" && "${existing_contact_submit_token}" != "None" && "${existing_contact_submit_token}" != "null" ]]; then
+    contact_submit_token="${existing_contact_submit_token}"
+  fi
+fi
+if [[ -z "${contact_submit_token}" ]]; then
+  contact_submit_token="$(openssl rand -base64 48 | tr -d '\n')"
+  echo "Generated new contact submit token for ${SPARKPILOT_ENVIRONMENT}."
+else
+  echo "Using configured or existing contact submit token for ${SPARKPILOT_ENVIRONMENT}."
+fi
+if [[ "${#contact_submit_token}" -lt 32 ]]; then
+  echo "::error::CONTACT_SUBMIT_TOKEN must be at least 32 characters." >&2
+  exit 1
+fi
+if [[ "${contact_secret_exists}" == "true" ]]; then
+  aws secretsmanager put-secret-value \
+    --secret-id "${contact_submit_token_secret_name}" \
+    --secret-string "${contact_submit_token}" \
+    --region "${AWS_REGION}" \
+    --output json > /dev/null
+else
+  aws secretsmanager create-secret \
+    --name "${contact_submit_token_secret_name}" \
+    --description "SparkPilot ${SPARKPILOT_ENVIRONMENT} server-side contact form submit token" \
+    --secret-string "${contact_submit_token}" \
+    --region "${AWS_REGION}" \
+    --tags "Key=Project,Value=${project_name_for_contact_secret}" "Key=Environment,Value=${SPARKPILOT_ENVIRONMENT}" "Key=ManagedBy,Value=deploy_control_plane" \
+    --output json > /dev/null
+fi
+for attempt in {1..10}; do
+  if aws secretsmanager describe-secret \
+    --secret-id "${contact_submit_token_secret_name}" \
+    --region "${AWS_REGION}" \
+    --output json > /dev/null 2>"${contact_secret_error_file}"; then
+    break
+  fi
+  if [[ "${attempt}" == "10" ]]; then
+    echo "::error::Contact submit token secret '${contact_submit_token_secret_name}' was not visible after create/update." >&2
+    cat "${contact_secret_error_file}" >&2
+    exit 1
+  fi
+  sleep 2
+done
 
 export TF_IN_AUTOMATION=1
 terraform -chdir="${terraform_root}" fmt -check -recursive
@@ -319,6 +403,7 @@ db_name="$(terraform -chdir="${terraform_root}" output -raw postgres_db_name 2>/
 db_username="$(terraform -chdir="${terraform_root}" output -raw postgres_db_username 2>/dev/null || true)"
 database_url_secret_arn="$(terraform -chdir="${terraform_root}" output -raw database_url_secret_arn 2>/dev/null || true)"
 bootstrap_secret_arn="$(terraform -chdir="${terraform_root}" output -raw bootstrap_secret_arn 2>/dev/null || true)"
+contact_submit_token_secret_arn="$(terraform -chdir="${terraform_root}" output -raw contact_submit_token_secret_arn 2>/dev/null || true)"
 resend_api_key_secret_arn="$(terraform -chdir="${terraform_root}" output -raw resend_api_key_secret_arn 2>/dev/null || true)"
 ecs_cluster_name="$(terraform -chdir="${terraform_root}" output -raw ecs_cluster_name 2>/dev/null || true)"
 ecs_worker_service_names_json="$(terraform -chdir="${terraform_root}" output -json ecs_worker_service_names 2>/dev/null || echo '{}')"
@@ -341,6 +426,10 @@ if [[ -z "${database_url_secret_arn}" ]]; then
 fi
 if [[ -z "${bootstrap_secret_arn}" ]]; then
   echo "::error::Terraform output 'bootstrap_secret_arn' is empty." >&2
+  exit 1
+fi
+if [[ -z "${contact_submit_token_secret_arn}" ]]; then
+  echo "::error::Terraform output 'contact_submit_token_secret_arn' is empty." >&2
   exit 1
 fi
 if [[ -z "${resend_api_key_secret_arn}" ]]; then
