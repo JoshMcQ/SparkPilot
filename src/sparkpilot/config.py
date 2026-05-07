@@ -15,6 +15,7 @@ EMR_EXECUTION_ROLE_PLACEHOLDER_ARN = (
 )
 IAM_ROLE_ARN_PATTERN = re.compile(r"^arn:aws:iam::\d{12}:role/.+")
 MIN_BOOTSTRAP_SECRET_LENGTH = 16
+MIN_CONTACT_SUBMIT_TOKEN_LENGTH = 32
 _DEFAULT_DATABASE_URL = (
     "postgresql+psycopg://sparkpilot:sparkpilot@localhost:5432/sparkpilot"
 )
@@ -153,6 +154,20 @@ class Settings(BaseSettings):
             "INVITE_EMAIL_REPLY_TO",
         ),
     )
+    contact_email_recipient: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_CONTACT_EMAIL_RECIPIENT",
+            "CONTACT_EMAIL_RECIPIENT",
+        ),
+    )
+    contact_submit_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SPARKPILOT_CONTACT_SUBMIT_TOKEN",
+            "CONTACT_SUBMIT_TOKEN",
+        ),
+    )
     invite_email_timeout_seconds: float = 10.0
     magic_link_ttl_hours: int = 24
     aws_region: str = "us-east-1"
@@ -215,6 +230,20 @@ class Settings(BaseSettings):
             for email in self.internal_admins.split(",")
             if email.strip()
         }
+
+    @property
+    def contact_email_recipient_effective(self) -> str:
+        explicit = _extract_email_address(self.contact_email_recipient.strip()).lower()
+        if explicit:
+            return explicit
+        reply_to = _extract_email_address(self.invite_email_reply_to.strip()).lower()
+        if reply_to:
+            return reply_to
+        for email in self.internal_admins.split(","):
+            normalized = email.strip().lower()
+            if normalized:
+                return normalized
+        return ""
 
     @property
     def customer_oidc_issuer_effective(self) -> str:
@@ -406,6 +435,7 @@ def _validate_invite_email_settings(settings: Settings) -> None:
     resend_api_key = settings.resend_api_key.strip()
     from_email = settings.invite_email_from.strip()
     reply_to = settings.invite_email_reply_to.strip()
+    contact_recipient = settings.contact_email_recipient.strip()
     hosted_ui_url = settings.cognito_hosted_ui_url.strip()
     app_base_url = settings.app_base_url.strip().rstrip("/")
     if app_base_url:
@@ -441,6 +471,10 @@ def _validate_invite_email_settings(settings: Settings) -> None:
         parsed_reply_to = _extract_email_address(reply_to)
         if EMAIL_ADDRESS_PATTERN.fullmatch(parsed_reply_to) is None:
             raise ValueError("SPARKPILOT_INVITE_EMAIL_REPLY_TO must be an email address.")
+    if contact_recipient:
+        parsed_contact_recipient = _extract_email_address(contact_recipient)
+        if EMAIL_ADDRESS_PATTERN.fullmatch(parsed_contact_recipient) is None:
+            raise ValueError("SPARKPILOT_CONTACT_EMAIL_RECIPIENT must be an email address.")
     if settings.invite_email_timeout_seconds <= 0:
         raise ValueError(
             "SPARKPILOT_INVITE_EMAIL_TIMEOUT_SECONDS must be greater than 0."
@@ -458,6 +492,18 @@ def _validate_security_runtime_settings(settings: Settings) -> None:
         raise ValueError(
             "SPARKPILOT_INVITE_STATE_SECRET must be at least "
             f"{MIN_BOOTSTRAP_SECRET_LENGTH} characters when provided."
+        )
+    contact_submit_token = settings.contact_submit_token.strip()
+    if contact_submit_token and len(contact_submit_token) < MIN_CONTACT_SUBMIT_TOKEN_LENGTH:
+        raise ValueError(
+            "SPARKPILOT_CONTACT_SUBMIT_TOKEN must be at least "
+            f"{MIN_CONTACT_SUBMIT_TOKEN_LENGTH} characters when provided."
+        )
+    environment = settings.environment.strip().lower()
+    if environment not in {"dev", "development", "local", "test"} and not contact_submit_token:
+        raise ValueError(
+            "SPARKPILOT_CONTACT_SUBMIT_TOKEN must be set outside dev so public contact submissions "
+            "can only enter through the app proxy."
         )
     if not settings.cors_origin_list:
         raise ValueError("SPARKPILOT_CORS_ORIGINS must contain at least one origin.")

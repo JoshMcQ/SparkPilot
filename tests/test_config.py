@@ -128,6 +128,34 @@ def test_bootstrap_secret_must_be_configured(monkeypatch) -> None:
     _clear_settings_cache()
 
 
+def test_contact_submit_token_is_required_outside_dev(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENVIRONMENT", "staging")
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv(
+        "SPARKPILOT_DATABASE_URL",
+        "postgresql+psycopg://sparkpilot:sparkpilot@db.example.com:5432/sparkpilot",
+    )
+    monkeypatch.setenv("SPARKPILOT_CORS_ORIGINS", "https://app.sparkpilot.cloud")
+    monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_SECRET", "0123456789abcdef")
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotExecRole",
+    )
+    monkeypatch.delenv("SPARKPILOT_CONTACT_SUBMIT_TOKEN", raising=False)
+    _clear_settings_cache()
+    with pytest.raises(ValueError, match="SPARKPILOT_CONTACT_SUBMIT_TOKEN must be set"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
+def test_contact_submit_token_requires_minimum_length(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_TOKEN", "too-short")
+    _clear_settings_cache()
+    with pytest.raises(ValueError, match="SPARKPILOT_CONTACT_SUBMIT_TOKEN must be at least"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
 def test_cors_rejects_wildcard_origin(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_CORS_ORIGINS", "*")
     _clear_settings_cache()

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Final, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 EnvironmentState = Literal[
@@ -69,6 +69,46 @@ class InternalTenantCreateResponse(BaseModel):
     invite_email_status: Literal["sent", "failed"]
     invite_email_provider_message_id: str | None = None
     invite_email_failure_detail: str | None = None
+
+
+class ContactRequestCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: str = Field(
+        min_length=3,
+        max_length=255,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+    company: str | None = Field(default=None, max_length=255)
+    use_case: str | None = Field(default=None, max_length=120)
+    message: str | None = Field(default=None, max_length=4000)
+    source_url: str | None = Field(default=None, max_length=2048)
+    website: str | None = Field(default=None, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def _name_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Name is required.")
+        return stripped
+
+    @field_validator("email")
+    @classmethod
+    def _normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+    @field_validator("company", "use_case", "message", "source_url", "website")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class ContactRequestCreateResponse(BaseModel):
+    status: Literal["sent", "accepted"]
+    request_id: str
 
 
 class InternalTenantUserResponse(BaseModel):
