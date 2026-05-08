@@ -180,6 +180,42 @@ def test_send_invite_email_retries_transient_provider_errors(
     _clear_settings_cache()
 
 
+def test_send_invite_email_retries_rate_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
+    _clear_settings_cache()
+    attempts = 0
+
+    def _fake_post(*_args, **_kwargs) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, json={"message": "rate limited"})
+        return httpx.Response(200, json={"id": "email_after_429"})
+
+    monkeypatch.setattr("sparkpilot.invite_email.httpx.post", _fake_post)
+    monkeypatch.setattr("sparkpilot.invite_email.time.sleep", lambda _seconds: None)
+
+    delivery = send_invite_email(
+        recipient_email="admin@example.invalid",
+        tenant_name="Acme Corp",
+        invite_url="https://app.example.invalid/v1/invite/accept?token=secret-token",
+        tenant_id="tenant-123",
+        user_id="user-123",
+        ttl_hours=24,
+        idempotency_key="invite:token-row-123",
+    )
+
+    assert delivery.provider_message_id == "email_after_429"
+    assert attempts == 2
+    _clear_settings_cache()
+
+
 def test_send_invite_email_retries_transport_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

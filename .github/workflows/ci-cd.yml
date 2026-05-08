@@ -580,7 +580,7 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.STAGING_INVITE_EMAIL_FROM || secrets.STAGING_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.STAGING_INVITE_EMAIL_REPLY_TO || secrets.STAGING_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.STAGING_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
-          CONTACT_EMAIL_RECIPIENT: ${{ vars.STAGING_CONTACT_EMAIL_RECIPIENT || vars.STAGING_INVITE_EMAIL_REPLY_TO || 'jmcqueary@sparkpilot.cloud' }}
+          CONTACT_EMAIL_RECIPIENT: ${{ vars.STAGING_CONTACT_EMAIL_RECIPIENT || '' }}
           CONTACT_SUBMIT_TOKEN: ${{ secrets.STAGING_CONTACT_SUBMIT_TOKEN || '' }}
           INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS || 'jmcqueary@sparkpilot.cloud' }}
         run: bash scripts/terraform/deploy_control_plane.sh
@@ -793,7 +793,7 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.PROD_INVITE_EMAIL_FROM || secrets.PROD_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.PROD_INVITE_EMAIL_REPLY_TO || secrets.PROD_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.PROD_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
-          CONTACT_EMAIL_RECIPIENT: ${{ vars.PROD_CONTACT_EMAIL_RECIPIENT || vars.PROD_INVITE_EMAIL_REPLY_TO || 'jmcqueary@sparkpilot.cloud' }}
+          CONTACT_EMAIL_RECIPIENT: ${{ vars.PROD_CONTACT_EMAIL_RECIPIENT || '' }}
           CONTACT_SUBMIT_TOKEN: ${{ secrets.PROD_CONTACT_SUBMIT_TOKEN || '' }}
           INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS || 'jmcqueary@sparkpilot.cloud' }}
         run: bash scripts/terraform/deploy_control_plane.sh

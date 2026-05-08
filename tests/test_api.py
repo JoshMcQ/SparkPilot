@@ -162,8 +162,8 @@ def test_contact_request_public_endpoint_sends_email(monkeypatch) -> None:
         "/v1/contact-requests",
         json={
             "name": "Alex Smith",
-            "email": "Alex@Company.Example",
-            "company": "Acme Corp",
+            "email": " Alex@Company.Example ",
+            "company": " Acme Corp ",
             "use_case": "EMR Serverless governance",
             "message": "Need a pilot.",
             "source_url": "https://sparkpilot.cloud/contact/",

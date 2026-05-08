@@ -60,14 +60,11 @@ function clientFingerprint(request: NextRequest): string {
 function isRateLimited(request: NextRequest): boolean {
   const now = Date.now();
   const store = contactRateLimitStore();
-  for (const [key, entry] of store) {
-    if (entry.resetAt <= now) {
-      store.delete(key);
-    }
-  }
-
   const key = clientFingerprint(request);
   const current = store.get(key);
+
+  // Best-effort per-process backstop. The signed form token and server-side submit
+  // token are the primary controls; this intentionally avoids centralized state.
   if (!current || current.resetAt <= now) {
     store.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
     return false;
@@ -177,6 +174,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(contactRedirectUrl(request, "error"), { status: 303 });
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
     const response = await fetch(`${sparkpilotApiBase().replace(/\/+$/, "")}/v1/contact-requests`, {
       method: "POST",
@@ -188,6 +187,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       body: JSON.stringify(payload),
       cache: "no-store",
+      signal: controller.signal,
     });
     if (response.ok) {
       return NextResponse.redirect(contactRedirectUrl(request, "sent"), { status: 303 });
@@ -197,6 +197,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   } catch {
     // Fall through to the generic error redirect.
+  } finally {
+    clearTimeout(timeout);
   }
   return NextResponse.redirect(contactRedirectUrl(request, "error"), { status: 303 });
 }

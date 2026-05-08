@@ -1238,6 +1238,11 @@ def post_contact_request(
         request_id=request_id,
         idempotency_key=f"contact:{request_id}",
     )
+    logger.info(
+        "Contact request delivered request_id=%s recipient=%s",
+        request_id,
+        recipient_email,
+    )
     return ContactRequestCreateResponse(status="sent", request_id=request_id)
 
 
