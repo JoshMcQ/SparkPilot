@@ -3,12 +3,12 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from "crypto";
 export const CONTACT_FORM_TOKEN_TTL_MS = 30 * 60 * 1000;
 export const MIN_CONTACT_SUBMIT_TOKEN_LENGTH = 32;
 
-function lastForwardedValue(value: string | null): string {
+function firstForwardedValue(value: string | null): string {
   const parts = (value ?? "")
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
-  return parts.at(-1) ?? "";
+  return parts[0] ?? "";
 }
 
 export function contactSubmitSecretFromEnv(): string {
@@ -21,7 +21,7 @@ export function contactSubmitSecretFromEnv(): string {
 
 export function clientFingerprintFromHeaders(headers: Headers): string {
   const ip =
-    lastForwardedValue(headers.get("X-Forwarded-For")) ||
+    firstForwardedValue(headers.get("X-Forwarded-For")) ||
     (headers.get("X-Real-IP") ?? "").trim() ||
     "unknown";
   const userAgent = (headers.get("User-Agent") ?? "unknown").slice(0, 160);

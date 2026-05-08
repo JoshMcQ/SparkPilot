@@ -135,7 +135,7 @@ def _post_resend_email(
             )
             time.sleep(delay)
             continue
-        if response.status_code < 500:
+        if response.status_code < 500 and response.status_code != 429:
             break
         if attempt >= RESEND_SEND_MAX_ATTEMPTS:
             break

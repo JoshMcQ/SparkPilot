@@ -92,16 +92,20 @@ class ContactRequestCreate(BaseModel):
             raise ValueError("Name is required.")
         return stripped
 
-    @field_validator("email")
+    @field_validator("email", mode="before")
     @classmethod
-    def _normalize_email(cls, value: str) -> str:
-        return value.strip().lower()
+    def _normalize_email(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
-    @field_validator("company", "use_case", "message", "source_url", "website")
+    @field_validator("company", "use_case", "message", "source_url", "website", mode="before")
     @classmethod
-    def _normalize_optional_text(cls, value: str | None) -> str | None:
+    def _normalize_optional_text(cls, value: object) -> object:
         if value is None:
             return None
+        if not isinstance(value, str):
+            return value
         stripped = value.strip()
         return stripped or None
 

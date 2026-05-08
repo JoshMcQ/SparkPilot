@@ -27,6 +27,22 @@ test("contact form token rejects a different request fingerprint", () => {
   assert.equal(isContactFormTokenValid(token, SECRET, "fingerprint-b", 2_000), false);
 });
 
+test("contact fingerprint uses first forwarded client hop", () => {
+  const forwardedHeaders = new Headers({
+    "User-Agent": "UnitTestBrowser",
+    "X-Forwarded-For": "198.51.100.10, 10.0.0.1",
+  });
+  const directHeaders = new Headers({
+    "User-Agent": "UnitTestBrowser",
+    "X-Forwarded-For": "198.51.100.10",
+  });
+
+  assert.equal(
+    clientFingerprintFromHeaders(forwardedHeaders),
+    clientFingerprintFromHeaders(directHeaders),
+  );
+});
+
 test("contact form token rejects expired and malformed tokens", () => {
   const token = createContactFormToken(SECRET, "fingerprint-a", 1_000);
 
