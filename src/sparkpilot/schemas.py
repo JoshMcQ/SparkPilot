@@ -608,3 +608,53 @@ class SecurityConfigurationResponse(BaseModel):
     authorization_config: dict | None
     created_at: datetime | None
     remediation: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Contact submissions (public interest form → admin approval flow)
+# ---------------------------------------------------------------------------
+
+
+class ContactSubmissionCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    email: str = Field(
+        min_length=3,
+        max_length=255,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+    company: str | None = Field(default=None, max_length=255)
+    use_case: str | None = Field(default=None, max_length=255)
+    message: str | None = Field(default=None, max_length=4000)
+
+
+class ContactSubmissionCreateResponse(BaseModel):
+    id: str
+    status: Literal["pending"]
+
+
+class ContactSubmissionListItemResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    company: str | None
+    use_case: str | None
+    message: str | None
+    status: str
+    created_at: datetime
+    tenant_id: str | None
+    approved_by: str | None
+    approved_at: datetime | None
+
+
+class ContactSubmissionApproveRequest(BaseModel):
+    tenant_name: str = Field(min_length=3, max_length=255)
+
+
+class ContactSubmissionApproveResponse(BaseModel):
+    submission_id: str
+    tenant_id: str
+    user_id: str
+    invite_email_status: Literal["sent", "failed"]
+    invite_email_provider_message_id: str | None = None
+    invite_email_failure_detail: str | None = None
+

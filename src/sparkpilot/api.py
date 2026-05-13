@@ -46,6 +46,7 @@ from sparkpilot.idempotency import with_idempotency
 from sparkpilot.crm_webhook import emit_tenant_lifecycle_event
 from sparkpilot.models import (
     AuditEvent,
+    ContactSubmission,
     Environment,
     InteractiveEndpoint,
     Job,
@@ -96,6 +97,11 @@ from sparkpilot.schemas import (
     QueueUtilizationResponse,
     RunCreateRequest,
     RunResponse,
+    ContactSubmissionApproveRequest,
+    ContactSubmissionApproveResponse,
+    ContactSubmissionCreateRequest,
+    ContactSubmissionCreateResponse,
+    ContactSubmissionListItemResponse,
     SecurityConfigurationCreateRequest,
     SecurityConfigurationResponse,
     TeamCreateRequest,
@@ -417,7 +423,7 @@ def _custom_openapi() -> dict[str, Any]:
         "bearerFormat": "JWT",
         "description": "OIDC access token",
     }
-    public_paths = {"/healthz", "/v1/invite/accept"}
+    public_paths = {"/healthz", "/v1/invite/accept", "/v1/public/contact"}
     for path, operations in schema.get("paths", {}).items():
         if path in public_paths:
             continue
@@ -3151,3 +3157,160 @@ def validate_runtime_iam_identity(
     from sparkpilot.services.iam_validation import validate_full_credential_chain
 
     return validate_full_credential_chain()
+
+
+# ---------------------------------------------------------------------------
+# Contact submissions (public interest form → admin approval flow)
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/v1/public/contact",
+    response_model=ContactSubmissionCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_public_contact(
+    req: ContactSubmissionCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ContactSubmissionCreateResponse:
+    source_ip = request.client.host if request.client else None
+    submission = ContactSubmission(
+        name=req.name.strip(),
+        email=req.email.strip().lower(),
+        company=req.company.strip() if req.company else None,
+        use_case=req.use_case.strip() if req.use_case else None,
+        message=req.message.strip() if req.message else None,
+        status="pending",
+        source_ip=source_ip,
+    )
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    logger.info(
+        "contact_submission.created submission_id=%s email=%s",
+        submission.id,
+        submission.email,
+    )
+    return ContactSubmissionCreateResponse(id=submission.id, status="pending")
+
+
+@app.get(
+    "/v1/internal/contact",
+    response_model=list[ContactSubmissionListItemResponse],
+)
+def get_internal_contact_submissions(
+    request: Request,
+    db: Session = Depends(get_db),
+    internal_admin: InternalAdminContext = Depends(require_internal_admin),
+    status_filter: str | None = None,
+) -> list[ContactSubmissionListItemResponse]:
+    query = db.query(ContactSubmission)
+    if status_filter:
+        query = query.filter(ContactSubmission.status == status_filter)
+    rows = query.order_by(ContactSubmission.created_at.desc()).all()
+    return [
+        ContactSubmissionListItemResponse(
+            id=row.id,
+            name=row.name,
+            email=row.email,
+            company=row.company,
+            use_case=row.use_case,
+            message=row.message,
+            status=row.status,
+            created_at=row.created_at,
+            tenant_id=row.tenant_id,
+            approved_by=row.approved_by,
+            approved_at=row.approved_at,
+        )
+        for row in rows
+    ]
+
+
+@app.post(
+    "/v1/internal/contact/{submission_id}/approve",
+    response_model=ContactSubmissionApproveResponse,
+)
+def post_internal_contact_approve(
+    submission_id: str,
+    req: ContactSubmissionApproveRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    internal_admin: InternalAdminContext = Depends(require_internal_admin),
+) -> ContactSubmissionApproveResponse:
+    submission = db.query(ContactSubmission).filter(ContactSubmission.id == submission_id).first()
+    if submission is None:
+        raise HTTPException(status_code=404, detail="Contact submission not found.")
+    if submission.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Submission is already {submission.status}.",
+        )
+
+    tenant_req = InternalTenantCreateRequest(
+        name=req.tenant_name,
+        admin_email=submission.email,
+    )
+    source_ip = request.client.host if request.client else None
+    result = create_tenant_with_admin_invite(
+        db,
+        req=tenant_req,
+        created_by=internal_admin.email,
+        source_ip=source_ip,
+        invite_accept_base_url=_invite_accept_base_url(request),
+        ttl_hours=get_settings().magic_link_ttl_hours,
+    )
+
+    submission.status = "approved"
+    submission.tenant_id = result.tenant.id
+    submission.approved_by = internal_admin.email
+    submission.approved_at = datetime.now(UTC)
+    db.commit()
+
+    _commit_internal_admin_audit_best_effort(
+        db,
+        request=request,
+        internal_admin=internal_admin,
+        action="tenant.create",
+        target_tenant_id=result.tenant.id,
+        target_user_id=result.user.id,
+    )
+
+    logger.info(
+        "contact_submission.approved submission_id=%s tenant_id=%s approved_by=%s",
+        submission_id,
+        result.tenant.id,
+        internal_admin.email,
+    )
+    return ContactSubmissionApproveResponse(
+        submission_id=submission_id,
+        tenant_id=result.tenant.id,
+        user_id=result.user.id,
+        invite_email_status=result.invite_email.status,
+        invite_email_provider_message_id=result.invite_email.provider_message_id,
+        invite_email_failure_detail=result.invite_email.failure_detail,
+    )
+
+
+@app.post("/v1/internal/contact/{submission_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+def post_internal_contact_reject(
+    submission_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    internal_admin: InternalAdminContext = Depends(require_internal_admin),
+) -> None:
+    submission = db.query(ContactSubmission).filter(ContactSubmission.id == submission_id).first()
+    if submission is None:
+        raise HTTPException(status_code=404, detail="Contact submission not found.")
+    if submission.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Submission is already {submission.status}.",
+        )
+    submission.status = "rejected"
+    db.commit()
+    logger.info(
+        "contact_submission.rejected submission_id=%s rejected_by=%s",
+        submission_id,
+        internal_admin.email,
+    )

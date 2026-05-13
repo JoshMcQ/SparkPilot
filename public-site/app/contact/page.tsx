@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";
+import { API_URL } from "@/lib/api-url";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -22,6 +23,7 @@ const CONTACT_EMAIL = "hello@sparkpilot.cloud";
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", company: "", useCase: "", message: "" });
   const [state, setState] = useState<FormState>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -30,13 +32,28 @@ export default function ContactPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setState("submitting");
-    // mailto fallback; replace with a real form endpoint when available
-    const subject = encodeURIComponent(`SparkPilot inquiry from ${form.name} at ${form.company}`);
-    const body = encodeURIComponent(
-      `Name: ${form.name}\nEmail: ${form.email}\nCompany: ${form.company}\nUse case: ${form.useCase}\n\n${form.message}`
-    );
-    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
-    setState("success");
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`${API_URL}/v1/public/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: form.email.trim(),
+          company: form.company.trim() || undefined,
+          use_case: form.useCase || undefined,
+          message: form.message.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { detail?: string }).detail ?? "Something went wrong. Please try again.");
+      }
+      setState("success");
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setState("error");
+    }
   }
 
   return (
@@ -87,14 +104,23 @@ export default function ContactPage() {
           {state === "success" ? (
             <div className="contact-success">
               <div className="contact-success-icon" aria-hidden="true">OK</div>
-              <h3>Your email draft is ready.</h3>
-              <p>Check your email client. Your message was pre-filled. If it did not open, email us directly at <a href={`mailto:${CONTACT_EMAIL}`} className="login-link">{CONTACT_EMAIL}</a>.</p>
+              <h3>We got it.</h3>
+              <p>
+                Thanks for reaching out. We will review your message and get back to you
+                within one business day at <strong>{form.email}</strong>.
+              </p>
               <Link href="/" className="landing-btn landing-btn-secondary contact-success-back">
                 Back to home
               </Link>
             </div>
           ) : (
             <form className="contact-form" onSubmit={handleSubmit} noValidate>
+              {state === "error" && errorMessage && (
+                <div className="contact-form-error" role="alert">
+                  {errorMessage}
+                </div>
+              )}
+
               <div className="contact-form-row">
                 <div className="form-group">
                   <label className="form-label" htmlFor="name">Name</label>
@@ -171,7 +197,7 @@ export default function ContactPage() {
                 className="landing-btn landing-btn-primary contact-submit"
                 disabled={state === "submitting" || !form.name || !form.email}
               >
-                {state === "submitting" ? "Opening email..." : "Open email draft"}
+                {state === "submitting" ? "Sending..." : "Get in touch"}
               </button>
             </form>
           )}

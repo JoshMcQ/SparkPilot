@@ -773,3 +773,41 @@ class Policy(Base):
         onupdate=_utc_now,
         nullable=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Contact submissions (public interest form → admin approval flow)
+# ---------------------------------------------------------------------------
+
+CONTACT_SUBMISSION_STATUSES = {"pending", "approved", "rejected"}
+
+
+class ContactSubmission(Base):
+    __tablename__ = "contact_submissions"
+    __table_args__ = (
+        Index("ix_contact_submissions_status_created", "status", "created_at"),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected')",
+            name="ck_contact_submissions_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    company: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    use_case: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )

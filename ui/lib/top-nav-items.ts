@@ -16,6 +16,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
 ];
 
 const INTERNAL_ADMIN_NAV_ITEMS: NavItem[] = [
+  { href: "/internal/contact", label: "Leads" },
   { href: "/internal/tenants", label: "Tenants" },
 ];
 

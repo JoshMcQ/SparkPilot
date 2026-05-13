@@ -6,6 +6,8 @@ PUBLIC_SITE_DIR="${ROOT_DIR}/public-site"
 DIST_DIR="${ROOT_DIR}/public-site/dist"
 APP_URL_RAW="${PUBLIC_SITE_APP_URL:-https://app.sparkpilot.cloud}"
 APP_URL="${APP_URL_RAW%/}"
+API_URL_RAW="${PUBLIC_SITE_API_URL:-https://api.sparkpilot.cloud}"
+API_URL="${API_URL_RAW%/}"
 OUT_DIR="${PUBLIC_SITE_DIR}/out"
 
 if [[ ! -f "${PUBLIC_SITE_DIR}/package.json" ]]; then
@@ -16,7 +18,7 @@ fi
 pushd "${PUBLIC_SITE_DIR}" >/dev/null
 
 npm ci
-NEXT_PUBLIC_APP_URL="${APP_URL}" npm run build
+NEXT_PUBLIC_APP_URL="${APP_URL}" NEXT_PUBLIC_API_URL="${API_URL}" npm run build
 
 popd >/dev/null
 
@@ -31,3 +33,4 @@ cp -R "${OUT_DIR}/." "${DIST_DIR}/"
 
 echo "Public site built: ${DIST_DIR}"
 echo "App URL wired to: ${APP_URL}"
+echo "API URL wired to: ${API_URL}"
