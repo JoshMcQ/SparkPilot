@@ -144,7 +144,7 @@ if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lo
     exit 1
   fi
   if [[ -z "${app_base_url}" ]]; then
-    echo "::error::APP_BASE_URL must be set for non-dev invite login redirects." >&2
+    echo "::error::APP_BASE_URL or UI_APP_BASE_URL must be set for non-dev invite login redirects." >&2
     exit 1
   fi
   if [[ -z "${invite_email_from}" ]]; then

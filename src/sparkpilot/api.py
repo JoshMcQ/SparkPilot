@@ -174,6 +174,8 @@ InternalAuditAction = Literal[
     "tenant.list_view",
     "tenant.detail_view",
     "tenant.invite_regenerate",
+    "contact.approve",
+    "contact.reject",
 ]
 
 
@@ -3188,9 +3190,8 @@ def post_public_contact(
     db.commit()
     db.refresh(submission)
     logger.info(
-        "contact_submission.created submission_id=%s email=%s",
+        "contact_submission.created submission_id=%s",
         submission.id,
-        submission.email,
     )
     return ContactSubmissionCreateResponse(id=submission.id, status="pending")
 
@@ -3238,7 +3239,12 @@ def post_internal_contact_approve(
     db: Session = Depends(get_db),
     internal_admin: InternalAdminContext = Depends(require_internal_admin),
 ) -> ContactSubmissionApproveResponse:
-    submission = db.query(ContactSubmission).filter(ContactSubmission.id == submission_id).first()
+    submission = (
+        db.query(ContactSubmission)
+        .filter(ContactSubmission.id == submission_id)
+        .with_for_update()
+        .first()
+    )
     if submission is None:
         raise HTTPException(status_code=404, detail="Contact submission not found.")
     if submission.status != "pending":
@@ -3247,40 +3253,53 @@ def post_internal_contact_approve(
             detail=f"Submission is already {submission.status}.",
         )
 
-    tenant_req = InternalTenantCreateRequest(
-        name=req.tenant_name,
-        admin_email=submission.email,
-    )
-    source_ip = request.client.host if request.client else None
-    result = create_tenant_with_admin_invite(
-        db,
-        req=tenant_req,
-        created_by=internal_admin.email,
-        source_ip=source_ip,
-        invite_accept_base_url=_invite_accept_base_url(request),
-        ttl_hours=get_settings().magic_link_ttl_hours,
-    )
-
+    # Claim the row atomically before any irreversible side effects so a concurrent
+    # approve request sees "approved" and returns 409 rather than creating a duplicate tenant.
+    admin_email_snapshot = submission.email
     submission.status = "approved"
-    submission.tenant_id = result.tenant.id
     submission.approved_by = internal_admin.email
     submission.approved_at = datetime.now(UTC)
+    db.commit()
+
+    try:
+        tenant_req = InternalTenantCreateRequest(
+            name=req.tenant_name,
+            admin_email=admin_email_snapshot,
+        )
+        source_ip = request.client.host if request.client else None
+        result = create_tenant_with_admin_invite(
+            db,
+            req=tenant_req,
+            created_by=internal_admin.email,
+            source_ip=source_ip,
+            invite_accept_base_url=_invite_accept_base_url(request),
+            ttl_hours=get_settings().magic_link_ttl_hours,
+        )
+    except Exception:
+        # Revert so the admin can retry; tenant was not created.
+        submission.status = "pending"
+        submission.approved_by = None
+        submission.approved_at = None
+        db.commit()
+        raise HTTPException(status_code=502, detail="Tenant creation failed. Submission reverted to pending.")
+
+    submission.tenant_id = result.tenant.id
     db.commit()
 
     _commit_internal_admin_audit_best_effort(
         db,
         request=request,
         internal_admin=internal_admin,
-        action="tenant.create",
+        action="contact.approve",
         target_tenant_id=result.tenant.id,
         target_user_id=result.user.id,
     )
 
     logger.info(
-        "contact_submission.approved submission_id=%s tenant_id=%s approved_by=%s",
+        "contact_submission.approved submission_id=%s tenant_id=%s actor=%s",
         submission_id,
         result.tenant.id,
-        internal_admin.email,
+        internal_admin.actor,
     )
     return ContactSubmissionApproveResponse(
         submission_id=submission_id,
@@ -3299,7 +3318,12 @@ def post_internal_contact_reject(
     db: Session = Depends(get_db),
     internal_admin: InternalAdminContext = Depends(require_internal_admin),
 ) -> None:
-    submission = db.query(ContactSubmission).filter(ContactSubmission.id == submission_id).first()
+    submission = (
+        db.query(ContactSubmission)
+        .filter(ContactSubmission.id == submission_id)
+        .with_for_update()
+        .first()
+    )
     if submission is None:
         raise HTTPException(status_code=404, detail="Contact submission not found.")
     if submission.status != "pending":
@@ -3309,8 +3333,16 @@ def post_internal_contact_reject(
         )
     submission.status = "rejected"
     db.commit()
+    _commit_internal_admin_audit_best_effort(
+        db,
+        request=request,
+        internal_admin=internal_admin,
+        action="contact.reject",
+        target_tenant_id=None,
+        target_user_id=None,
+    )
     logger.info(
-        "contact_submission.rejected submission_id=%s rejected_by=%s",
+        "contact_submission.rejected submission_id=%s actor=%s",
         submission_id,
-        internal_admin.email,
+        internal_admin.actor,
     )

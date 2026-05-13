@@ -892,4 +892,3 @@ jobs:
           SCALE_ECS: "true"
           STOP_RDS: "false"
         run: bash scripts/ops/scale_nonprod_idle.sh
-

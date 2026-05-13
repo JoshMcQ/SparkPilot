@@ -8,6 +8,10 @@ APP_URL_RAW="${PUBLIC_SITE_APP_URL:-https://app.sparkpilot.cloud}"
 APP_URL="${APP_URL_RAW%/}"
 API_URL_RAW="${PUBLIC_SITE_API_URL:-https://api.sparkpilot.cloud}"
 API_URL="${API_URL_RAW%/}"
+if [[ ! "${API_URL}" =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "ERROR: PUBLIC_SITE_API_URL must be a valid http(s) URL. Got: ${API_URL_RAW}" >&2
+  exit 1
+fi
 OUT_DIR="${PUBLIC_SITE_DIR}/out"
 
 if [[ ! -f "${PUBLIC_SITE_DIR}/package.json" ]]; then

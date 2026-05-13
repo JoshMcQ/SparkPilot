@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   type ContactSubmission,
@@ -38,8 +38,9 @@ export default function InternalContactPage() {
   const [approving, setApproving] = useState<ApprovingState | null>(null);
   const [lastResult, setLastResult] = useState<ContactSubmissionApproveResponse | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectError, setRejectError] = useState<string | null>(null);
 
-  async function load(filter: StatusFilter) {
+  const load = useCallback(async (filter: StatusFilter) => {
     setLoading(true);
     setError(null);
     try {
@@ -50,13 +51,12 @@ export default function InternalContactPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (gateLoading || !isInternalAdmin) return;
     load(statusFilter);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gateLoading, isInternalAdmin, statusFilter]);
+  }, [gateLoading, isInternalAdmin, statusFilter, load]);
 
   async function handleApproveConfirm() {
     if (!approving) return;
@@ -82,11 +82,12 @@ export default function InternalContactPage() {
   async function handleReject(id: string) {
     if (!window.confirm("Reject this submission? This cannot be undone.")) return;
     setRejectingId(id);
+    setRejectError(null);
     try {
       await rejectContactSubmission(id);
       setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: "rejected" } : r)));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Rejection failed.");
+      setRejectError(err instanceof Error ? err.message : "Rejection failed.");
     } finally {
       setRejectingId(null);
     }
@@ -136,6 +137,19 @@ export default function InternalContactPage() {
               <> — {lastResult.invite_email_failure_detail}</>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Reject error banner */}
+      {rejectError && (
+        <div className="card error-card">
+          <div className="card-header-row">
+            <strong>Rejection failed</strong>
+            <button type="button" className="button button-sm" onClick={() => setRejectError(null)}>
+              Dismiss
+            </button>
+          </div>
+          <div>{rejectError}</div>
         </div>
       )}
 
