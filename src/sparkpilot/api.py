@@ -176,6 +176,7 @@ InternalAuditAction = Literal[
     "tenant.invite_regenerate",
     "contact.approve",
     "contact.reject",
+    "contact.list_view",
 ]
 
 
@@ -3204,12 +3205,27 @@ def get_internal_contact_submissions(
     request: Request,
     db: Session = Depends(get_db),
     internal_admin: InternalAdminContext = Depends(require_internal_admin),
-    status_filter: str | None = None,
+    status_filter: Literal["pending", "approved", "rejected"] | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
 ) -> list[ContactSubmissionListItemResponse]:
     query = db.query(ContactSubmission)
     if status_filter:
         query = query.filter(ContactSubmission.status == status_filter)
-    rows = query.order_by(ContactSubmission.created_at.desc()).all()
+    rows = (
+        query.order_by(ContactSubmission.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    _commit_internal_admin_audit_best_effort(
+        db,
+        request=request,
+        internal_admin=internal_admin,
+        action="contact.list_view",
+        target_tenant_id=None,
+        target_user_id=None,
+    )
     return [
         ContactSubmissionListItemResponse(
             id=row.id,
