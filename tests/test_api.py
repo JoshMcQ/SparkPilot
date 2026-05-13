@@ -137,6 +137,132 @@ def test_healthz_reports_database_and_aws_checks() -> None:
     assert payload["checks"]["aws"]["status"] in {"ok", "skipped"}
 
 
+def test_contact_request_public_endpoint_sends_email(monkeypatch) -> None:
+    from sparkpilot.invite_email import ContactEmailDelivery
+
+    monkeypatch.setenv("SPARKPILOT_CONTACT_EMAIL_RECIPIENT", "owner@example.invalid")
+    monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_TOKEN", "c" * 32)
+    get_settings.cache_clear()
+    captured: dict[str, object] = {}
+
+    def _fake_send_contact_request_email(**kwargs: object) -> ContactEmailDelivery:
+        captured.update(kwargs)
+        return ContactEmailDelivery(
+            provider="resend",
+            recipient_email=str(kwargs["recipient_email"]),
+            provider_message_id="email_contact",
+        )
+
+    monkeypatch.setattr(
+        "sparkpilot.api.send_contact_request_email",
+        _fake_send_contact_request_email,
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/v1/contact-requests",
+        json={
+            "name": "Alex Smith",
+            "email": " Alex@Company.Example ",
+            "company": " Acme Corp ",
+            "use_case": "EMR Serverless governance",
+            "message": "Need a pilot.",
+            "source_url": "https://sparkpilot.cloud/contact/",
+        },
+        headers={
+            "Authorization": "",
+            "X-SparkPilot-Contact-Token": "c" * 32,
+            "X-Request-Id": "contact-request-123",
+            "X-Skip-Test-Bootstrap": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "sent", "request_id": "contact-request-123"}
+    assert captured["recipient_email"] == "owner@example.invalid"
+    assert captured["email"] == "alex@company.example"
+    assert captured["name"] == "Alex Smith"
+    assert captured["company"] == "Acme Corp"
+    assert captured["idempotency_key"] == "contact:contact-request-123"
+
+
+def test_contact_request_honeypot_is_accepted_without_sending(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_TOKEN", "c" * 32)
+    get_settings.cache_clear()
+    called = False
+
+    def _fake_send_contact_request_email(**_kwargs: object) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(
+        "sparkpilot.api.send_contact_request_email",
+        _fake_send_contact_request_email,
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/v1/contact-requests",
+        json={
+            "name": "Bot",
+            "email": "bot@example.invalid",
+            "website": "https://spam.example",
+        },
+        headers={
+            "Authorization": "",
+            "X-SparkPilot-Contact-Token": "c" * 32,
+            "X-Skip-Test-Bootstrap": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+    assert called is False
+
+
+def test_contact_request_requires_valid_email() -> None:
+    get_settings.cache_clear()
+    client = TestClient(app)
+    response = client.post(
+        "/v1/contact-requests",
+        json={"name": "Alex Smith", "email": "not-an-email"},
+        headers={
+            "Authorization": "",
+            "X-SparkPilot-Contact-Token": "c" * 32,
+            "X-Skip-Test-Bootstrap": "true",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_contact_request_requires_nonblank_name() -> None:
+    get_settings.cache_clear()
+    client = TestClient(app)
+    response = client.post(
+        "/v1/contact-requests",
+        json={"name": "   ", "email": "alex@example.invalid"},
+        headers={
+            "Authorization": "",
+            "X-SparkPilot-Contact-Token": "c" * 32,
+            "X-Skip-Test-Bootstrap": "true",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_contact_request_requires_submit_token(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_TOKEN", "c" * 32)
+    get_settings.cache_clear()
+    client = TestClient(app)
+    response = client.post(
+        "/v1/contact-requests",
+        json={"name": "Alex Smith", "email": "alex@example.invalid"},
+        headers={"Authorization": "", "X-Skip-Test-Bootstrap": "true"},
+    )
+
+    assert response.status_code == 401
+
+
 def test_byoc_lite_discovery_returns_clusters_and_namespace(monkeypatch) -> None:
     client = TestClient(app)
 

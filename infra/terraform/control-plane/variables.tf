@@ -652,3 +652,23 @@ variable "ui_api_base_url" {
   description = "API base URL injected into UI container at runtime (SPARKPILOT_API env var). Defaults to empty, which uses the ALB URL resolved post-deploy."
   default     = ""
 }
+
+variable "contact_email_recipient" {
+  type        = string
+  description = "Contact/pilot request recipient injected into API tasks as SPARKPILOT_CONTACT_EMAIL_RECIPIENT. Empty falls back to invite reply-to/internal admins."
+  default     = ""
+  validation {
+    condition = (
+      trimspace(var.contact_email_recipient) == "" ||
+      can(regex("^[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+$", trimspace(var.contact_email_recipient))) ||
+      can(regex("^.+<[^<>@\\s]+@[^<>@\\s]+\\.[^<>@\\s]+>$", trimspace(var.contact_email_recipient)))
+    )
+    error_message = "contact_email_recipient must be empty, an email address, or a friendly-name email address."
+  }
+}
+
+variable "contact_submit_token_secret_name" {
+  type        = string
+  description = "Name of the deploy-script-managed Secrets Manager secret that stores SPARKPILOT_CONTACT_SUBMIT_TOKEN."
+  default     = ""
+}

@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";
 import { API_URL } from "@/lib/api-url";
 
-type FormState = "idle" | "submitting" | "success" | "error";
+type FormState = "idle" | "submitting" | "success" | "error" | "invalid";
+type ContactTokenResponse = {
+  formToken?: string;
+};
 
 const USE_CASES = [
   "Pilot evaluation",
@@ -22,15 +25,51 @@ const CONTACT_EMAIL = "hello@sparkpilot.cloud";
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", company: "", useCase: "", message: "" });
+  const [formToken, setFormToken] = useState("");
   const [state, setState] = useState<FormState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const contactStatus = params.get("contact");
+    if (contactStatus === "sent") {
+      setState("success");
+      return;
+    } else if (contactStatus === "invalid") {
+      setState("invalid");
+    } else if (contactStatus === "error") {
+      setState("error");
+    }
+
+    const controller = new AbortController();
+    async function loadFormToken() {
+      try {
+        const response = await fetch(CONTACT_ENDPOINT, {
+          cache: "no-store",
+          credentials: "omit",
+          signal: controller.signal,
+        });
+        const body = (await response.json()) as ContactTokenResponse;
+        if (!response.ok || typeof body.formToken !== "string" || !body.formToken) {
+          throw new Error("Contact form token request failed.");
+        }
+        setFormToken(body.formToken);
+      } catch (error) {
+        if ((error as Error).name === "AbortError") {
+          return;
+        }
+        setState((current) => (current === "idle" ? "error" : current));
+      }
+    }
+    void loadFormToken();
+    return () => controller.abort();
+  }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function handleSubmit() {
     setState("submitting");
     setErrorMessage(null);
     try {
@@ -195,7 +234,7 @@ export default function ContactPage() {
               <button
                 type="submit"
                 className="landing-btn landing-btn-primary contact-submit"
-                disabled={state === "submitting" || !form.name || !form.email}
+                disabled={state === "submitting" || !formToken || !form.name || !form.email}
               >
                 {state === "submitting" ? "Sending..." : "Get in touch"}
               </button>

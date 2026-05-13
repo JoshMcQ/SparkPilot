@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 from sparkpilot.aws_clients import parse_role_account_id_from_arn
 from sparkpilot.audit import write_audit_event
 from sparkpilot.config import (
+    MIN_CONTACT_SUBMIT_TOKEN_LENGTH,
     MIN_BOOTSTRAP_SECRET_LENGTH,
     get_settings,
     validate_runtime_settings,
@@ -70,6 +71,8 @@ from sparkpilot.schemas import (
     AuthCallbackResponse,
     AuthMeResponse,
     BootstrapStatusResponse,
+    ContactRequestCreate,
+    ContactRequestCreateResponse,
     CostShowbackResponse,
     DiagnosticItem,
     DiagnosticsResponse,
@@ -116,6 +119,7 @@ from sparkpilot.schemas import (
     UsageItem,
     UsageResponse,
 )
+from sparkpilot.invite_email import send_contact_request_email
 from sparkpilot.services import (
     add_team_environment_scope,
     apply_invite_identity_mapping,
@@ -168,6 +172,7 @@ _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 _FALSE_VALUES = {"0", "false", "no", "n", "off", ""}
 _INVITE_STATE_PREFIX = "sp_invite_v1"
 _INVITE_STATE_TTL_SECONDS = 10 * 60
+_CONTACT_SUBMIT_TOKEN_HEADER = "X-SparkPilot-Contact-Token"
 PoolSource = Literal["customer_pool", "internal_pool"]
 InternalAuditAction = Literal[
     "tenant.create",
@@ -311,6 +316,10 @@ def _validate_production_startup() -> None:
     )
 
     resend_api_key = _env_value("SPARKPILOT_RESEND_API_KEY", "RESEND_API_KEY")
+    contact_submit_token = _env_value(
+        "SPARKPILOT_CONTACT_SUBMIT_TOKEN",
+        "CONTACT_SUBMIT_TOKEN",
+    )
     invite_email_from = _env_value(
         "SPARKPILOT_INVITE_EMAIL_FROM",
         "INVITE_EMAIL_FROM",
@@ -329,6 +338,11 @@ def _validate_production_startup() -> None:
         "resend_api_key_present",
         bool(resend_api_key),
         "SPARKPILOT_RESEND_API_KEY must be set for invite email delivery.",
+    )
+    _record(
+        "contact_submit_token_min_length",
+        len(contact_submit_token) >= MIN_CONTACT_SUBMIT_TOKEN_LENGTH,
+        "SPARKPILOT_CONTACT_SUBMIT_TOKEN must protect contact request delivery.",
     )
     _record(
         "invite_email_from_present",
@@ -445,7 +459,10 @@ def _custom_openapi() -> dict[str, Any]:
             }:
                 continue
             if isinstance(operation, dict):
-                operation.setdefault("security", [{"bearerAuth": []}])
+                if path == "/v1/contact-requests":
+                    operation.setdefault("security", [{"contactSubmitToken": []}])
+                else:
+                    operation.setdefault("security", [{"bearerAuth": []}])
     app.openapi_schema = schema
     return app.openapi_schema
 
@@ -484,6 +501,23 @@ def _actor_and_ip(request: Request) -> tuple[str, str | None]:
     actor = _require_api_auth(request)
     source_ip = request.client.host if request.client else None
     return actor, source_ip
+
+
+def _require_contact_submit_token(request: Request) -> None:
+    expected = get_settings().contact_submit_token.strip()
+    if not expected:
+        logger.error("Contact submit token is not configured.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Contact request delivery is not configured.",
+        )
+
+    supplied = request.headers.get(_CONTACT_SUBMIT_TOKEN_HEADER, "").strip()
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Contact request submission is not authorized.",
+        )
 
 
 @lru_cache
@@ -1169,6 +1203,50 @@ def healthcheck(
             "aws": aws_status,
         },
     }
+
+
+@app.post("/v1/contact-requests", response_model=ContactRequestCreateResponse)
+def post_contact_request(
+    req: ContactRequestCreate,
+    request: Request,
+) -> ContactRequestCreateResponse:
+    _require_contact_submit_token(request)
+    request_id = _request_id(request)
+    submitted_at = datetime.now(UTC)
+    if (req.website or "").strip():
+        logger.info("Contact request accepted via honeypot request_id=%s", request_id)
+        return ContactRequestCreateResponse(status="accepted", request_id=request_id)
+
+    runtime_settings = get_settings()
+    recipient_email = runtime_settings.contact_email_recipient_effective
+    if not recipient_email:
+        logger.error("Contact request email recipient is not configured.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Contact request delivery is not configured.",
+        )
+
+    source_url = req.source_url
+    if not source_url:
+        source_url = str(request.headers.get("Referer", "")).strip() or None
+    send_contact_request_email(
+        recipient_email=recipient_email,
+        name=req.name.strip(),
+        email=req.email.strip().lower(),
+        company=(req.company or "").strip() or None,
+        use_case=(req.use_case or "").strip() or None,
+        message=(req.message or "").strip() or None,
+        source_url=source_url,
+        submitted_at=submitted_at,
+        request_id=request_id,
+        idempotency_key=f"contact:{request_id}",
+    )
+    logger.info(
+        "Contact request delivered request_id=%s recipient=%s",
+        request_id,
+        recipient_email,
+    )
+    return ContactRequestCreateResponse(status="sent", request_id=request_id)
 
 
 @app.post(

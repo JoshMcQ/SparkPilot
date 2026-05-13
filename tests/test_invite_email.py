@@ -8,6 +8,7 @@ from sparkpilot.invite_email import (
     RESEND_EMAILS_URL,
     InviteEmailConfigurationError,
     InviteEmailDeliveryError,
+    send_contact_request_email,
     send_invite_email,
 )
 
@@ -179,6 +180,42 @@ def test_send_invite_email_retries_transient_provider_errors(
     _clear_settings_cache()
 
 
+def test_send_invite_email_retries_rate_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
+    _clear_settings_cache()
+    attempts = 0
+
+    def _fake_post(*_args, **_kwargs) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, json={"message": "rate limited"})
+        return httpx.Response(200, json={"id": "email_after_429"})
+
+    monkeypatch.setattr("sparkpilot.invite_email.httpx.post", _fake_post)
+    monkeypatch.setattr("sparkpilot.invite_email.time.sleep", lambda _seconds: None)
+
+    delivery = send_invite_email(
+        recipient_email="admin@example.invalid",
+        tenant_name="Acme Corp",
+        invite_url="https://app.example.invalid/v1/invite/accept?token=secret-token",
+        tenant_id="tenant-123",
+        user_id="user-123",
+        ttl_hours=24,
+        idempotency_key="invite:token-row-123",
+    )
+
+    assert delivery.provider_message_id == "email_after_429"
+    assert attempts == 2
+    _clear_settings_cache()
+
+
 def test_send_invite_email_retries_transport_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -212,6 +249,71 @@ def test_send_invite_email_retries_transport_errors(
 
     assert delivery.provider_message_id == "email_after_retry"
     assert attempts == 2
+    _clear_settings_cache()
+
+
+def test_send_contact_request_email_posts_to_resend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPARKPILOT_RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv(
+        "SPARKPILOT_INVITE_EMAIL_FROM",
+        "SparkPilot <invites@example.invalid>",
+    )
+    _clear_settings_cache()
+    captured: dict[str, object] = {}
+
+    def _fake_post(
+        url: str,
+        *,
+        json: dict[str, object],
+        headers: dict[str, str],
+        timeout: float,
+    ) -> httpx.Response:
+        captured.update(
+            {
+                "url": url,
+                "json": json,
+                "headers": headers,
+                "timeout": timeout,
+            }
+        )
+        return httpx.Response(200, json={"id": "email_contact"})
+
+    monkeypatch.setattr("sparkpilot.invite_email.httpx.post", _fake_post)
+
+    from datetime import UTC, datetime
+
+    delivery = send_contact_request_email(
+        recipient_email="owner@example.invalid",
+        name="Alex Smith",
+        email="alex@company.example",
+        company="Acme Corp",
+        use_case="EMR Serverless governance",
+        message="Need a pilot.",
+        source_url="https://sparkpilot.cloud/contact/",
+        submitted_at=datetime(2026, 5, 7, 12, 0, tzinfo=UTC),
+        request_id="request-123",
+        idempotency_key="contact:request-123",
+    )
+
+    assert delivery.provider == "resend"
+    assert delivery.recipient_email == "owner@example.invalid"
+    assert delivery.provider_message_id == "email_contact"
+    assert captured["url"] == RESEND_EMAILS_URL
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Authorization"] == "Bearer re_test_key"
+    assert headers["Idempotency-Key"] == "contact:request-123"
+    payload = captured["json"]
+    assert isinstance(payload, dict)
+    assert payload["from"] == "SparkPilot <invites@example.invalid>"
+    assert payload["to"] == ["owner@example.invalid"]
+    assert payload["reply_to"] == "alex@company.example"
+    assert payload["subject"] == "SparkPilot request from Alex Smith at Acme Corp"
+    assert "Need a pilot." in str(payload["text"])
+    assert "request-123" in str(payload["html"])
+    assert "contact_request" in str(payload["tags"])
     _clear_settings_cache()
 
 
