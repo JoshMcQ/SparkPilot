@@ -1,6 +1,6 @@
 version: 2
 ignore-known-secrets: true
-# False positive: COGNITO_PASSWORD_FEDERATION is a Cognito federation type name,
-# not a credential. Value "cognito_password" is the AWS-defined identifier string.
-ignore-paths:
-  - src/sparkpilot/schemas.py
+secret:
+  ignored_matches:
+    - name: "Cognito federation false positive"
+      match: 58ac347708f82fe72f79a837d77c1a75bc4f831e17df2c3408b2cddf15e0f122
