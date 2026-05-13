@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   type ContactSubmission,
@@ -39,17 +39,20 @@ export default function InternalContactPage() {
   const [lastResult, setLastResult] = useState<ContactSubmissionApproveResponse | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectError, setRejectError] = useState<string | null>(null);
+  const loadSeq = useRef(0);
 
   const load = useCallback(async (filter: StatusFilter) => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
     try {
       const data = await fetchContactSubmissions(filter === "all" ? undefined : filter);
-      setRows(data);
+      if (seq === loadSeq.current) setRows(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load submissions.");
+      if (seq === loadSeq.current)
+        setError(err instanceof Error ? err.message : "Failed to load submissions.");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, []);
 
@@ -67,11 +70,7 @@ export default function InternalContactPage() {
       const result = await approveContactSubmission(approving.submission.id, name);
       setLastResult(result);
       setApproving(null);
-      setRows((prev) =>
-        prev.map((r) =>
-          r.id === approving.submission.id ? { ...r, status: "approved" } : r,
-        ),
-      );
+      await load(statusFilter);
     } catch (err) {
       setApproving((a) =>
         a && { ...a, working: false, error: err instanceof Error ? err.message : "Approval failed." },
@@ -85,7 +84,7 @@ export default function InternalContactPage() {
     setRejectError(null);
     try {
       await rejectContactSubmission(id);
-      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: "rejected" } : r)));
+      await load(statusFilter);
     } catch (err) {
       setRejectError(err instanceof Error ? err.message : "Rejection failed.");
     } finally {

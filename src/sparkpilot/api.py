@@ -3180,9 +3180,9 @@ def post_public_contact(
     submission = ContactSubmission(
         name=req.name.strip(),
         email=req.email.strip().lower(),
-        company=req.company.strip() if req.company else None,
-        use_case=req.use_case.strip() if req.use_case else None,
-        message=req.message.strip() if req.message else None,
+        company=(req.company.strip() or None) if req.company else None,
+        use_case=(req.use_case.strip() or None) if req.use_case else None,
+        message=(req.message.strip() or None) if req.message else None,
         status="pending",
         source_ip=source_ip,
     )
@@ -3275,13 +3275,24 @@ def post_internal_contact_approve(
             invite_accept_base_url=_invite_accept_base_url(request),
             ttl_hours=get_settings().magic_link_ttl_hours,
         )
-    except Exception:
-        # Revert so the admin can retry; tenant was not created.
-        submission.status = "pending"
-        submission.approved_by = None
-        submission.approved_at = None
-        db.commit()
-        raise HTTPException(status_code=502, detail="Tenant creation failed. Submission reverted to pending.")
+    except Exception as err:
+        db.rollback()
+        # Re-fetch after rollback; the earlier commit that claimed "approved" is durable.
+        submission = (
+            db.query(ContactSubmission)
+            .filter(ContactSubmission.id == submission_id)
+            .with_for_update()
+            .first()
+        )
+        if submission is not None:
+            submission.status = "pending"
+            submission.approved_by = None
+            submission.approved_at = None
+            db.commit()
+        raise HTTPException(
+            status_code=502,
+            detail="Tenant creation failed. Submission reverted to pending.",
+        ) from err
 
     submission.tenant_id = result.tenant.id
     db.commit()
