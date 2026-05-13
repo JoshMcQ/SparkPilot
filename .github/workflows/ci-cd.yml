@@ -263,7 +263,7 @@ jobs:
           TF_VAR_worker_desired_count: ${{ vars.DEV_WORKER_DESIRED_COUNT || '0' }}
           TF_VAR_ui_desired_count: ${{ vars.DEV_UI_DESIRED_COUNT || '0' }}
           UI_APP_BASE_URL: ${{ vars.DEV_UI_APP_BASE_URL || '' }}
-          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS || '' }}
+          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS }}
           TF_VAR_db_instance_class: ${{ vars.DEV_DB_INSTANCE_CLASS || 'db.t4g.micro' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.DEV_EMR_EXECUTION_ROLE_ARN }}
           COGNITO_HOSTED_UI_URL: ${{ vars.DEV_COGNITO_HOSTED_UI_URL || secrets.DEV_COGNITO_HOSTED_UI_URL || '' }}
@@ -419,7 +419,7 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.DEV_INVITE_EMAIL_FROM || secrets.DEV_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.DEV_INVITE_EMAIL_REPLY_TO || secrets.DEV_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.DEV_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
-          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS || '' }}
+          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (dev)
@@ -484,7 +484,7 @@ jobs:
           TF_VAR_worker_desired_count: ${{ vars.STAGING_WORKER_DESIRED_COUNT || '0' }}
           TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '0' }}
           UI_APP_BASE_URL: ${{ vars.STAGING_UI_APP_BASE_URL || '' }}
-          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS || '' }}
+          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS }}
           TF_VAR_db_instance_class: ${{ vars.STAGING_DB_INSTANCE_CLASS || 'db.t4g.small' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.STAGING_EMR_EXECUTION_ROLE_ARN }}
           COGNITO_HOSTED_UI_URL: ${{ vars.STAGING_COGNITO_HOSTED_UI_URL || secrets.STAGING_COGNITO_HOSTED_UI_URL || '' }}
@@ -642,7 +642,7 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.STAGING_INVITE_EMAIL_FROM || secrets.STAGING_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.STAGING_INVITE_EMAIL_REPLY_TO || secrets.STAGING_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.STAGING_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
-          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS || '' }}
+          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (staging)
@@ -707,7 +707,7 @@ jobs:
           TF_VAR_worker_desired_count: ${{ vars.PROD_WORKER_DESIRED_COUNT || '0' }}
           TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '0' }}
           UI_APP_BASE_URL: ${{ vars.PROD_UI_APP_BASE_URL || '' }}
-          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS || '' }}
+          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS }}
           TF_VAR_db_instance_class: ${{ vars.PROD_DB_INSTANCE_CLASS || 'db.t4g.medium' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.PROD_EMR_EXECUTION_ROLE_ARN }}
           COGNITO_HOSTED_UI_URL: ${{ vars.PROD_COGNITO_HOSTED_UI_URL || secrets.PROD_COGNITO_HOSTED_UI_URL || '' }}
@@ -865,7 +865,7 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.PROD_INVITE_EMAIL_FROM || secrets.PROD_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.PROD_INVITE_EMAIL_REPLY_TO || secrets.PROD_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.PROD_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
-          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS || '' }}
+          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (prod)

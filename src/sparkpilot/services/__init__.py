@@ -69,6 +69,7 @@ from sparkpilot.services.internal_admin import (  # noqa: F401
     hash_magic_link_token,
     list_internal_tenant_summaries,
     regenerate_user_invite,
+    send_admin_invite_for_provisioned_tenant,
 )
 
 # --- diagnostics ---

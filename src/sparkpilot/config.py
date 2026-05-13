@@ -168,6 +168,9 @@ class Settings(BaseSettings):
             "CONTACT_SUBMIT_TOKEN",
         ),
     )
+    contact_submit_duplicate_window_seconds: int = Field(default=1800, ge=1, le=86400)
+    contact_submit_rate_limit_max: int = Field(default=5, ge=1, le=1000)
+    contact_submit_rate_limit_window_seconds: int = Field(default=300, ge=1, le=86400)
     invite_email_timeout_seconds: float = 10.0
     magic_link_ttl_hours: int = 24
     aws_region: str = "us-east-1"

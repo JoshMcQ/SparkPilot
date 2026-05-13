@@ -7,9 +7,6 @@ import { LandingFooter } from "@/components/landing-footer";
 import { API_URL } from "@/lib/api-url";
 
 type FormState = "idle" | "submitting" | "success" | "error" | "invalid";
-type ContactTokenResponse = {
-  formToken?: string;
-};
 
 const USE_CASES = [
   "Pilot evaluation",
@@ -25,7 +22,6 @@ const CONTACT_EMAIL = "hello@sparkpilot.cloud";
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", company: "", useCase: "", message: "" });
-  const [formToken, setFormToken] = useState("");
   const [state, setState] = useState<FormState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -40,36 +36,13 @@ export default function ContactPage() {
     } else if (contactStatus === "error") {
       setState("error");
     }
-
-    const controller = new AbortController();
-    async function loadFormToken() {
-      try {
-        const response = await fetch(CONTACT_ENDPOINT, {
-          cache: "no-store",
-          credentials: "omit",
-          signal: controller.signal,
-        });
-        const body = (await response.json()) as ContactTokenResponse;
-        if (!response.ok || typeof body.formToken !== "string" || !body.formToken) {
-          throw new Error("Contact form token request failed.");
-        }
-        setFormToken(body.formToken);
-      } catch (error) {
-        if ((error as Error).name === "AbortError") {
-          return;
-        }
-        setState((current) => (current === "idle" ? "error" : current));
-      }
-    }
-    void loadFormToken();
-    return () => controller.abort();
   }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setState("submitting");
     setErrorMessage(null);
@@ -235,7 +208,7 @@ export default function ContactPage() {
               <button
                 type="submit"
                 className="landing-btn landing-btn-primary contact-submit"
-                disabled={state === "submitting" || !formToken || !form.name || !form.email}
+                disabled={state === "submitting" || !form.name || !form.email}
               >
                 {state === "submitting" ? "Sending..." : "Get in touch"}
               </button>

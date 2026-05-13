@@ -16,6 +16,7 @@ from sparkpilot.db import Base, SessionLocal, engine
 from sparkpilot.invite_email import InviteEmailDelivery
 from sparkpilot.models import (
     AuditEvent,
+    ContactSubmission,
     MagicLinkLog,
     MagicLinkToken,
     Tenant,
@@ -354,6 +355,123 @@ def test_internal_tenant_create_writes_internal_audit_event(
                 "provider_message_id": "email-1",
             }
             assert len(sent_invites) == 1
+
+
+def test_public_contact_submission_deduplicates_same_email_and_ip() -> None:
+    _reset_db()
+
+    with _BaseTestClient(app) as client:
+        payload = {
+            "name": "Lead One",
+            "email": "Lead@One.Example",
+            "company": "   ",
+            "use_case": "   ",
+            "message": "   ",
+        }
+        first = client.post(
+            "/v1/public/contact",
+            json=payload,
+            headers={"X-Skip-Test-Bootstrap": "true"},
+        )
+        assert first.status_code == 201, first.text
+
+        duplicate = client.post(
+            "/v1/public/contact",
+            json=payload,
+            headers={"X-Skip-Test-Bootstrap": "true"},
+        )
+        assert duplicate.status_code == 429
+
+    with SessionLocal() as db:
+        rows = db.execute(select(ContactSubmission)).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].email == "lead@one.example"
+        assert rows[0].company is None
+        assert rows[0].use_case is None
+        assert rows[0].message is None
+
+
+def test_public_contact_submission_rate_limits_per_source_ip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_RATE_LIMIT_MAX", "2")
+    monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_RATE_LIMIT_WINDOW_SECONDS", "300")
+    get_settings.cache_clear()
+
+    with _BaseTestClient(app) as client:
+        for index in range(2):
+            response = client.post(
+                "/v1/public/contact",
+                json={
+                    "name": f"Lead {index}",
+                    "email": f"lead{index}@example.invalid",
+                },
+                headers={"X-Skip-Test-Bootstrap": "true"},
+            )
+            assert response.status_code == 201, response.text
+
+        throttled = client.post(
+            "/v1/public/contact",
+            json={"name": "Lead Three", "email": "lead3@example.invalid"},
+            headers={"X-Skip-Test-Bootstrap": "true"},
+        )
+        assert throttled.status_code == 429
+
+
+def test_contact_submission_approval_commits_submission_and_sends_invite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_db()
+    sent_invites = _set_internal_admin_env(monkeypatch)
+    internal_headers = _auth_headers("ops-subject", "admin@example.invalid")
+
+    with _BaseTestClient(app) as client:
+        created = client.post(
+            "/v1/public/contact",
+            json={
+                "name": "Lead Buyer",
+                "email": "buyer@example.invalid",
+                "company": "Buyer Co",
+            },
+            headers={"X-Skip-Test-Bootstrap": "true"},
+        )
+        assert created.status_code == 201, created.text
+        submission_id = created.json()["id"]
+
+        approved = client.post(
+            f"/v1/internal/contact/{submission_id}/approve",
+            json={"tenant_name": "Buyer Tenant"},
+            headers=internal_headers,
+        )
+        assert approved.status_code == 200, approved.text
+        payload = approved.json()
+
+    assert len(sent_invites) == 1
+    assert sent_invites[0]["recipient_email"] == "buyer@example.invalid"
+
+    with SessionLocal() as db:
+        submission = db.get(ContactSubmission, submission_id)
+        assert submission is not None
+        assert submission.status == "approved"
+        assert submission.tenant_id == payload["tenant_id"]
+        assert submission.approved_by == "admin@example.invalid"
+        assert submission.approved_at is not None
+
+        approve_event = (
+            db.execute(
+                select(AuditEvent)
+                .where(
+                    AuditEvent.action == "contact.approve",
+                    AuditEvent.tenant_id == payload["tenant_id"],
+                )
+                .order_by(AuditEvent.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+        assert approve_event is not None
+        assert approve_event.details_json["submission_id"] == submission_id
 
 
 def test_internal_tenant_create_persists_invite_and_audits_email_failure(
