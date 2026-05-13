@@ -135,7 +135,7 @@ jobs:
         run: npm run build
 
       - name: Install Playwright browsers
-        run: npx playwright install chromium firefox webkit --with-deps
+        run: npx playwright install chromium firefox webkit
 
       - name: Run full UI smoke (Playwright)
         run: npm run test:e2e:full-smoke
