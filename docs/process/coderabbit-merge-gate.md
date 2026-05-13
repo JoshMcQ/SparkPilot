@@ -56,7 +56,7 @@ If a finding is invalid:
 
 ## What Went Wrong In PR #113
 
-PR #113 was merged about 4.5 minutes after CodeRabbit posted `COMMENTED` with two actionable findings: route table scope and missing SQS/STS endpoints. Neither finding was addressed. The merge caused a production failure that required hotfix PR #114.
+PR #113 was merged about 4.5 minutes after CodeRabbit posted `COMMENTED` with two actionable findings: route table scope and missing SQS/STS endpoints. Neither finding was addressed. The merge broke `deploy-dev` and required hotfix PR #114.
 
 Full audit: [docs/process/pr-audit-113-114.md](./pr-audit-113-114.md)
 

@@ -59,6 +59,8 @@ PR #114 was opened to fix the production failure caused by PR #113. The root cau
 | Review state | No formal review record; GitHub API returned no reviews for PR #114 |
 | Reviewed commit | `8d55e5d063b4629bb6b04381c27bb3c9f302ad6b`, the merge commit; branch head was not separately recorded |
 | Actionable comments | None recorded; PR #114 was a single-line fallback fix with no bot comment thread |
+| Was CodeRabbit successful on latest commit | No — no formal CodeRabbit review record; bot was not triggered on this PR |
+| Submitted at | N/A (no review events) |
 | Verification method | `gh api repos/JoshMcQ/SparkPilot/pulls/114/reviews` returned an empty array; `gh api repos/JoshMcQ/SparkPilot/issues/114/comments` returned an empty array |
 
 PR #114 passed CI on its branch and was merged after the deploy-dev failure was confirmed fixed. Because the PR contained a single targeted fix and no CodeRabbit actionable findings were recorded, no merge-gate violation occurred on #114 itself. The process failure was on #113.
@@ -75,8 +77,8 @@ Run `23774480703` was triggered after merging #114 and failed at `deploy-prod` b
 | --- | --- |
 | Merge before CodeRabbit complete | PR #113 merged 4.5 minutes after a `COMMENTED` review. The bot had not approved. |
 | Unresolved actionable findings | Two comments, route table scope and SQS/STS endpoints, were not addressed. |
-| Resulting hotfix | PR #114, route table fallback, was required to restore deploy-dev. |
-| Unaddressed carry-forward | SQS/STS endpoints from #113 finding #2 are now implemented in `infra/terraform/control-plane/main.tf` as `aws_vpc_endpoint.sqs` and `aws_vpc_endpoint.sts`. The finding is resolved. |
+| Resulting hotfix | PR #114, route table fallback, was required to restore deploy-dev. Fixed in commit `8d543156324400a84b98779bb7e27e47f2bd30c9` (2026-03-30). |
+| Unaddressed carry-forward | SQS/STS endpoints from #113 finding #2 are now implemented in `infra/terraform/control-plane/main.tf` as `aws_vpc_endpoint.sqs` and `aws_vpc_endpoint.sts`. Fixed in commit `2c65bddbd246a8f2a48d0e459802517c3c3d46e4` (2026-03-30, PR #113 follow-up). |
 
 ---
 
