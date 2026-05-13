@@ -559,11 +559,7 @@ resource "aws_vpc_security_group_ingress_rule" "aws_api_endpoints_https_from_ecs
 }
 
 resource "aws_vpc_security_group_ingress_rule" "shared_aws_api_endpoints_https_from_ecs" {
-  for_each = var.manage_vpc_endpoints ? toset([]) : toset([
-    for security_group_id in local.shared_interface_endpoint_security_group_ids :
-    security_group_id
-    if security_group_id != aws_security_group.ecs_tasks.id
-  ])
+  for_each = var.manage_vpc_endpoints ? toset([]) : toset(local.shared_interface_endpoint_security_group_ids)
 
   security_group_id            = each.value
   referenced_security_group_id = aws_security_group.ecs_tasks.id
