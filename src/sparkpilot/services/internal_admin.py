@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import logging
 import secrets
+from typing import Literal, overload
 
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.orm import Session
@@ -35,6 +36,17 @@ class InternalTenantProvisionResult:
     tenant: Tenant
     user: User
     invite_email: InviteEmailDelivery
+
+
+@dataclass(frozen=True)
+class InternalTenantProvisionDraft:
+    tenant: Tenant
+    user: User
+    invite_url: str
+    token_id: str
+    ttl_hours: int
+    created_by: str
+    source_ip: str | None
 
 
 @dataclass(frozen=True)
@@ -250,6 +262,40 @@ def _invalidate_unconsumed_user_invites(
     )
 
 
+def send_admin_invite_for_provisioned_tenant(
+    db: Session,
+    draft: InternalTenantProvisionDraft,
+) -> InternalTenantProvisionResult:
+    db.refresh(draft.tenant)
+    db.refresh(draft.user)
+    _emit_tenant_lifecycle_event_safely(
+        event_type="tenant.created",
+        tenant=draft.tenant,
+        user=draft.user,
+        created_by=draft.created_by,
+    )
+    invite_email = _send_invite_email_and_audit(
+        db,
+        tenant=draft.tenant,
+        user=draft.user,
+        created_by=draft.created_by,
+        source_ip=draft.source_ip,
+        invite_url=draft.invite_url,
+        ttl_hours=draft.ttl_hours,
+        idempotency_key=f"invite:{draft.token_id}",
+        failure_detail=(
+            "Tenant was created, but invite email delivery failed. "
+            "Fix invite email configuration and regenerate the invite from tenant detail."
+        ),
+    )
+    return InternalTenantProvisionResult(
+        tenant=draft.tenant,
+        user=draft.user,
+        invite_email=invite_email,
+    )
+
+
+@overload
 def create_tenant_with_admin_invite(
     db: Session,
     *,
@@ -258,7 +304,33 @@ def create_tenant_with_admin_invite(
     source_ip: str | None,
     invite_accept_base_url: str,
     ttl_hours: int,
-) -> InternalTenantProvisionResult:
+    commit: Literal[True] = True,
+) -> InternalTenantProvisionResult: ...
+
+
+@overload
+def create_tenant_with_admin_invite(
+    db: Session,
+    *,
+    req: InternalTenantCreateRequest,
+    created_by: str,
+    source_ip: str | None,
+    invite_accept_base_url: str,
+    ttl_hours: int,
+    commit: Literal[False],
+) -> InternalTenantProvisionDraft: ...
+
+
+def create_tenant_with_admin_invite(
+    db: Session,
+    *,
+    req: InternalTenantCreateRequest,
+    created_by: str,
+    source_ip: str | None,
+    invite_accept_base_url: str,
+    ttl_hours: int,
+    commit: bool = True,
+) -> InternalTenantProvisionResult | InternalTenantProvisionDraft:
     tenant = create_tenant(
         db,
         TenantCreateRequest(
@@ -321,34 +393,20 @@ def create_tenant_with_admin_invite(
             "invite_expires_at": expires_at.isoformat(),
         },
     )
-    db.commit()
-    db.refresh(tenant)
-    db.refresh(user)
-    _emit_tenant_lifecycle_event_safely(
-        event_type="tenant.created",
+    draft = InternalTenantProvisionDraft(
         tenant=tenant,
         user=user,
-        created_by=created_by,
-    )
-    invite_email = _send_invite_email_and_audit(
-        db,
-        tenant=tenant,
-        user=user,
+        invite_url=magic_link_url,
+        token_id=token_id,
+        ttl_hours=ttl_hours,
         created_by=created_by,
         source_ip=source_ip,
-        invite_url=magic_link_url,
-        ttl_hours=ttl_hours,
-        idempotency_key=f"invite:{token_id}",
-        failure_detail=(
-            "Tenant was created, but invite email delivery failed. "
-            "Fix invite email configuration and regenerate the invite from tenant detail."
-        ),
     )
-    return InternalTenantProvisionResult(
-        tenant=tenant,
-        user=user,
-        invite_email=invite_email,
-    )
+    if not commit:
+        db.flush()
+        return draft
+    db.commit()
+    return send_admin_invite_for_provisioned_tenant(db, draft)
 
 
 def regenerate_user_invite(

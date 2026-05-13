@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# ECS scale-down is safe with SPARKPILOT_ENVIRONMENT=prod when SCALE_ECS=true and STOP_RDS=false:
+# avoids task/Fargate hours without stopping production RDS from CI (.github/workflows/ci-cd.yml).
+#
 set -euo pipefail
 
 normalize_bool() {

@@ -209,10 +209,6 @@ locals {
       name      = "SPARKPILOT_BOOTSTRAP_SECRET"
       valueFrom = aws_secretsmanager_secret.bootstrap.arn
     },
-    {
-      name      = "SPARKPILOT_CONTACT_SUBMIT_TOKEN"
-      valueFrom = data.aws_secretsmanager_secret.contact_submit_token.arn
-    },
   ]
   # Dev skips Resend injection so ECS does not bind an empty/unseeded Secrets Manager reference.
   invite_email_runtime_secrets = (

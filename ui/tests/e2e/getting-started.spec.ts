@@ -1,22 +1,19 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Getting started journey", () => {
-  test("shows clear signup-to-first-run path", async ({ page }) => {
+  test("redirects UI /getting-started to marketing pilot guide", async ({ page }) => {
     await page.goto("/getting-started");
 
+    await expect(page).toHaveURL(/https:\/\/(www\.)?sparkpilot\.cloud\/getting-started\/?/);
+
     await expect(
-      page.getByRole("heading", { name: /clear path from signup to first successful run/i })
+      page.getByRole("heading", { name: /How to launch a SparkPilot pilot without confusion/i }),
     ).toBeVisible();
 
-    await expect(page.getByText("Step 1")).toBeVisible();
-    await expect(page.getByText("Step 2")).toBeVisible();
-    await expect(page.getByText("Step 3")).toBeVisible();
-    await expect(page.getByText("Step 4")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Recommended pilot sequence/i })).toBeVisible();
 
-    await expect(page.getByRole("link", { name: /start guided setup/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /request access/i }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /continue to login/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /continue to onboarding/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /open runs/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Request pilot/i }).first()).toBeVisible();
+
+    await expect(page.getByRole("link", { name: /Existing customer sign in/i }).first()).toBeVisible();
   });
 });

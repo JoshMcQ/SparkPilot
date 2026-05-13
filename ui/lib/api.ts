@@ -1110,3 +1110,75 @@ export async function fetchRunDiagnostics(runId: string): Promise<DiagnosticsRes
   const body = await response.json();
   return _asObject(body, "Run diagnostics fetch") as DiagnosticsResponse;
 }
+
+// ---------------------------------------------------------------------------
+// Contact submissions (public interest form → admin approval flow)
+// ---------------------------------------------------------------------------
+
+export type ContactSubmission = {
+  id: string;
+  name: string;
+  email: string;
+  company: string | null;
+  use_case: string | null;
+  message: string | null;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  tenant_id: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+};
+
+export type ContactSubmissionApproveResponse = {
+  submission_id: string;
+  tenant_id: string;
+  user_id: string;
+  invite_email_status: "sent" | "failed";
+  invite_email_provider_message_id: string | null;
+  invite_email_failure_detail: string | null;
+};
+
+export async function fetchContactSubmissions(
+  statusFilter?: "pending" | "approved" | "rejected",
+): Promise<ContactSubmission[]> {
+  const qs = new URLSearchParams();
+  if (statusFilter) qs.set("status_filter", statusFilter);
+  const url = `${API_PREFIX}/v1/internal/contact${qs.size ? `?${qs}` : ""}`;
+  const response = await fetch(url, { cache: "no-store", headers: _headers(false) });
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Failed to load contact submissions"));
+  }
+  return _asObjectArray(await response.json(), "Contact submissions fetch") as unknown as ContactSubmission[];
+}
+
+export async function approveContactSubmission(
+  submissionId: string,
+  tenantName: string,
+): Promise<ContactSubmissionApproveResponse> {
+  const response = await fetch(
+    `${API_PREFIX}/v1/internal/contact/${encodeURIComponent(submissionId)}/approve`,
+    {
+      method: "POST",
+      headers: _headers(true),
+      body: JSON.stringify({ tenant_name: tenantName }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Approval failed"));
+  }
+  const payload = await response.json();
+  return _asObject(payload, "Contact submission approve") as unknown as ContactSubmissionApproveResponse;
+}
+
+export async function rejectContactSubmission(submissionId: string): Promise<void> {
+  const response = await fetch(
+    `${API_PREFIX}/v1/internal/contact/${encodeURIComponent(submissionId)}/reject`,
+    {
+      method: "POST",
+      headers: _headers(false),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await _extractDetail(response, "Rejection failed"));
+  }
+}

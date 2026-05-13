@@ -152,7 +152,7 @@ if [[ "${_env_lower}" != "dev" && "${_env_lower}" != "development" && "${_env_lo
     exit 1
   fi
   if [[ -z "${app_base_url}" ]]; then
-    echo "::error::APP_BASE_URL must be set for non-dev invite login redirects." >&2
+    echo "::error::APP_BASE_URL or UI_APP_BASE_URL must be set for non-dev invite login redirects." >&2
     exit 1
   fi
   if [[ -z "${invite_email_from}" ]]; then
@@ -251,8 +251,6 @@ jq -n \
   --arg invite_email_from "${invite_email_from}" \
   --arg invite_email_reply_to "${invite_email_reply_to}" \
   --argjson invite_email_timeout_seconds "${invite_email_timeout_seconds}" \
-  --arg contact_email_recipient "${contact_email_recipient}" \
-  --arg contact_submit_token_secret_name "${contact_submit_token_secret_name}" \
   --arg internal_admins "${internal_admins}" \
   '{
     environment: $environment,
@@ -298,8 +296,6 @@ jq -n \
     invite_email_from: $invite_email_from,
     invite_email_reply_to: $invite_email_reply_to,
     invite_email_timeout_seconds: $invite_email_timeout_seconds,
-    contact_email_recipient: $contact_email_recipient,
-    contact_submit_token_secret_name: $contact_submit_token_secret_name,
     internal_admins: $internal_admins
   }' > "${tfvars_file}"
 

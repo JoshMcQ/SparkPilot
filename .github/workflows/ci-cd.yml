@@ -97,6 +97,58 @@ jobs:
         shell: bash
         run: bash scripts/terraform/validate_full_byoc.sh
 
+  # Prod-like UI checks: guarded routes + cookie session, onboarding + themes across engines,
+  # responsive + marketing + runs JSON toggle (mocked APIs; no live AWS Cognito spend).
+  ui-deep-smoke:
+    needs: [test, ui-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI dependencies
+        run: npm ci
+
+      - name: Build UI (standalone for enforced-auth smoke)
+        env:
+          NEXT_PUBLIC_OIDC_ISSUER: https://auth.example.com
+          NEXT_PUBLIC_OIDC_CLIENT_ID: sparkpilot-ui
+          NEXT_PUBLIC_OIDC_REDIRECT_URI: https://app.example.com/auth/callback
+          NEXT_PUBLIC_OIDC_AUDIENCE: sparkpilot-api
+          NEXT_PUBLIC_INTERNAL_OIDC_ISSUER: https://internal-auth.example.com
+          NEXT_PUBLIC_INTERNAL_OIDC_CLIENT_ID: sparkpilot-internal-ui
+          NEXT_PUBLIC_INTERNAL_OIDC_REDIRECT_URI: https://app.example.com/auth/callback
+          NEXT_PUBLIC_INTERNAL_OIDC_AUDIENCE: sparkpilot-internal-ui
+          NEXT_PUBLIC_MARKETING_SITE_URL: https://sparkpilot.cloud
+          NEXT_PUBLIC_ENABLE_MANUAL_TOKEN_MODE: "false"
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium firefox
+
+      - name: Run CI UI smoke (Playwright)
+        run: npm run test:e2e:ci-smoke
+
+      - name: Upload Playwright HTML report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-deep-smoke-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ui/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
   e2e-local-smoke:
     needs: [test, ui-build]
     runs-on: ubuntu-latest
@@ -154,7 +206,7 @@ jobs:
           if-no-files-found: ignore
 
   security-scan:
-    needs: [test, ui-build, terraform-validate, e2e-local-smoke]
+    needs: [test, ui-build, terraform-validate, e2e-local-smoke, ui-deep-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -211,7 +263,7 @@ jobs:
           TF_VAR_worker_desired_count: ${{ vars.DEV_WORKER_DESIRED_COUNT || '0' }}
           TF_VAR_ui_desired_count: ${{ vars.DEV_UI_DESIRED_COUNT || '0' }}
           UI_APP_BASE_URL: ${{ vars.DEV_UI_APP_BASE_URL || '' }}
-          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS || '' }}
+          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS }}
           TF_VAR_db_instance_class: ${{ vars.DEV_DB_INSTANCE_CLASS || 'db.t4g.micro' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.DEV_EMR_EXECUTION_ROLE_ARN }}
           COGNITO_HOSTED_UI_URL: ${{ vars.DEV_COGNITO_HOSTED_UI_URL || secrets.DEV_COGNITO_HOSTED_UI_URL || '' }}
@@ -367,12 +419,11 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.DEV_INVITE_EMAIL_FROM || secrets.DEV_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.DEV_INVITE_EMAIL_REPLY_TO || secrets.DEV_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.DEV_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
-          CONTACT_EMAIL_RECIPIENT: ${{ vars.DEV_CONTACT_EMAIL_RECIPIENT || '' }}
-          CONTACT_SUBMIT_TOKEN: ${{ secrets.DEV_CONTACT_SUBMIT_TOKEN || '' }}
-          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS || '' }}
+          INTERNAL_ADMINS: ${{ vars.DEV_INTERNAL_ADMINS }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (dev)
+        id: dev_cloud_api_smoke
         if: steps.preflight.outputs.skip != 'true' && (vars.DEV_API_DESIRED_COUNT || '0') != '0'
         shell: bash
         env:
@@ -384,6 +435,17 @@ jobs:
           SMOKE_MAX_ATTEMPTS: "30"
           SMOKE_SLEEP_SECONDS: "5"
         run: bash scripts/smoke/control_plane_api.sh
+
+      # Saves ECS task hours: defaults ON unless DEV_CLOUD_ECS_TEARDOWN_AFTER_CLOUD_SMOKE=false (GitHub var).
+      - name: Scale ECS services to 0 after successful verify (dev)
+        if: success() && steps.preflight.outputs.skip != 'true' && vars.DEV_CLOUD_ECS_TEARDOWN_AFTER_CLOUD_SMOKE != 'false' && (steps.dev_cloud_api_smoke.outcome == 'success' || steps.dev_cloud_api_smoke.outcome == 'skipped')
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: dev
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SCALE_ECS: "true"
+          STOP_RDS: "false"
+        run: bash scripts/ops/scale_nonprod_idle.sh
 
   deploy-staging:
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
@@ -399,7 +461,7 @@ jobs:
         shell: bash
         env:
           DEPLOY_ENV: staging
-          DEPLOY_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED || 'true' }}
+          DEPLOY_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED || 'false' }}
           ROLE_ARN: ${{ secrets.AWS_STAGING_DEPLOY_ROLE_ARN }}
           TF_STATE_BUCKET: ${{ secrets.STAGING_TF_STATE_BUCKET }}
           TF_LOCK_TABLE: ${{ secrets.STAGING_TF_LOCK_TABLE }}
@@ -422,7 +484,7 @@ jobs:
           TF_VAR_worker_desired_count: ${{ vars.STAGING_WORKER_DESIRED_COUNT || '0' }}
           TF_VAR_ui_desired_count: ${{ vars.STAGING_UI_DESIRED_COUNT || '0' }}
           UI_APP_BASE_URL: ${{ vars.STAGING_UI_APP_BASE_URL || '' }}
-          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS || 'jmcqueary@sparkpilot.cloud' }}
+          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS }}
           TF_VAR_db_instance_class: ${{ vars.STAGING_DB_INSTANCE_CLASS || 'db.t4g.small' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.STAGING_EMR_EXECUTION_ROLE_ARN }}
           COGNITO_HOSTED_UI_URL: ${{ vars.STAGING_COGNITO_HOSTED_UI_URL || secrets.STAGING_COGNITO_HOSTED_UI_URL || '' }}
@@ -580,12 +642,11 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.STAGING_INVITE_EMAIL_FROM || secrets.STAGING_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.STAGING_INVITE_EMAIL_REPLY_TO || secrets.STAGING_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.STAGING_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
-          CONTACT_EMAIL_RECIPIENT: ${{ vars.STAGING_CONTACT_EMAIL_RECIPIENT || '' }}
-          CONTACT_SUBMIT_TOKEN: ${{ secrets.STAGING_CONTACT_SUBMIT_TOKEN || '' }}
-          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS || 'jmcqueary@sparkpilot.cloud' }}
+          INTERNAL_ADMINS: ${{ vars.STAGING_INTERNAL_ADMINS }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (staging)
+        id: staging_cloud_api_smoke
         if: steps.preflight.outputs.skip != 'true' && (vars.STAGING_API_DESIRED_COUNT || '0') != '0'
         shell: bash
         env:
@@ -597,6 +658,17 @@ jobs:
           SMOKE_MAX_ATTEMPTS: "40"
           SMOKE_SLEEP_SECONDS: "5"
         run: bash scripts/smoke/control_plane_api.sh
+
+      # Defaults ON unless STAGING_CLOUD_ECS_TEARDOWN_AFTER_CLOUD_SMOKE=false
+      - name: Scale ECS services to 0 after successful verify (staging)
+        if: success() && steps.preflight.outputs.skip != 'true' && vars.STAGING_CLOUD_ECS_TEARDOWN_AFTER_CLOUD_SMOKE != 'false' && (steps.staging_cloud_api_smoke.outcome == 'success' || steps.staging_cloud_api_smoke.outcome == 'skipped')
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: staging
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SCALE_ECS: "true"
+          STOP_RDS: "false"
+        run: bash scripts/ops/scale_nonprod_idle.sh
 
   deploy-prod:
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
@@ -635,7 +707,7 @@ jobs:
           TF_VAR_worker_desired_count: ${{ vars.PROD_WORKER_DESIRED_COUNT || '0' }}
           TF_VAR_ui_desired_count: ${{ vars.PROD_UI_DESIRED_COUNT || '0' }}
           UI_APP_BASE_URL: ${{ vars.PROD_UI_APP_BASE_URL || '' }}
-          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS || 'jmcqueary@sparkpilot.cloud' }}
+          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS }}
           TF_VAR_db_instance_class: ${{ vars.PROD_DB_INSTANCE_CLASS || 'db.t4g.medium' }}
           EMR_EXECUTION_ROLE_ARN: ${{ secrets.PROD_EMR_EXECUTION_ROLE_ARN }}
           COGNITO_HOSTED_UI_URL: ${{ vars.PROD_COGNITO_HOSTED_UI_URL || secrets.PROD_COGNITO_HOSTED_UI_URL || '' }}
@@ -793,12 +865,11 @@ jobs:
           INVITE_EMAIL_FROM: ${{ vars.PROD_INVITE_EMAIL_FROM || secrets.PROD_INVITE_EMAIL_FROM || '' }}
           INVITE_EMAIL_REPLY_TO: ${{ vars.PROD_INVITE_EMAIL_REPLY_TO || secrets.PROD_INVITE_EMAIL_REPLY_TO || '' }}
           INVITE_EMAIL_TIMEOUT_SECONDS: ${{ vars.PROD_INVITE_EMAIL_TIMEOUT_SECONDS || '10' }}
-          CONTACT_EMAIL_RECIPIENT: ${{ vars.PROD_CONTACT_EMAIL_RECIPIENT || '' }}
-          CONTACT_SUBMIT_TOKEN: ${{ secrets.PROD_CONTACT_SUBMIT_TOKEN || '' }}
-          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS || 'jmcqueary@sparkpilot.cloud' }}
+          INTERNAL_ADMINS: ${{ vars.PROD_INTERNAL_ADMINS }}
         run: bash scripts/terraform/deploy_control_plane.sh
 
       - name: Smoke check deployed API (prod)
+        id: prod_cloud_api_smoke
         if: steps.preflight.outputs.skip != 'true' && (vars.PROD_API_DESIRED_COUNT || '0') != '0'
         shell: bash
         env:
@@ -811,3 +882,13 @@ jobs:
           SMOKE_SLEEP_SECONDS: "5"
         run: bash scripts/smoke/control_plane_api.sh
 
+      # Opt-in only: set PROD_CLOUD_ECS_TEARDOWN_AFTER_CLOUD_SMOKE=true so prod tasks do not keep running after the API smoke.
+      - name: Scale ECS services to 0 after successful verify (prod)
+        if: success() && steps.preflight.outputs.skip != 'true' && vars.PROD_CLOUD_ECS_TEARDOWN_AFTER_CLOUD_SMOKE == 'true' && (steps.prod_cloud_api_smoke.outcome == 'success' || steps.prod_cloud_api_smoke.outcome == 'skipped')
+        shell: bash
+        env:
+          SPARKPILOT_ENVIRONMENT: prod
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SCALE_ECS: "true"
+          STOP_RDS: "false"
+        run: bash scripts/ops/scale_nonprod_idle.sh

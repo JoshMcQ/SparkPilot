@@ -4,12 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";
-import { appHref } from "@/lib/app-url";
+import { API_URL } from "@/lib/api-url";
 
 type FormState = "idle" | "submitting" | "success" | "error" | "invalid";
-type ContactTokenResponse = {
-  formToken?: string;
-};
 
 const USE_CASES = [
   "Pilot evaluation",
@@ -21,13 +18,12 @@ const USE_CASES = [
   "Other",
 ];
 
-const CONTACT_EMAIL = "jmcqueary@sparkpilot.cloud";
-const CONTACT_ENDPOINT = appHref("/api/contact");
+const CONTACT_EMAIL = "hello@sparkpilot.cloud";
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", company: "", useCase: "", message: "" });
-  const [formToken, setFormToken] = useState("");
   const [state, setState] = useState<FormState>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -40,37 +36,37 @@ export default function ContactPage() {
     } else if (contactStatus === "error") {
       setState("error");
     }
-
-    const controller = new AbortController();
-    async function loadFormToken() {
-      try {
-        const response = await fetch(CONTACT_ENDPOINT, {
-          cache: "no-store",
-          credentials: "omit",
-          signal: controller.signal,
-        });
-        const body = (await response.json()) as ContactTokenResponse;
-        if (!response.ok || typeof body.formToken !== "string" || !body.formToken) {
-          throw new Error("Contact form token request failed.");
-        }
-        setFormToken(body.formToken);
-      } catch (error) {
-        if ((error as Error).name === "AbortError") {
-          return;
-        }
-        setState((current) => (current === "idle" ? "error" : current));
-      }
-    }
-    void loadFormToken();
-    return () => controller.abort();
   }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setState("submitting");
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`${API_URL}/v1/public/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: form.email.trim(),
+          company: form.company.trim() || undefined,
+          use_case: form.useCase || undefined,
+          message: form.message.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { detail?: string }).detail ?? "Something went wrong. Please try again.");
+      }
+      setState("success");
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setState("error");
+    }
   }
 
   return (
@@ -121,31 +117,23 @@ export default function ContactPage() {
           {state === "success" ? (
             <div className="contact-success">
               <div className="contact-success-icon" aria-hidden="true">OK</div>
-              <h3>Your request was sent.</h3>
-              <p>We received your pilot request. Replies go to the work email you provided.</p>
+              <h3>We got it.</h3>
+              <p>
+                Thanks for reaching out. We will review your message and get back to you
+                within one business day at <strong>{form.email}</strong>.
+              </p>
               <Link href="/" className="landing-btn landing-btn-secondary contact-success-back">
                 Back to home
               </Link>
             </div>
           ) : (
-            <form className="contact-form" action={CONTACT_ENDPOINT} method="post" onSubmit={handleSubmit}>
-              {state === "error" ? (
-                <div className="contact-error" role="alert">
-                  We could not send this request. Email{" "}
-                  <a href={`mailto:${CONTACT_EMAIL}`} className="login-link">{CONTACT_EMAIL}</a>{" "}
-                  directly while we fix the form endpoint.
+            <form className="contact-form" onSubmit={handleSubmit} noValidate>
+              {state === "error" && errorMessage && (
+                <div className="contact-form-error" role="alert">
+                  {errorMessage}
                 </div>
-              ) : null}
-              {state === "invalid" ? (
-                <div className="contact-error" role="alert">
-                  Check your name and work email, then send the request again.
-                </div>
-              ) : null}
-              <div className="contact-honeypot" aria-hidden="true">
-                <label htmlFor="website">Website</label>
-                <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
-              </div>
-              <input type="hidden" name="formToken" value={formToken} />
+              )}
+
               <div className="contact-form-row">
                 <div className="form-group">
                   <label className="form-label" htmlFor="name">Name</label>
@@ -220,9 +208,9 @@ export default function ContactPage() {
               <button
                 type="submit"
                 className="landing-btn landing-btn-primary contact-submit"
-                disabled={state === "submitting" || !formToken || !form.name || !form.email}
+                disabled={state === "submitting" || !form.name || !form.email}
               >
-                {state === "submitting" ? "Sending..." : "Send request"}
+                {state === "submitting" ? "Sending..." : "Get in touch"}
               </button>
             </form>
           )}

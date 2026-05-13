@@ -13,10 +13,12 @@
         "test:e2e:auth": "node ./node_modules/playwright/cli.js test tests/e2e/auth-route-guards.spec.ts --config=playwright.auth.config.ts",
         "test:e2e:theme": "node ./node_modules/playwright/cli.js test tests/e2e/theme-toggle.spec.ts",
         "test:e2e:responsive": "node ./node_modules/playwright/cli.js test tests/e2e/responsive-onboarding.spec.ts",
-        "test:e2e:cross-browser": "node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts tests/e2e/theme-toggle.spec.ts --project=chromium --project=firefox --project=webkit"
+        "test:e2e:cross-browser": "node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts tests/e2e/theme-toggle.spec.ts --project=chromium --project=firefox --project=webkit",
+        "test:e2e:full-smoke": "node ./node_modules/playwright/cli.js test tests/e2e/auth-route-guards.spec.ts --config=playwright.auth.config.ts && node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts tests/e2e/theme-toggle.spec.ts --project=chromium --project=firefox --project=webkit && node ./node_modules/playwright/cli.js test tests/e2e/responsive-onboarding.spec.ts tests/e2e/getting-started.spec.ts tests/e2e/runs-json-mode.spec.ts --project=chromium",
+        "test:e2e:ci-smoke": "node ./node_modules/playwright/cli.js test tests/e2e/auth-route-guards.spec.ts --config=playwright.auth.config.ts && node ./node_modules/playwright/cli.js test tests/e2e/onboarding.spec.ts tests/e2e/theme-toggle.spec.ts --project=chromium --project=firefox && node ./node_modules/playwright/cli.js test tests/e2e/responsive-onboarding.spec.ts tests/e2e/getting-started.spec.ts tests/e2e/runs-json-mode.spec.ts --project=chromium"
     },
     "dependencies": {
-        "next": "16.2.3",
+        "next": "16.2.6",
         "react": "18.3.1",
         "react-dom": "18.3.1"
     },
