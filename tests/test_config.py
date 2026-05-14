@@ -148,6 +148,34 @@ def test_contact_submit_token_is_required_outside_dev(monkeypatch) -> None:
     _clear_settings_cache()
 
 
+def test_internal_admins_are_required_outside_dev(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKPILOT_ENVIRONMENT", "production")
+    monkeypatch.setenv("SPARKPILOT_DRY_RUN_MODE", "false")
+    monkeypatch.setenv(
+        "SPARKPILOT_DATABASE_URL",
+        "postgresql+psycopg://sparkpilot:sparkpilot@db.example.com:5432/sparkpilot",
+    )
+    monkeypatch.setenv("SPARKPILOT_CORS_ORIGINS", "https://app.sparkpilot.cloud")
+    monkeypatch.setenv("SPARKPILOT_BOOTSTRAP_SECRET", "0123456789abcdef")
+    monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_TOKEN", "c" * 32)
+    monkeypatch.setenv(
+        "SPARKPILOT_EMR_EXECUTION_ROLE_ARN",
+        "arn:aws:iam::123456789012:role/SparkPilotExecRole",
+    )
+    monkeypatch.setenv("SPARKPILOT_CUSTOMER_OIDC_ISSUER", "https://customer.example.invalid")
+    monkeypatch.setenv("SPARKPILOT_CUSTOMER_OIDC_AUDIENCE", "customer-audience")
+    monkeypatch.setenv("SPARKPILOT_CUSTOMER_OIDC_JWKS_URI", "file:///tmp/customer-jwks.json")
+    monkeypatch.setenv("SPARKPILOT_INTERNAL_OIDC_ISSUER", "https://internal.example.invalid")
+    monkeypatch.setenv("SPARKPILOT_INTERNAL_OIDC_AUDIENCE", "internal-audience")
+    monkeypatch.setenv("SPARKPILOT_INTERNAL_OIDC_JWKS_URI", "file:///tmp/internal-jwks.json")
+    monkeypatch.delenv("SPARKPILOT_INTERNAL_ADMINS", raising=False)
+    monkeypatch.delenv("INTERNAL_ADMINS", raising=False)
+    _clear_settings_cache()
+    with pytest.raises(ValueError, match="SPARKPILOT_INTERNAL_ADMINS must include"):
+        validate_runtime_settings(get_settings())
+    _clear_settings_cache()
+
+
 def test_contact_submit_token_requires_minimum_length(monkeypatch) -> None:
     monkeypatch.setenv("SPARKPILOT_CONTACT_SUBMIT_TOKEN", "too-short")
     _clear_settings_cache()

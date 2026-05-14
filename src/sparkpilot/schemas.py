@@ -670,6 +670,31 @@ class ContactSubmissionCreateRequest(BaseModel):
     use_case: str | None = Field(default=None, max_length=255)
     message: str | None = Field(default=None, max_length=4000)
 
+    @field_validator("name")
+    @classmethod
+    def _name_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Name is required.")
+        return stripped
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @field_validator("company", "use_case", "message", mode="before")
+    @classmethod
+    def _normalize_optional_text(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        return stripped or None
+
 
 class ContactSubmissionCreateResponse(BaseModel):
     id: str

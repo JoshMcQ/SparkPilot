@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";
-import { API_URL } from "@/lib/api-url";
+import { APP_URL } from "@/lib/app-url";
 
 type FormState = "idle" | "submitting" | "success" | "error" | "invalid";
 
@@ -19,54 +19,73 @@ const USE_CASES = [
 ];
 
 const CONTACT_EMAIL = "hello@sparkpilot.cloud";
+const CONTACT_ENDPOINT = `${APP_URL}/api/contact`;
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", company: "", useCase: "", message: "" });
+  const [formToken, setFormToken] = useState("");
   const [state, setState] = useState<FormState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     const params = new URLSearchParams(window.location.search);
     const contactStatus = params.get("contact");
     if (contactStatus === "sent") {
       setState("success");
-      return;
+      return () => {
+        cancelled = true;
+      };
     } else if (contactStatus === "invalid") {
       setState("invalid");
+      setErrorMessage("Please check the required fields and try again.");
     } else if (contactStatus === "error") {
       setState("error");
+      setErrorMessage("We could not send your request. Please try again or email us directly.");
     }
+
+    fetch(CONTACT_ENDPOINT, { method: "GET", cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Contact form is unavailable.");
+        }
+        const body = await response.json();
+        if (typeof body?.formToken !== "string" || !body.formToken) {
+          throw new Error("Contact form token was not returned.");
+        }
+        return body.formToken;
+      })
+      .then((token) => {
+        if (!cancelled) {
+          setFormToken(token);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setState("error");
+          setErrorMessage("Contact form is temporarily unavailable. Please email us directly.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    if (!formToken) {
+      e.preventDefault();
+      setState("error");
+      setErrorMessage("Contact form is still initializing. Please try again.");
+      return;
+    }
     setState("submitting");
     setErrorMessage(null);
-    try {
-      const res = await fetch(`${API_URL}/v1/public/contact`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name.trim(),
-          email: form.email.trim(),
-          company: form.company.trim() || undefined,
-          use_case: form.useCase || undefined,
-          message: form.message.trim() || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { detail?: string }).detail ?? "Something went wrong. Please try again.");
-      }
-      setState("success");
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Something went wrong. Please try again.");
-      setState("error");
-    }
   }
 
   return (
@@ -120,19 +139,37 @@ export default function ContactPage() {
               <h3>We got it.</h3>
               <p>
                 Thanks for reaching out. We will review your message and get back to you
-                within one business day at <strong>{form.email}</strong>.
+                within one business day.
               </p>
               <Link href="/" className="landing-btn landing-btn-secondary contact-success-back">
                 Back to home
               </Link>
             </div>
           ) : (
-            <form className="contact-form" onSubmit={handleSubmit} noValidate>
-              {state === "error" && errorMessage && (
+            <form
+              className="contact-form"
+              action={CONTACT_ENDPOINT}
+              method="post"
+              onSubmit={handleSubmit}
+              noValidate
+            >
+              {(state === "error" || state === "invalid") && errorMessage && (
                 <div className="contact-form-error" role="alert">
                   {errorMessage}
                 </div>
               )}
+
+              <input type="hidden" name="formToken" value={formToken} />
+              <div className="contact-honeypot" aria-hidden="true">
+                <label htmlFor="website">Website</label>
+                <input
+                  id="website"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
+              </div>
 
               <div className="contact-form-row">
                 <div className="form-group">
@@ -208,7 +245,7 @@ export default function ContactPage() {
               <button
                 type="submit"
                 className="landing-btn landing-btn-primary contact-submit"
-                disabled={state === "submitting" || !form.name || !form.email}
+                disabled={state === "submitting" || !formToken || !form.name.trim() || !form.email.trim()}
               >
                 {state === "submitting" ? "Sending..." : "Get in touch"}
               </button>

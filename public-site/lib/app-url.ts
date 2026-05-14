@@ -1,5 +1,5 @@
 const APP_URL_RAW = process.env.NEXT_PUBLIC_APP_URL || "https://app.sparkpilot.cloud";
-const APP_URL = APP_URL_RAW.replace(/\/+$/, "");
+export const APP_URL = APP_URL_RAW.replace(/\/+$/, "");
 
 export function appHref(path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;

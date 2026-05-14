@@ -526,6 +526,23 @@ def _validate_security_runtime_settings(settings: Settings) -> None:
             raise ValueError(
                 "SPARKPILOT_BOOTSTRAP_FLOW must be either 'enabled' or 'disabled'."
             )
+    if environment not in {"dev", "development", "local", "test"}:
+        internal_admins = settings.internal_admin_email_set
+        if not internal_admins:
+            raise ValueError(
+                "SPARKPILOT_INTERNAL_ADMINS must include at least one internal admin "
+                "email outside development environments."
+            )
+        invalid_admins = sorted(
+            email
+            for email in internal_admins
+            if EMAIL_ADDRESS_PATTERN.fullmatch(email) is None
+        )
+        if invalid_admins:
+            raise ValueError(
+                "SPARKPILOT_INTERNAL_ADMINS contains invalid email addresses: "
+                + ", ".join(invalid_admins)
+            )
     if settings.magic_link_ttl_hours <= 0:
         raise ValueError("SPARKPILOT_MAGIC_LINK_TTL_HOURS must be greater than 0.")
 
