@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   clientFingerprintFromHeaders,
+  contactFormValue,
+  contactSubmissionPayloadFromForm,
   contactSubmitSecretFromEnv,
   createContactFormToken,
   isContactFormTokenValid,
 } from "@/lib/contact-submit";
-import { sparkpilotApiBase } from "@/lib/oidc-server";
+import { sparkpilotApiBase } from "@/lib/api-base";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,12 +47,6 @@ function contactRedirectUrl(request: NextRequest, status: "sent" | "invalid" | "
   }
   target.searchParams.set("contact", status);
   return target;
-}
-
-function formValue(form: FormData, key: string, maxLength: number): string {
-  const value = form.get(key);
-  if (typeof value !== "string") return "";
-  return value.trim().slice(0, maxLength);
 }
 
 function clientFingerprint(request: NextRequest): string {
@@ -151,22 +147,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const secret = contactSubmitSecretFromEnv();
-  const formToken = formValue(form, "formToken", 512);
+  const formToken = contactFormValue(form, "formToken", 512);
   if (!isContactFormTokenValid(formToken, secret, clientFingerprint(request))) {
     return NextResponse.redirect(contactRedirectUrl(request, "error"), { status: 303 });
   }
 
-  const payload = {
-    name: formValue(form, "name", 120),
-    email: formValue(form, "email", 255).toLowerCase(),
-    company: formValue(form, "company", 255) || null,
-    use_case: formValue(form, "useCase", 120) || null,
-    message: formValue(form, "message", 4000) || null,
-    source_url: request.headers.get("Referer")?.trim().slice(0, 2048) || null,
-    website: formValue(form, "website", 255) || null,
-  };
-
-  if (payload.website) {
+  if (contactFormValue(form, "website", 255)) {
     return NextResponse.redirect(contactRedirectUrl(request, "sent"), { status: 303 });
   }
 
@@ -177,15 +163,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
-    const response = await fetch(`${sparkpilotApiBase().replace(/\/+$/, "")}/v1/contact-requests`, {
+    const response = await fetch(`${sparkpilotApiBase().replace(/\/+$/, "")}/v1/public/contact`, {
       method: "POST",
       headers: {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "X-SparkPilot-Contact-Token": secret,
         "X-Request-Id": crypto.randomUUID(),
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(contactSubmissionPayloadFromForm(form)),
       cache: "no-store",
       signal: controller.signal,
     });

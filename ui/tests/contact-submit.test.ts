@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   clientFingerprintFromHeaders,
+  contactSubmissionPayloadFromForm,
   contactSubmitSecretFromEnv,
   createContactFormToken,
   isContactFormTokenValid,
@@ -65,4 +66,23 @@ test("contact submit secret requires configured length", () => {
       process.env.SPARKPILOT_CONTACT_SUBMIT_TOKEN = original;
     }
   }
+});
+
+test("contact submission payload trims fields and excludes proxy-only controls", () => {
+  const form = new FormData();
+  form.set("formToken", "signed-token");
+  form.set("name", " Joshua McQueary ");
+  form.set("email", " Joshua@Example.Invalid ");
+  form.set("company", " Agent Works Group ");
+  form.set("useCase", "Pilot evaluation");
+  form.set("message", " Looking to use SparkPilot for AWS Spark needs. ");
+  form.set("website", "");
+
+  assert.deepEqual(contactSubmissionPayloadFromForm(form), {
+    name: "Joshua McQueary",
+    email: "joshua@example.invalid",
+    company: "Agent Works Group",
+    use_case: "Pilot evaluation",
+    message: "Looking to use SparkPilot for AWS Spark needs.",
+  });
 });

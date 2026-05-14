@@ -3,6 +3,20 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from "crypto";
 export const CONTACT_FORM_TOKEN_TTL_MS = 30 * 60 * 1000;
 export const MIN_CONTACT_SUBMIT_TOKEN_LENGTH = 32;
 
+export type ContactSubmissionPayload = {
+  name: string;
+  email: string;
+  company: string | null;
+  use_case: string | null;
+  message: string | null;
+};
+
+export function contactFormValue(form: FormData, key: string, maxLength: number): string {
+  const value = form.get(key);
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, maxLength);
+}
+
 function firstForwardedValue(value: string | null): string {
   const parts = (value ?? "")
     .split(",")
@@ -71,4 +85,14 @@ export function isContactFormTokenValid(
 
   const expectedSignature = signatureFor(secret, expiresAt, nonce, fingerprint);
   return safeEqual(suppliedSignature, expectedSignature);
+}
+
+export function contactSubmissionPayloadFromForm(form: FormData): ContactSubmissionPayload {
+  return {
+    name: contactFormValue(form, "name", 255),
+    email: contactFormValue(form, "email", 255).toLowerCase(),
+    company: contactFormValue(form, "company", 255) || null,
+    use_case: contactFormValue(form, "useCase", 255) || null,
+    message: contactFormValue(form, "message", 4000) || null,
+  };
 }

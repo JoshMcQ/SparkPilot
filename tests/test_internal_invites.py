@@ -419,6 +419,23 @@ def test_public_contact_submission_rate_limits_per_source_ip(
         assert throttled.status_code == 429
 
 
+def test_public_contact_submission_rejects_blank_name() -> None:
+    _reset_db()
+
+    with _BaseTestClient(app) as client:
+        response = client.post(
+            "/v1/public/contact",
+            json={"name": "   ", "email": "lead@example.invalid"},
+            headers={"X-Skip-Test-Bootstrap": "true"},
+        )
+
+    assert response.status_code == 422
+
+    with SessionLocal() as db:
+        rows = db.execute(select(ContactSubmission)).scalars().all()
+        assert rows == []
+
+
 def test_contact_submission_approval_commits_submission_and_sends_invite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

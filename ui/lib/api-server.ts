@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { Environment, PreflightResponse, Run } from "@/lib/api";
-import { sparkpilotApiBase } from "@/lib/oidc-server";
+import { sparkpilotApiBase } from "@/lib/api-base";
 
 function asObject(value: unknown, context: string): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {

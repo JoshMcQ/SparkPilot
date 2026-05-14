@@ -1,5 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
+export { sparkpilotApiBase } from "@/lib/api-base";
 
 export class ProxyAuthError extends Error {
   readonly statusCode: number;
@@ -10,15 +11,7 @@ export class ProxyAuthError extends Error {
   }
 }
 
-const API_BASE = (process.env.SPARKPILOT_API ?? "").trim();
 const SESSION_COOKIE_NAME = "sparkpilot.session";
-
-function requireApiBase(): string {
-  if (!API_BASE) {
-    throw new Error("Missing SPARKPILOT_API. Set the upstream SparkPilot API base URL.");
-  }
-  return API_BASE;
-}
 
 /**
  * Resolve the Authorization header to forward to the SparkPilot API.
@@ -52,8 +45,4 @@ export async function resolveProxyAuthorization(incomingAuthorization: string | 
     "No active user session. Sign in to authenticate.",
     401,
   );
-}
-
-export function sparkpilotApiBase(): string {
-  return requireApiBase();
 }
