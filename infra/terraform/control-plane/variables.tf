@@ -649,7 +649,7 @@ variable "ui_desired_count" {
 
 variable "ui_api_base_url" {
   type        = string
-  description = "API base URL injected into UI container at runtime (SPARKPILOT_API env var). Defaults to empty, which uses the ALB URL resolved post-deploy."
+  description = "API base URL injected into UI container at runtime (SPARKPILOT_API env var). Defaults to empty, which uses private Cloud Map service discovery for UI-to-API traffic."
   default     = ""
 }
 

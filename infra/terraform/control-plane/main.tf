@@ -105,9 +105,12 @@ locals {
   internal_admins_list             = compact([for admin in split(",", var.internal_admins) : trimspace(admin)])
   internal_admins_normalized       = join(",", local.internal_admins_list)
 
-  alb_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
-  alb_internal   = length(var.public_subnet_ids) == 0
-  https_enabled  = trimspace(var.acm_certificate_arn) != ""
+  alb_subnet_ids                   = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
+  alb_internal                     = length(var.public_subnet_ids) == 0
+  https_enabled                    = trimspace(var.acm_certificate_arn) != ""
+  service_discovery_namespace_name = "${local.name_prefix}.local"
+  api_service_discovery_dns_name   = "api.${local.service_discovery_namespace_name}"
+  ui_runtime_api_base_url          = trimspace(var.ui_api_base_url) != "" ? trimspace(var.ui_api_base_url) : "http://${local.api_service_discovery_dns_name}:8000"
   private_subnet_route_table_ids = distinct(flatten([
     for route_tables in values(data.aws_route_tables.private_subnet_route_tables) : route_tables.ids
   ]))
@@ -482,6 +485,32 @@ resource "aws_ecs_cluster" "control_plane" {
   tags = local.tags
 }
 
+resource "aws_service_discovery_private_dns_namespace" "control_plane" {
+  name = local.service_discovery_namespace_name
+  vpc  = var.vpc_id
+  tags = local.tags
+}
+
+resource "aws_service_discovery_service" "api" {
+  name = "api"
+
+  dns_config {
+    namespace_id   = aws_service_discovery_private_dns_namespace.control_plane.id
+    routing_policy = "MULTIVALUE"
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
+  tags = local.tags
+}
+
 resource "aws_db_subnet_group" "postgres" {
   name       = "${local.name_prefix}-db-subnets"
   subnet_ids = var.private_subnet_ids
@@ -535,6 +564,15 @@ resource "aws_vpc_security_group_ingress_rule" "ecs_api_from_alb" {
   from_port                    = 8000
   to_port                      = 8000
   description                  = "Allow API traffic from ALB to ECS tasks"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ecs_api_from_ecs_tasks" {
+  security_group_id            = aws_security_group.ecs_tasks.id
+  referenced_security_group_id = aws_security_group.ecs_tasks.id
+  ip_protocol                  = "tcp"
+  from_port                    = 8000
+  to_port                      = 8000
+  description                  = "Allow private UI-to-API traffic between ECS tasks"
 }
 
 resource "aws_vpc_security_group_egress_rule" "ecs_tasks_all" {
@@ -1031,6 +1069,10 @@ resource "aws_ecs_service" "api" {
     container_port   = 8000
   }
 
+  service_registries {
+    registry_arn = aws_service_discovery_service.api.arn
+  }
+
   # Include the HTTPS listener in depends_on so the ECS service waits for the
   # full listener binding before registering targets. api_https is count-based
   # (zero when no cert is configured) so Terraform resolves it correctly.
@@ -1129,7 +1171,7 @@ resource "aws_ecs_task_definition" "ui" {
         { name = "NODE_ENV", value = "production" },
         { name = "PORT", value = "3000" },
         { name = "HOSTNAME", value = "0.0.0.0" },
-        { name = "SPARKPILOT_API", value = trimspace(var.ui_api_base_url) != "" ? var.ui_api_base_url : local.https_enabled ? "https://${aws_lb.api.dns_name}" : "http://${aws_lb.api.dns_name}" },
+        { name = "SPARKPILOT_API", value = local.ui_runtime_api_base_url },
         { name = "SPARKPILOT_UI_ENFORCE_AUTH", value = "true" },
       ]
       secrets = [
