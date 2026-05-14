@@ -4,27 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LandingNav } from "@/components/landing-nav";
 import { LandingFooter } from "@/components/landing-footer";
+import { ContactForm, type ContactFormState, type ContactFormValues } from "@/components/contact-form";
 import { APP_URL } from "@/lib/app-url";
-
-type FormState = "idle" | "submitting" | "success" | "error" | "invalid";
-
-const USE_CASES = [
-  "Pilot evaluation",
-  "Production rollout planning",
-  "EMR on EKS governance",
-  "EMR Serverless governance",
-  "Cost attribution and FinOps",
-  "Airflow or Dagster integration",
-  "Other",
-];
 
 const CONTACT_EMAIL = "hello@sparkpilot.cloud";
 const CONTACT_ENDPOINT = `${APP_URL}/api/contact`;
 
 export default function ContactPage() {
-  const [form, setForm] = useState({ name: "", email: "", company: "", useCase: "", message: "" });
+  const [form, setForm] = useState<ContactFormValues>({ name: "", email: "", company: "", useCase: "", message: "" });
   const [formToken, setFormToken] = useState("");
-  const [state, setState] = useState<FormState>("idle");
+  const [state, setState] = useState<ContactFormState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -146,110 +135,15 @@ export default function ContactPage() {
               </Link>
             </div>
           ) : (
-            <form
-              className="contact-form"
-              action={CONTACT_ENDPOINT}
-              method="post"
+            <ContactForm
+              contactEndpoint={CONTACT_ENDPOINT}
+              errorMessage={errorMessage}
+              form={form}
+              formToken={formToken}
+              onChange={handleChange}
               onSubmit={handleSubmit}
-              noValidate
-            >
-              {(state === "error" || state === "invalid") && errorMessage && (
-                <div className="contact-form-error" role="alert">
-                  {errorMessage}
-                </div>
-              )}
-
-              <input type="hidden" name="formToken" value={formToken} />
-              <div className="contact-honeypot" aria-hidden="true">
-                <label htmlFor="website">Website</label>
-                <input
-                  id="website"
-                  name="website"
-                  type="text"
-                  tabIndex={-1}
-                  autoComplete="off"
-                />
-              </div>
-
-              <div className="contact-form-row">
-                <div className="form-group">
-                  <label className="form-label" htmlFor="name">Name</label>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    className="form-input"
-                    placeholder="Alex Smith"
-                    value={form.name}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="email">Work email</label>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    className="form-input"
-                    placeholder="alex@company.com"
-                    value={form.email}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="company">Company</label>
-                <input
-                  id="company"
-                  name="company"
-                  type="text"
-                  className="form-input"
-                  placeholder="Acme Corp"
-                  value={form.company}
-                  onChange={handleChange}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="useCase">What brings you here?</label>
-                <select
-                  id="useCase"
-                  name="useCase"
-                  className="form-input form-select"
-                  value={form.useCase}
-                  onChange={handleChange}
-                >
-                  <option value="">Select one...</option>
-                  {USE_CASES.map((uc) => (
-                    <option key={uc} value={uc}>{uc}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="message">Tell us more</label>
-                <textarea
-                  id="message"
-                  name="message"
-                  className="form-input form-textarea"
-                  placeholder="Describe your current setup, the problem you're trying to solve, or any questions you have..."
-                  rows={5}
-                  value={form.message}
-                  onChange={handleChange}
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="landing-btn landing-btn-primary contact-submit"
-                disabled={state === "submitting" || !formToken || !form.name.trim() || !form.email.trim()}
-              >
-                {state === "submitting" ? "Sending..." : "Get in touch"}
-              </button>
-            </form>
+              state={state}
+            />
           )}
         </div>
       </section>

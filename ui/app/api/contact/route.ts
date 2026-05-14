@@ -7,7 +7,7 @@ import {
   createContactFormToken,
   isContactFormTokenValid,
 } from "@/lib/contact-submit";
-import { sparkpilotApiBase } from "@/lib/oidc-server";
+import { sparkpilotApiBase } from "@/lib/api-base";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
