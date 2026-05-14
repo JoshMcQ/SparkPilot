@@ -505,7 +505,7 @@ resource "aws_service_discovery_service" "api" {
   }
 
   health_check_custom_config {
-    failure_threshold = 1
+    failure_threshold = 2
   }
 
   tags = local.tags
